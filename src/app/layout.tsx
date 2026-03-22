@@ -14,8 +14,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "AI Content Dashboard",
-  description: "Manage Instagram, analytics, content calendar, competitors, and news in one place.",
+  title: "Flogen AI — Content OS",
+  description: "AI-powered content management for Flogen AI. Manage Instagram, analytics, content calendar, competitor intelligence, and news in one place.",
 };
 
 export default function RootLayout({

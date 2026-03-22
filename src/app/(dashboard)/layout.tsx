@@ -15,10 +15,11 @@ export default function DashboardLayout({
     <SidebarProvider>
       <AppSidebar />
       <SidebarInset>
-        <header className="flex h-14 items-center gap-2 border-b border-border px-4 sticky top-0 z-10 bg-background">
+        <header className="flex h-14 items-center gap-2 border-b border-border px-4 sticky top-0 z-10 bg-background/95 backdrop-blur">
           <SidebarTrigger className="-ml-1" />
           <Separator orientation="vertical" className="h-4" />
-          <span className="text-sm text-muted-foreground">AI Content Dashboard</span>
+          <span className="text-sm font-medium text-foreground">Flogen AI</span>
+          <span className="text-sm text-muted-foreground">— Content OS</span>
         </header>
         <main className="flex-1 p-6">{children}</main>
       </SidebarInset>

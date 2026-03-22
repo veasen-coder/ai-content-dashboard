@@ -53,22 +53,22 @@ interface KpiCardProps {
 function KpiCard({ label, value, delta, icon: Icon, accent, loading }: KpiCardProps) {
   const positive = delta >= 0;
   return (
-    <Card className="border-zinc-800 bg-zinc-900/60">
+    <Card>
       <CardHeader className="pb-2 flex flex-row items-center justify-between space-y-0">
-        <CardDescription className="text-xs text-zinc-500">{label}</CardDescription>
+        <CardDescription className="text-xs">{label}</CardDescription>
         <div className={`h-7 w-7 rounded-md flex items-center justify-center ${accent}`}>
           <Icon className="h-3.5 w-3.5" />
         </div>
       </CardHeader>
       <CardContent className="space-y-1">
         {loading ? (
-          <Skeleton className="h-7 w-24 bg-zinc-800" />
+          <Skeleton className="h-7 w-24" />
         ) : (
           <p className="text-2xl font-bold tracking-tight">{value}</p>
         )}
         <div className="flex items-center gap-1">
           {loading ? (
-            <Skeleton className="h-3.5 w-16 bg-zinc-800" />
+            <Skeleton className="h-3.5 w-16" />
           ) : (
             <>
               {positive ? (
@@ -84,7 +84,7 @@ function KpiCard({ label, value, delta, icon: Icon, accent, loading }: KpiCardPr
                 {positive ? "+" : ""}
                 {delta}%
               </span>
-              <span className="text-xs text-zinc-600">vs prev. period</span>
+              <span className="text-xs text-muted-foreground">vs prev. period</span>
             </>
           )}
         </div>
@@ -107,10 +107,10 @@ function MicroStat({
   color: string;
 }) {
   return (
-    <div className="flex flex-col items-center gap-1 px-4 py-2 rounded-lg bg-zinc-900/60 border border-zinc-800">
+    <div className="flex flex-col items-center gap-1 px-4 py-2 rounded-lg bg-card border border-border">
       <Icon className={`h-4 w-4 ${color}`} />
       <span className="text-sm font-semibold">{value.toLocaleString()}</span>
-      <span className="text-[10px] text-zinc-500">{label}</span>
+      <span className="text-[10px] text-muted-foreground">{label}</span>
     </div>
   );
 }
@@ -163,13 +163,13 @@ export function AnalyticsDashboard() {
       {/* ── Header ── */}
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-500/20 shadow-lg shadow-blue-900/20">
-            <BarChart2 className="h-5 w-5 text-blue-400" />
+          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/20">
+            <BarChart2 className="h-5 w-5 text-primary" />
           </div>
           <div>
             <h1 className="text-xl font-semibold tracking-tight">Analytics</h1>
             <p className="text-sm text-muted-foreground">
-              Instagram performance · {days}-day window
+              Instagram · Xiaohongshu performance · {days}-day window
             </p>
           </div>
         </div>
@@ -177,9 +177,9 @@ export function AnalyticsDashboard() {
         <div className="flex items-center gap-2 flex-wrap">
           <Badge
             variant="outline"
-            className="text-[11px] border-zinc-700 text-zinc-400 gap-1.5"
+            className="text-[11px] gap-1.5 border-primary/30 text-primary/80"
           >
-            <Sparkles className="h-3 w-3 text-amber-400" />
+            <Sparkles className="h-3 w-3" />
             Powered by Metricool
           </Badge>
           <Separator orientation="vertical" className="h-5" />
@@ -187,7 +187,7 @@ export function AnalyticsDashboard() {
           <Button
             size="sm"
             variant="outline"
-            className="border-zinc-700 bg-zinc-900 hover:bg-zinc-800 text-xs h-9"
+            className="text-xs h-9"
           >
             <Download className="h-3.5 w-3.5 mr-1.5" />
             Export
@@ -202,7 +202,7 @@ export function AnalyticsDashboard() {
           value={kpi ? kpi.totalImpressions.toLocaleString() : "—"}
           delta={kpi?.impressionsDelta ?? 0}
           icon={Eye}
-          accent="bg-blue-500/20 text-blue-400"
+          accent="bg-primary/20 text-primary"
           loading={loading}
         />
         <KpiCard
@@ -218,7 +218,7 @@ export function AnalyticsDashboard() {
           value={kpi ? `+${kpi.followerGrowth.toLocaleString()}` : "—"}
           delta={kpi?.followerDelta ?? 0}
           icon={Users}
-          accent="bg-violet-500/20 text-violet-400"
+          accent="bg-primary/10 text-primary/80"
           loading={loading}
         />
         <KpiCard
@@ -226,7 +226,7 @@ export function AnalyticsDashboard() {
           value={kpi ? kpi.totalReach.toLocaleString() : "—"}
           delta={kpi?.reachDelta ?? 0}
           icon={BarChart2}
-          accent="bg-pink-500/20 text-pink-400"
+          accent="bg-emerald-500/10 text-emerald-400"
           loading={loading}
         />
       </div>
@@ -245,7 +245,7 @@ export function AnalyticsDashboard() {
       {/* ── Charts row ── */}
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
         {/* Impressions & Reach — 2 cols */}
-        <Card className="xl:col-span-2 border-zinc-800 bg-zinc-900/60">
+        <Card className="xl:col-span-2 border-border bg-card">
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
               <div>
@@ -268,7 +268,7 @@ export function AnalyticsDashboard() {
         </Card>
 
         {/* Top posts — 1 col */}
-        <Card className="border-zinc-800 bg-zinc-900/60">
+        <Card className="border-border bg-card">
           <CardHeader className="pb-3">
             <CardTitle className="text-sm font-medium">Top Performing Posts</CardTitle>
             <CardDescription className="text-xs">Ranked by impressions this period</CardDescription>
@@ -290,7 +290,7 @@ export function AnalyticsDashboard() {
       {/* ── Bottom charts ── */}
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
         {/* Engagement chart */}
-        <Card className="border-zinc-800 bg-zinc-900/60">
+        <Card className="border-border bg-card">
           <CardHeader className="pb-3">
             <CardTitle className="text-sm font-medium">Engagement Breakdown</CardTitle>
             <CardDescription className="text-xs">Likes, comments, shares, and saves over time</CardDescription>
@@ -301,7 +301,7 @@ export function AnalyticsDashboard() {
         </Card>
 
         {/* Follower growth chart */}
-        <Card className="border-zinc-800 bg-zinc-900/60">
+        <Card className="border-border bg-card">
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
               <div>
@@ -311,7 +311,7 @@ export function AnalyticsDashboard() {
               {kpi && !loading && (
                 <Badge
                   variant="outline"
-                  className="text-[10px] border-emerald-800 text-emerald-400 bg-emerald-500/10"
+                  className="text-[10px] text-primary border-primary/30 bg-primary/10"
                 >
                   +{kpi.followerGrowth.toLocaleString()} this period
                 </Badge>

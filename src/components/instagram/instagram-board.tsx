@@ -12,6 +12,7 @@ import {
   CheckCircle2,
   Archive,
   FileText,
+  Zap,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -23,78 +24,79 @@ import {
   InstagramPost,
   PostStatus,
   PostType,
-  POST_TYPE_LABELS,
 } from "@/types/instagram";
 
-// ─── Seed data ──────────────────────────────────────────────────────────────
+// ─── Flogen AI seed posts ─────────────────────────────────────────────────────
 const SEED_POSTS: InstagramPost[] = [
   {
     id: "1",
     caption:
-      "Behind the scenes of our latest photoshoot 📸 Swipe to see the magic happen from setup to final shot.",
-    hashtags: "#bts #photoshoot #contentcreator #behindthescenes",
+      "How a local F&B owner in KL saved 3 hours every day using WhatsApp AI 🍜\n\nHe used to manually reply to every 'are you open?' and 'what's on the menu?' message. Now his AI agent handles it — 24/7, in Bahasa and English.",
+    hashtags: "#whatsappai #malaysia #sme #aiagent #floGenAI",
     type: "carousel",
     status: "scheduled",
     scheduledDate: "2026-03-25T10:00",
     createdAt: "2026-03-20T09:00:00",
-    coverHue: 260,
+    coverHue: 140,
   },
   {
     id: "2",
     caption:
-      "Morning routine that changed my life ☀️ 5am wake up, journaling, movement, and intentional planning.",
-    hashtags: "#morningroutine #productivity #lifestyle #wellness",
+      "5 signs your business NEEDS a WhatsApp AI Agent right now 🚨\n\n1. You're answering the same 10 questions every day\n2. Leads go cold because you reply too slow\n3. Your team is drowning in DMs...",
+    hashtags: "#whatsappbusiness #ai #automation #malaysiabusiness",
     type: "reel",
     status: "scheduled",
-    scheduledDate: "2026-03-26T08:00",
+    scheduledDate: "2026-03-27T08:00",
     createdAt: "2026-03-19T14:00:00",
-    coverHue: 200,
+    coverHue: 100,
   },
   {
     id: "3",
     caption:
-      "This week's content strategy breakdown — how I plan 30 days of content in just 2 hours.",
-    hashtags: "#contentstrategy #socialmedia #creator",
+      "The difference between a chatbot and an AI Agent — and why it matters for your business.",
+    hashtags: "#chatbot #aiagent #whatsapp #b2b",
     type: "feed",
     status: "draft",
     scheduledDate: null,
     createdAt: "2026-03-18T11:00:00",
-    coverHue: 30,
+    coverHue: 160,
   },
   {
     id: "4",
-    caption: "Quick poll: which content type do you prefer? Let me know 👇",
-    hashtags: "#poll #engagement #community",
-    type: "story",
+    caption:
+      "POV: Your customer WhatsApps at 11pm asking for a quote. Your AI Agent replies instantly with pricing, availability, and a booking link. 🤖",
+    hashtags: "#automation #customerservice #whatsapp",
+    type: "reel",
     status: "draft",
     scheduledDate: null,
     createdAt: "2026-03-17T16:00:00",
-    coverHue: 340,
+    coverHue: 120,
   },
   {
     id: "5",
     caption:
-      "Just dropped our new guide on personal branding — link in bio! 🔗",
-    hashtags: "#personalbranding #marketing #growth",
-    type: "feed",
+      "Case study: How Flogen AI helped a Malaysian e-commerce brand reduce their customer support load by 70% in 30 days. 📉\n\nFull breakdown in our bio link.",
+    hashtags: "#casestudy #ecommerce #malaysia #AI",
+    type: "carousel",
     status: "published",
     scheduledDate: "2026-03-15T12:00",
     createdAt: "2026-03-10T08:00:00",
-    coverHue: 150,
+    coverHue: 130,
   },
   {
     id: "6",
-    caption: "3 tools I use every single day as a content creator.",
-    hashtags: "#tools #creator #productivity",
+    caption:
+      "3 WhatsApp AI scripts every Malaysian business owner should steal 📋",
+    hashtags: "#whatsapp #scripts #businesstips #floGenAI",
     type: "reel",
     status: "published",
     scheduledDate: "2026-03-12T09:00",
     createdAt: "2026-03-08T10:00:00",
-    coverHue: 180,
+    coverHue: 80,
   },
   {
     id: "7",
-    caption: "Idea: time-lapse of workspace setup and reset",
+    caption: "Idea: Show 'before AI vs after AI' transformation for a retailer's WhatsApp inbox",
     hashtags: "",
     type: "reel",
     status: "backlog",
@@ -104,17 +106,17 @@ const SEED_POSTS: InstagramPost[] = [
   },
   {
     id: "8",
-    caption: "Seasonal content — spring aesthetic flatlay concept",
-    hashtags: "#spring #aesthetic #flatlay",
+    caption: "XHS version: 如何用WhatsApp AI帮您的生意自动回复客户？ (需要中文版内容)",
+    hashtags: "#AI #WhatsApp #小红书 #马来西亚",
     type: "feed",
     status: "backlog",
     scheduledDate: null,
     createdAt: "2026-03-14T15:00:00",
-    coverHue: 90,
+    coverHue: 0,
   },
 ];
 
-// ─── Tab config ─────────────────────────────────────────────────────────────
+// ─── Tab config ───────────────────────────────────────────────────────────────
 const TABS: {
   value: "all" | PostStatus;
   label: string;
@@ -128,15 +130,7 @@ const TABS: {
   { value: "backlog", label: "Backlog", icon: Archive, status: "backlog" },
 ];
 
-const TAB_ACCENT: Record<string, string> = {
-  all: "text-white",
-  scheduled: "text-blue-400",
-  draft: "text-amber-400",
-  published: "text-emerald-400",
-  backlog: "text-zinc-400",
-};
-
-// ─── Type filter pills ───────────────────────────────────────────────────────
+// ─── Type filter pills ────────────────────────────────────────────────────────
 const TYPE_FILTERS: { value: PostType | "all"; label: string; icon: React.ElementType }[] = [
   { value: "all", label: "All types", icon: Instagram },
   { value: "feed", label: "Feed", icon: ImageIcon },
@@ -145,7 +139,6 @@ const TYPE_FILTERS: { value: PostType | "all"; label: string; icon: React.Elemen
   { value: "carousel", label: "Carousel", icon: Grid2x2 },
 ];
 
-// ─── Helpers ─────────────────────────────────────────────────────────────────
 function randomHue() {
   return Math.floor(Math.random() * 360);
 }
@@ -154,14 +147,13 @@ function generateId() {
   return Math.random().toString(36).slice(2, 9);
 }
 
-// ─── Component ───────────────────────────────────────────────────────────────
+// ─── Component ────────────────────────────────────────────────────────────────
 export function InstagramBoard() {
   const [posts, setPosts] = useState<InstagramPost[]>(SEED_POSTS);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingPost, setEditingPost] = useState<InstagramPost | null>(null);
   const [typeFilter, setTypeFilter] = useState<PostType | "all">("all");
 
-  // ── Stats ──
   const counts: Record<PostStatus | "all", number> = {
     all: posts.length,
     backlog: posts.filter((p) => p.status === "backlog").length,
@@ -170,14 +162,9 @@ export function InstagramBoard() {
     published: posts.filter((p) => p.status === "published").length,
   };
 
-  // ── Actions ──
   function handleSave(data: Omit<InstagramPost, "id" | "createdAt" | "coverHue">) {
     if (editingPost) {
-      setPosts((ps) =>
-        ps.map((p) =>
-          p.id === editingPost.id ? { ...p, ...data } : p
-        )
-      );
+      setPosts((ps) => ps.map((p) => (p.id === editingPost.id ? { ...p, ...data } : p)));
     } else {
       const newPost: InstagramPost = {
         ...data,
@@ -208,7 +195,6 @@ export function InstagramBoard() {
     setDialogOpen(true);
   }
 
-  // ── Filter helpers ──
   function filterPosts(status?: PostStatus) {
     return posts.filter(
       (p) =>
@@ -222,11 +208,11 @@ export function InstagramBoard() {
       {/* ── Header ── */}
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-purple-500 via-pink-500 to-orange-400 shadow-lg shadow-pink-900/30">
-            <Instagram className="h-5 w-5 text-white" />
+          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#bbf088]">
+            <Zap className="h-5 w-5 text-[#0a0a0a]" />
           </div>
           <div>
-            <h1 className="text-xl font-semibold tracking-tight">Instagram Manager</h1>
+            <h1 className="text-xl font-semibold tracking-tight">Content Studio</h1>
             <p className="text-sm text-muted-foreground">
               {counts.all} post{counts.all !== 1 ? "s" : ""} in pipeline
             </p>
@@ -234,21 +220,21 @@ export function InstagramBoard() {
         </div>
         <Button
           onClick={openNewDialog}
-          className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 text-white border-0 shadow-md shadow-pink-900/30"
+          className="bg-primary text-primary-foreground hover:bg-primary/90"
         >
           <ImagePlus className="h-4 w-4 mr-1.5" />
           New Post
         </Button>
       </div>
 
-      {/* ── Quick stats strip ── */}
+      {/* ── Quick stats ── */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         {(["scheduled", "draft", "published", "backlog"] as PostStatus[]).map((s) => {
           const styles: Record<PostStatus, { bg: string; text: string; border: string }> = {
-            scheduled: { bg: "bg-blue-500/10", text: "text-blue-400", border: "border-blue-500/20" },
+            scheduled: { bg: "bg-primary/10", text: "text-primary", border: "border-primary/20" },
             draft: { bg: "bg-amber-500/10", text: "text-amber-400", border: "border-amber-500/20" },
             published: { bg: "bg-emerald-500/10", text: "text-emerald-400", border: "border-emerald-500/20" },
-            backlog: { bg: "bg-zinc-500/10", text: "text-zinc-400", border: "border-zinc-700/50" },
+            backlog: { bg: "bg-muted/50", text: "text-muted-foreground", border: "border-border" },
           };
           const st = styles[s];
           return (
@@ -271,7 +257,7 @@ export function InstagramBoard() {
         })}
       </div>
 
-      {/* ── Type filter pills ── */}
+      {/* ── Type filters ── */}
       <div className="flex items-center gap-2 flex-wrap">
         <span className="text-xs text-muted-foreground mr-1">Filter:</span>
         {TYPE_FILTERS.map((tf) => (
@@ -281,8 +267,8 @@ export function InstagramBoard() {
             className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border transition-colors
               ${
                 typeFilter === tf.value
-                  ? "bg-zinc-700 border-zinc-600 text-white"
-                  : "bg-transparent border-zinc-800 text-zinc-500 hover:border-zinc-700 hover:text-zinc-300"
+                  ? "bg-primary/20 border-primary/40 text-primary"
+                  : "bg-transparent border-border text-muted-foreground hover:border-primary/30 hover:text-foreground"
               }`}
           >
             <tf.icon className="h-3 w-3" />
@@ -297,19 +283,18 @@ export function InstagramBoard() {
 
       {/* ── Tabs ── */}
       <Tabs defaultValue="all" className="space-y-4">
-        <TabsList className="bg-zinc-900 border border-zinc-800 h-9 p-0.5 gap-0.5">
+        <TabsList className="bg-muted border border-border h-9 p-0.5 gap-0.5">
           {TABS.map((tab) => (
             <TabsTrigger
               key={tab.value}
               value={tab.value}
-              className={`h-8 px-3 text-xs gap-1.5 data-[state=active]:bg-zinc-800 data-[state=active]:shadow-none rounded-md
-                ${TAB_ACCENT[tab.value]}`}
+              className="h-8 px-3 text-xs gap-1.5 data-[state=active]:bg-card data-[state=active]:shadow-none rounded-md"
             >
               <tab.icon className="h-3.5 w-3.5" />
               {tab.label}
               <Badge
                 variant="secondary"
-                className="ml-0.5 h-4 min-w-[1rem] px-1 text-[10px] bg-zinc-700/60 text-zinc-400"
+                className="ml-0.5 h-4 min-w-[1rem] px-1 text-[10px]"
               >
                 {counts[tab.value]}
               </Badge>
@@ -334,10 +319,9 @@ export function InstagramBoard() {
                       onEdit={handleEdit}
                     />
                   ))}
-                  {/* Add card */}
                   <button
                     onClick={openNewDialog}
-                    className="min-h-[260px] rounded-xl border-2 border-dashed border-zinc-800 hover:border-zinc-600 flex flex-col items-center justify-center gap-2 text-zinc-600 hover:text-zinc-400 transition-colors group"
+                    className="min-h-[260px] rounded-xl border-2 border-dashed border-border hover:border-primary/40 flex flex-col items-center justify-center gap-2 text-muted-foreground hover:text-primary transition-colors group"
                   >
                     <div className="h-10 w-10 rounded-full border-2 border-current flex items-center justify-center group-hover:scale-110 transition-transform">
                       <ImagePlus className="h-5 w-5" />
@@ -351,7 +335,6 @@ export function InstagramBoard() {
         })}
       </Tabs>
 
-      {/* ── Dialog ── */}
       <PostDialog
         open={dialogOpen}
         onOpenChange={(open) => {
@@ -365,14 +348,8 @@ export function InstagramBoard() {
   );
 }
 
-// ─── Empty state ─────────────────────────────────────────────────────────────
-function EmptyState({
-  status,
-  onAdd,
-}: {
-  status?: PostStatus;
-  onAdd: () => void;
-}) {
+// ─── Empty state ──────────────────────────────────────────────────────────────
+function EmptyState({ status, onAdd }: { status?: PostStatus; onAdd: () => void }) {
   const messages: Record<string, { title: string; desc: string }> = {
     scheduled: {
       title: "Nothing scheduled",
@@ -380,7 +357,7 @@ function EmptyState({
     },
     draft: {
       title: "No drafts",
-      desc: "Capture your ideas here before they're ready to publish.",
+      desc: "Capture Flogen AI content ideas here before they're ready.",
     },
     published: {
       title: "Nothing published yet",
@@ -388,30 +365,29 @@ function EmptyState({
     },
     backlog: {
       title: "Backlog is empty",
-      desc: "Add rough ideas and post concepts to revisit later.",
+      desc: "Add rough content ideas to revisit later.",
     },
     default: {
       title: "No posts found",
-      desc: "Create your first post idea to get started.",
+      desc: "Create your first Flogen AI content idea to get started.",
     },
   };
 
   const msg = messages[status ?? "default"] ?? messages["default"];
 
   return (
-    <div className="flex flex-col items-center justify-center gap-4 rounded-xl border-2 border-dashed border-zinc-800 py-20 text-center">
-      <div className="h-14 w-14 rounded-full bg-zinc-800/60 flex items-center justify-center">
-        <Instagram className="h-7 w-7 text-zinc-600" />
+    <div className="flex flex-col items-center justify-center gap-4 rounded-xl border-2 border-dashed border-border py-20 text-center">
+      <div className="h-14 w-14 rounded-full bg-primary/10 flex items-center justify-center">
+        <Zap className="h-7 w-7 text-primary/60" />
       </div>
       <div>
-        <p className="text-sm font-medium text-zinc-300">{msg.title}</p>
-        <p className="text-xs text-zinc-600 mt-1 max-w-[260px] mx-auto">{msg.desc}</p>
+        <p className="text-sm font-medium">{msg.title}</p>
+        <p className="text-xs text-muted-foreground mt-1 max-w-[260px] mx-auto">{msg.desc}</p>
       </div>
       <Button
         size="sm"
         variant="outline"
         onClick={onAdd}
-        className="border-zinc-700 text-zinc-300 hover:bg-zinc-800"
       >
         <ImagePlus className="h-4 w-4 mr-1.5" />
         Add Post
