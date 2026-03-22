@@ -9,6 +9,7 @@ import {
   Users,
   Newspaper,
   Zap,
+  Layers,
 } from "lucide-react";
 import {
   Sidebar,
@@ -25,6 +26,12 @@ import {
 import { Badge } from "@/components/ui/badge";
 
 const navItems = [
+  {
+    title: "PM Dashboard",
+    href: "/projects",
+    icon: Layers,
+    badge: "New",
+  },
   {
     title: "Content Studio",
     href: "/instagram",
