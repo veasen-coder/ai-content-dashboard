@@ -5,7 +5,34 @@ import {
   Plus, Check, ChevronDown, ChevronUp, Copy, CheckCheck,
   Zap, Target, Calendar, Brain, Layers, Trash2, X,
   ArrowRight, MoreHorizontal, Edit3, GripVertical, Sparkles,
+  SlidersHorizontal, RotateCcw, EyeOff,
 } from "lucide-react";
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PREFS — synced with Settings panel via localStorage
+// ─────────────────────────────────────────────────────────────────────────────
+interface Prefs {
+  colNames:    { today: string; week: string; backlog: string };
+  visibleTabs: { sprint: boolean; projects: boolean; agents: boolean; focus: boolean };
+  accentColor: string;
+  appTagline:  string;
+}
+const DEFAULT_PREFS: Prefs = {
+  colNames:    { today: "Today", week: "This Week", backlog: "Backlog" },
+  visibleTabs: { sprint: true, projects: true, agents: true, focus: true },
+  accentColor: "#bbf088",
+  appTagline:  "We build the bots. You build the brand.",
+};
+function loadPrefs(): Prefs {
+  if (typeof window === "undefined") return DEFAULT_PREFS;
+  try {
+    const s = localStorage.getItem("flogen_prefs");
+    return s ? { ...DEFAULT_PREFS, ...JSON.parse(s) } : DEFAULT_PREFS;
+  } catch { return DEFAULT_PREFS; }
+}
+function savePrefs(p: Prefs) {
+  if (typeof window !== "undefined") localStorage.setItem("flogen_prefs", JSON.stringify(p));
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // DESIGN TOKENS  — Notion-dark meets Flogen AI
@@ -388,7 +415,7 @@ function AddTaskRow({ accent, onAdd }: { accent: string; onAdd: (text: string, p
   );
 }
 
-function SprintBoard() {
+function SprintBoard({ colNames, accent }: { colNames: Prefs["colNames"]; accent: string }) {
   const [tasks, setTasks] = useState<Task[]>(SEED_TASKS);
 
   const toggle = useCallback((id: number) => setTasks(p => p.map(t => t.id === id ? { ...t, done: !t.done } : t)), []);
@@ -401,7 +428,8 @@ function SprintBoard() {
   return (
     <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 1, background: N.border }}>
       {(["today", "week", "backlog"] as Col[]).map(col => {
-        const { label, color } = COL_META[col];
+        const { color } = COL_META[col];
+        const label = colNames[col] || COL_META[col].label;
         const colTasks = tasks.filter(t => t.col === col);
         const pending  = colTasks.filter(t => !t.done).length;
         return (
@@ -773,55 +801,166 @@ function getWeekNumber(d: Date): number {
   return Math.ceil((days + start.getDay() + 1) / 7);
 }
 
-const TABS: { id: Tab; label: string; Icon: React.ElementType }[] = [
-  { id: "sprint",   label: "Sprint Board", Icon: Target  },
-  { id: "projects", label: "Projects",     Icon: Layers  },
-  { id: "agents",   label: "Agents",       Icon: Brain   },
+const ALL_TABS: { id: Tab; label: string; Icon: React.ElementType }[] = [
+  { id: "sprint",   label: "Sprint Board", Icon: Target   },
+  { id: "projects", label: "Projects",     Icon: Layers   },
+  { id: "agents",   label: "Agents",       Icon: Brain    },
   { id: "focus",    label: "Focus",        Icon: Calendar },
 ];
 
-function Header({ active, onChange }: { active: Tab; onChange: (t: Tab) => void }) {
-  const now  = new Date();
-  const week = getWeekNumber(now);
+// ── Inline Customize Panel ────────────────────────────────────────────────────
+function CustomizePanel({ prefs, onPrefs, onClose }: {
+  prefs: Prefs; onPrefs: (p: Prefs) => void; onClose: () => void;
+}) {
+  const inp: React.CSSProperties = {
+    background: N.surfaceHi, border: `1px solid ${N.borderHi}`, color: N.text,
+    fontSize: 12.5, padding: "6px 10px", borderRadius: N.radiusSm, outline: "none", width: "100%",
+  };
+  const ACCENT_OPTS = [
+    { color: "#bbf088", label: "Lime" }, { color: "#60a5fa", label: "Blue" },
+    { color: "#f472b6", label: "Pink" }, { color: "#fb923c", label: "Orange" },
+    { color: "#a78bfa", label: "Purple" },{ color: "#34d399", label: "Emerald" },
+  ];
+
+  return (
+    <div style={{ position: "absolute", top: 0, right: 0, bottom: 0, width: 300, background: N.surfaceHi, borderLeft: `1px solid ${N.borderHi}`, zIndex: 50, overflowY: "auto", padding: "16px 18px", boxShadow: "-8px 0 24px rgba(0,0,0,.4)", display: "flex", flexDirection: "column", gap: 20 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <span style={{ fontSize: 14, fontWeight: 600, color: N.text }}>Customize</span>
+        <button onClick={onClose} style={{ background: "none", border: "none", color: N.text3, cursor: "pointer", padding: 4, borderRadius: 4, display: "flex" }}>
+          <X size={15} />
+        </button>
+      </div>
+
+      {/* Column names */}
+      <div>
+        <p style={{ fontSize: 11, fontWeight: 600, color: N.text3, letterSpacing: "0.07em", textTransform: "uppercase", margin: "0 0 10px" }}>Sprint Columns</p>
+        {(["today", "week", "backlog"] as const).map(col => (
+          <div key={col} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 7 }}>
+            <span style={{ fontSize: 11.5, color: N.text2, width: 52, flexShrink: 0 }}>
+              {col === "today" ? "1st col" : col === "week" ? "2nd col" : "3rd col"}
+            </span>
+            <input value={prefs.colNames[col]}
+              onChange={e => onPrefs({ ...prefs, colNames: { ...prefs.colNames, [col]: e.target.value } })}
+              style={inp} />
+          </div>
+        ))}
+      </div>
+
+      {/* Visible tabs */}
+      <div>
+        <p style={{ fontSize: 11, fontWeight: 600, color: N.text3, letterSpacing: "0.07em", textTransform: "uppercase", margin: "0 0 10px" }}>Visible Tabs</p>
+        {ALL_TABS.map(({ id, label, Icon }) => {
+          const on = prefs.visibleTabs[id];
+          return (
+            <div key={id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "7px 0", borderBottom: `1px solid ${N.border}` }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
+                <Icon size={13} color={on ? N.text2 : N.text3} />
+                <span style={{ fontSize: 13, color: on ? N.text : N.text3 }}>{label}</span>
+              </div>
+              <button onClick={() => onPrefs({ ...prefs, visibleTabs: { ...prefs.visibleTabs, [id]: !on } })}
+                style={{ width: 34, height: 19, background: on ? prefs.accentColor : "rgba(255,255,255,.1)", borderRadius: 99, border: "none", cursor: "pointer", position: "relative", transition: "background .18s" }}>
+                <div style={{ width: 15, height: 15, borderRadius: "50%", background: on ? "#191919" : N.text3, position: "absolute", top: 2, left: on ? 17 : 2, transition: "left .18s" }} />
+              </button>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Accent color */}
+      <div>
+        <p style={{ fontSize: 11, fontWeight: 600, color: N.text3, letterSpacing: "0.07em", textTransform: "uppercase", margin: "0 0 10px" }}>Accent Color</p>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+          {ACCENT_OPTS.map(({ color, label }) => {
+            const sel = prefs.accentColor === color;
+            return (
+              <button key={color} onClick={() => onPrefs({ ...prefs, accentColor: color })} title={label}
+                style={{ width: 30, height: 30, borderRadius: "50%", background: color, border: sel ? `3px solid ${N.text}` : "3px solid transparent", cursor: "pointer", transition: "all .15s", boxShadow: sel ? `0 0 0 2px #191919, 0 0 0 4px ${color}` : "none" }} />
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Tagline */}
+      <div>
+        <p style={{ fontSize: 11, fontWeight: 600, color: N.text3, letterSpacing: "0.07em", textTransform: "uppercase", margin: "0 0 8px" }}>Tagline</p>
+        <input value={prefs.appTagline}
+          onChange={e => onPrefs({ ...prefs, appTagline: e.target.value })}
+          placeholder="Your tagline…"
+          style={inp} />
+      </div>
+
+      {/* Reset */}
+      <button onClick={() => onPrefs(DEFAULT_PREFS)}
+        style={{ display: "flex", alignItems: "center", gap: 6, background: "transparent", border: `1px solid ${N.border}`, color: N.text3, fontSize: 12.5, padding: "7px 12px", borderRadius: N.radiusSm, cursor: "pointer", marginTop: "auto" }}
+        onMouseEnter={e => (e.currentTarget.style.borderColor = N.borderHi)}
+        onMouseLeave={e => (e.currentTarget.style.borderColor = N.border)}>
+        <RotateCcw size={13} /> Reset to defaults
+      </button>
+    </div>
+  );
+}
+
+function Header({ active, onChange, prefs, onPrefs }: {
+  active: Tab; onChange: (t: Tab) => void; prefs: Prefs; onPrefs: (p: Prefs) => void;
+}) {
+  const now             = new Date();
+  const week            = getWeekNumber(now);
+  const [customize, setCustomize] = useState(false);
+  const accent          = prefs.accentColor;
+  const accentBg        = `${accent}15`;
+  const accentBorder    = `${accent}35`;
+  const visibleTabs     = ALL_TABS.filter(t => prefs.visibleTabs[t.id]);
+
   return (
     <div style={{ background: N.surface, borderBottom: `1px solid ${N.border}`, position: "sticky", top: 0, zIndex: 40 }}>
       {/* Top bar */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "13px 24px", flexWrap: "wrap", gap: 10 }}>
         {/* Logo */}
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <div style={{ width: 30, height: 30, background: N.accent, borderRadius: 7, display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <div style={{ width: 30, height: 30, background: accent, borderRadius: 7, display: "flex", alignItems: "center", justifyContent: "center" }}>
             <Zap size={16} color="#191919" strokeWidth={2.5} />
           </div>
           <div>
             <span style={{ fontSize: 15, fontWeight: 700, color: N.text, letterSpacing: "-0.01em" }}>Flogen AI</span>
-            <span style={{ fontSize: 12, color: N.text3, marginLeft: 8 }}>Project Manager</span>
+            <span style={{ fontSize: 12, color: N.text3, marginLeft: 8 }}>{prefs.appTagline || "Project Manager"}</span>
           </div>
         </div>
-        {/* Right info */}
-        <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
+        {/* Right */}
+        <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
           <span style={{ fontSize: 12, color: N.text3 }}>
             {now.toLocaleDateString("en-MY", { weekday: "short", month: "short", day: "numeric" })} · Week {week}
           </span>
           {/* Pulse pill */}
-          <div style={{ display: "flex", alignItems: "center", gap: 6, background: N.accentBg, border: `1px solid ${N.accentBorder}`, padding: "4px 10px", borderRadius: 99 }}>
-            <span style={{ width: 6, height: 6, borderRadius: "50%", background: N.accent, boxShadow: `0 0 5px ${N.accent}`, display: "inline-block", animation: "fpulse 1.8s ease-in-out infinite" }} />
-            <span style={{ fontSize: 11, color: N.accent, fontWeight: 500 }}>Claude Code: Active</span>
+          <div style={{ display: "flex", alignItems: "center", gap: 6, background: accentBg, border: `1px solid ${accentBorder}`, padding: "4px 10px", borderRadius: 99 }}>
+            <span style={{ width: 6, height: 6, borderRadius: "50%", background: accent, boxShadow: `0 0 5px ${accent}`, display: "inline-block", animation: "fpulse 1.8s ease-in-out infinite" }} />
+            <span style={{ fontSize: 11, color: accent, fontWeight: 500 }}>Claude Code: Active</span>
           </div>
+          {/* Customize toggle */}
+          <button onClick={() => setCustomize(c => !c)}
+            title="Customize dashboard"
+            style={{ background: customize ? accentBg : "transparent", border: `1px solid ${customize ? accentBorder : N.border}`, color: customize ? accent : N.text3, padding: "5px 10px", borderRadius: N.radiusSm, cursor: "pointer", display: "flex", alignItems: "center", gap: 5, fontSize: 12, transition: "all .15s" }}>
+            <SlidersHorizontal size={13} />
+            <span className="hidden sm:inline">Customize</span>
+          </button>
         </div>
       </div>
       {/* Tabs */}
       <div style={{ display: "flex", padding: "0 20px", gap: 2 }}>
-        {TABS.map(({ id, label, Icon }) => {
+        {visibleTabs.map(({ id, label, Icon }) => {
           const on = active === id;
           return (
             <button key={id} onClick={() => onChange(id)}
-              style={{ background: "transparent", border: "none", borderBottom: `2px solid ${on ? N.accent : "transparent"}`, color: on ? N.text : N.text3, fontSize: 13, fontWeight: on ? 600 : 400, padding: "9px 14px", cursor: "pointer", display: "flex", alignItems: "center", gap: 6, transition: "all .15s", marginBottom: -1, borderRadius: "4px 4px 0 0" }}>
+              style={{ background: "transparent", border: "none", borderBottom: `2px solid ${on ? accent : "transparent"}`, color: on ? N.text : N.text3, fontSize: 13, fontWeight: on ? 600 : 400, padding: "9px 14px", cursor: "pointer", display: "flex", alignItems: "center", gap: 6, transition: "all .15s", marginBottom: -1, borderRadius: "4px 4px 0 0" }}>
               <Icon size={13} />
               {label}
             </button>
           );
         })}
       </div>
+      {/* Inline customize panel */}
+      {customize && (
+        <CustomizePanel prefs={prefs} onPrefs={p => { onPrefs(p); savePrefs(p); }} onClose={() => setCustomize(false)} />
+      )}
     </div>
   );
 }
@@ -842,15 +981,36 @@ function SectionHead({ title, sub }: { title: string; sub: string }) {
 // ROOT EXPORT
 // ─────────────────────────────────────────────────────────────────────────────
 export function ProjectsDashboard() {
-  const [tab, setTab] = useState<Tab>("sprint");
+  const [tab,   setTab]   = useState<Tab>("sprint");
+  const [prefs, setPrefs] = useState<Prefs>(DEFAULT_PREFS);
+
+  // Sync from localStorage on mount (includes changes from sidebar Settings)
+  useEffect(() => {
+    setPrefs(loadPrefs());
+    function onStorage(e: StorageEvent) {
+      if (e.key === "flogen_prefs") setPrefs(loadPrefs());
+    }
+    window.addEventListener("storage", onStorage);
+    return () => window.removeEventListener("storage", onStorage);
+  }, []);
+
+  // Ensure active tab is still visible when prefs change
+  useEffect(() => {
+    if (!prefs.visibleTabs[tab]) {
+      const first = (Object.entries(prefs.visibleTabs) as [Tab, boolean][]).find(([, v]) => v)?.[0];
+      if (first) setTab(first);
+    }
+  }, [prefs.visibleTabs, tab]);
+
+  const accent = prefs.accentColor;
 
   return (
     <>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
         @keyframes fpulse {
-          0%,100% { opacity:1; box-shadow:0 0 5px #bbf088; }
-          50%      { opacity:.5; box-shadow:0 0 11px #bbf088; }
+          0%,100% { opacity:1; box-shadow:0 0 5px ${accent}; }
+          50%      { opacity:.5; box-shadow:0 0 11px ${accent}; }
         }
         .fpm-root { font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif !important; }
         .fpm-root * { box-sizing: border-box; }
@@ -863,12 +1023,12 @@ export function ProjectsDashboard() {
       `}</style>
 
       <div className="fpm-root" style={{ background: N.bg, minHeight: "100vh", color: N.text }}>
-        <Header active={tab} onChange={setTab} />
-        <div style={{ padding: "28px 28px 56px", maxWidth: 1280, margin: "0 auto" }}>
+        <Header active={tab} onChange={setTab} prefs={prefs} onPrefs={p => { setPrefs(p); savePrefs(p); }} />
+        <div style={{ padding: "28px 28px 56px", maxWidth: 1280, margin: "0 auto", position: "relative" }}>
           {tab === "sprint" && (
             <>
-              <SectionHead title="Sprint Board" sub="Click any task to complete · hover to move or delete · click text to edit inline" />
-              <SprintBoard />
+              <SectionHead title={prefs.colNames.today ? "Sprint Board" : "Sprint Board"} sub="Click any task to complete · hover to move or delete · click text to edit inline" />
+              <SprintBoard colNames={prefs.colNames} accent={accent} />
             </>
           )}
           {tab === "projects" && (
