@@ -90,12 +90,13 @@ function buildAccount(
 
 // ── Post builder ────────────────────────────────────────────────────────────
 const POST_TYPES: Record<Platform, string[]> = {
-  instagram: ["Reel", "Carousel", "Feed Post", "Story"],
-  youtube: ["Video", "Short", "Live"],
-  tiktok: ["Video", "Duet", "Stitch"],
-  twitter: ["Tweet", "Thread", "Poll"],
-  linkedin: ["Article", "Post", "Poll"],
-  facebook: ["Post", "Video", "Reel"],
+  instagram:   ["Reel", "Carousel", "Feed Post", "Story"],
+  youtube:     ["Video", "Short", "Live"],
+  tiktok:      ["Video", "Duet", "Stitch"],
+  twitter:     ["Tweet", "Thread", "Poll"],
+  linkedin:    ["Article", "Post", "Poll"],
+  facebook:    ["Post", "Video", "Reel"],
+  xiaohongshu: ["Post", "Carousel", "Video"],
 };
 
 const CAPTION_TEMPLATES = [

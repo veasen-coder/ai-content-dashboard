@@ -1,5 +1,19 @@
 import { Instagram, Youtube, Twitter, Linkedin, Facebook } from "lucide-react";
 
+// Xiaohongshu (Little Red Book) icon
+export function XiaoHongShuIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 24 24"
+      fill="currentColor"
+      xmlns="http://www.w3.org/2000/svg"
+    >
+      <path d="M12 2C6.477 2 2 6.477 2 12s4.477 10 10 10 10-4.477 10-10S17.523 2 12 2zm4.5 6.75h-2.25v1.5h2.25V12h-2.25v4.5h-1.5V12H10.5v2.25H9V12H7.5v-1.5H9V9H7.5V7.5H9v1.5h1.5V7.5h1.5v1.5h1.5V7.5h1.5v1.5h2.25v1.5h-2.25v1.5h2.25V12h-2.25v1.5h2.25v1.5z" />
+    </svg>
+  );
+}
+
 // TikTok doesn't exist in lucide — use a simple SVG
 export function TikTokIcon({ className }: { className?: string }) {
   return (
@@ -26,11 +40,12 @@ export function PlatformIcon({
   className?: string;
 }) {
   switch (platform) {
-    case "instagram": return <Instagram className={className} />;
-    case "youtube":   return <Youtube className={className} />;
-    case "tiktok":    return <TikTokIcon className={className} />;
-    case "twitter":   return <Twitter className={className} />;
-    case "linkedin":  return <Linkedin className={className} />;
-    case "facebook":  return <Facebook className={className} />;
+    case "instagram":    return <Instagram className={className} />;
+    case "youtube":      return <Youtube className={className} />;
+    case "tiktok":       return <TikTokIcon className={className} />;
+    case "twitter":      return <Twitter className={className} />;
+    case "linkedin":     return <Linkedin className={className} />;
+    case "facebook":     return <Facebook className={className} />;
+    case "xiaohongshu":  return <XiaoHongShuIcon className={className} />;
   }
 }

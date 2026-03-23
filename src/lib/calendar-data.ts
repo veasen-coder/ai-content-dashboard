@@ -15,45 +15,37 @@ function makePost(
 }
 
 export const SEED_POSTS: CalendarPost[] = [
-  // ── March 2026 ──────────────────────────────────────────────────────────────
-  makePost("p1",  "Morning Routine Reel",          "5am wake up, journaling, movement…",        "instagram", "reel",     "published", "2026-03-01", "08:00", 200),
-  makePost("p2",  "Weekly Vlog #12",               "A full week behind the scenes…",             "youtube",   "video",    "published", "2026-03-01", "16:00", 0),
-  makePost("p3",  "Productivity Tips Thread",      "5 things I stopped doing to get more done…","twitter",   "tweet",    "published", "2026-03-03", "10:00", 210),
-  makePost("p4",  "Behind The Shoot – Carousel",   "Swipe to see setup → final shot…",          "instagram", "carousel", "published", "2026-03-05", "11:00", 260),
-  makePost("p5",  "LinkedIn Thought Leadership",   "Why content strategy beats hustle…",        "linkedin",  "article",  "published", "2026-03-05", "09:00", 220),
-  makePost("p6",  "TikTok POV Trend",              "POV: you finally have a content system",    "tiktok",    "short",    "published", "2026-03-07", "18:00", 170),
-  makePost("p7",  "Tools I Use Daily",             "3 tools every creator needs in 2026…",      "instagram", "reel",     "published", "2026-03-10", "09:00", 30),
-  makePost("p8",  "Deep-Dive: Branding Guide",     "Everything I know about personal brand…",   "youtube",   "video",    "published", "2026-03-10", "14:00", 350),
-  makePost("p9",  "Story Poll: Reels vs Feed",     "Which do you prefer?",                      "instagram", "story",    "published", "2026-03-12", "12:00", 340),
-  makePost("p10", "Facebook Community Update",     "Here's what's coming this month…",          "facebook",  "post",     "published", "2026-03-12", "10:00", 240),
-  makePost("p11", "Workspace Flatlay",             "Spring reset ✨",                            "instagram", "post",     "published", "2026-03-14", "11:00", 90),
-  makePost("p12", "Creator Economy Thread",        "The creator economy is changing — here's why","twitter", "tweet",    "published", "2026-03-15", "09:30", 195),
-  makePost("p13", "Content Repurposing System",    "How I turn 1 video into 10 posts…",         "linkedin",  "article",  "published", "2026-03-17", "09:00", 130),
-  makePost("p14", "TikTok Day-in-the-Life",        "Studio + shoot day vlog",                   "tiktok",    "short",    "published", "2026-03-17", "19:00", 165),
-  makePost("p15", "YouTube Q&A – March",           "Answering your top questions…",             "youtube",   "video",    "published", "2026-03-19", "15:00", 5),
-  makePost("p16", "Instagram Aesthetic Grid",      "New grid theme dropping soon 🎨",            "instagram", "post",     "published", "2026-03-20", "11:00", 55),
-  makePost("p17", "Podcast Clip – Ep 8",           "The one mindset shift that changed everything","instagram","reel",   "published", "2026-03-21", "10:00", 280),
+  // ── March 2026 — Published ────────────────────────────────────────────────
+  makePost("p1",  "F&B Case Study Reel",          "How a KL F&B owner saved 3 hrs/day with WhatsApp AI 🍜",       "instagram", "reel",     "published", "2026-03-01", "09:00", 140),
+  makePost("p2",  "5 Signs You Need AI Agent",     "5 signs your business NEEDS a WhatsApp AI Agent right now 🚨", "instagram", "carousel", "published", "2026-03-03", "10:00", 100),
+  makePost("p3",  "Chatbot vs AI Agent",           "The difference between a chatbot and an AI Agent — why it matters for your business.", "instagram", "reel", "published", "2026-03-05", "08:00", 60),
+  makePost("p4",  "WhatsApp AI Scripts",           "3 WhatsApp AI reply scripts every Malaysian SME should use 📋", "instagram", "carousel", "published", "2026-03-07", "10:00", 200),
+  makePost("p5",  "Real Estate AI Demo",           "How property agents in KL never miss a lead after 9pm — live demo 🏘️", "instagram", "reel", "published", "2026-03-10", "08:00", 30),
+  makePost("p6",  "Flogen AI LinkedIn Drop",       "We reduced customer support workload by 70% for a Malaysian e-commerce brand in 30 days.", "linkedin", "article", "published", "2026-03-10", "09:00", 220),
+  makePost("p7",  "Clinic AI Workflow",            "How a KL aesthetic clinic handles 200+ patient enquiries with 0 staff 🏥", "instagram", "carousel", "published", "2026-03-12", "10:00", 340),
+  makePost("p8",  "Pain Point: Slow Replies",      "Every hour you delay a WhatsApp reply = a lost sale. Here's the fix.", "instagram", "reel", "published", "2026-03-14", "09:00", 90),
+  makePost("p9",  "Salon AI Success Story",        "From drowning in DMs to fully automated: A Malaysian hair salon's story 💇", "instagram", "carousel", "published", "2026-03-17", "10:00", 130),
+  makePost("p10", "Xiaohongshu: AI Intro",         "介绍 Flogen AI — 马来西亚中小企业的 WhatsApp AI 助理 🤖",         "xiaohongshu", "post",  "published", "2026-03-17", "11:00", 165),
+  makePost("p11", "Behind Flogen AI Story",        "Why we started Flogen AI — founder story 🇲🇾",                  "instagram", "reel",     "published", "2026-03-19", "09:00", 280),
+  makePost("p12", "AI Response Time Stats",        "Businesses using AI agents respond 10x faster. The numbers don't lie 📊", "instagram", "post", "published", "2026-03-20", "10:00", 55),
+  makePost("p13", "Flogen LinkedIn Thought Lead",  "Why Malaysian SMEs are finally ready for AI automation — and what to do next.", "linkedin", "article", "published", "2026-03-21", "09:00", 215),
 
-  // ── Today area (Mar 22) ──────────────────────────────────────────────────────
-  makePost("p18", "Spring Content Ideas",          "Fresh ideas for Q2 planning…",              "instagram", "carousel", "scheduled", "2026-03-22", "10:00", 90),
-  makePost("p19", "Weekly LinkedIn Roundup",       "Top 3 insights from this week…",            "linkedin",  "article",  "scheduled", "2026-03-22", "09:00", 210),
+  // ── Today area (Mar 23) ──────────────────────────────────────────────────────
+  makePost("p14", "E-Commerce AI Lead Gen",        "How a Malaysian e-commerce store captured 300 leads while the owner slept 🛍️", "instagram", "carousel", "scheduled", "2026-03-23", "10:00", 100),
+  makePost("p15", "XHS: SME Pain Points",          "中小企业最大痛点：回复太慢、失去客户。Flogen AI 帮你解决 💬",    "xiaohongshu", "post",  "scheduled", "2026-03-23", "11:00", 60),
 
   // ── Upcoming ─────────────────────────────────────────────────────────────────
-  makePost("p20", "BTS of Q2 Strategy",            "Planning session walkthrough",               "youtube",   "video",    "scheduled", "2026-03-24", "15:00", 350),
-  makePost("p21", "Engagement Hack Reel",          "This doubled my reach in 2 weeks…",         "instagram", "reel",     "scheduled", "2026-03-24", "08:00", 320),
-  makePost("p22", "TikTok Trending Audio",         "Jumping on this sound 🔥",                   "tiktok",    "short",    "scheduled", "2026-03-25", "17:00", 185),
-  makePost("p23", "Twitter AMA Announcement",      "Dropping into your replies this Thursday…", "twitter",   "tweet",    "scheduled", "2026-03-25", "10:00", 200),
-  makePost("p24", "Workspace Tour – Spring Edition","Full desk setup refresh reveal",            "instagram", "reel",     "scheduled", "2026-03-26", "11:00", 40),
-  makePost("p25", "Facebook Group Live",           "Monthly live Q&A session",                  "facebook",  "post",     "scheduled", "2026-03-26", "18:00", 245),
-  makePost("p26", "LinkedIn Newsletter #4",        "What I learned from 100 days of posting",   "linkedin",  "article",  "scheduled", "2026-03-28", "08:00", 215),
-  makePost("p27", "Instagram Story Series Pt.1",   "Behind the brand — Part 1",                 "instagram", "story",    "scheduled", "2026-03-28", "12:00", 270),
-  makePost("p28", "YouTube Shorts – Tips",         "30 second content tip",                     "youtube",   "short",    "scheduled", "2026-03-29", "10:00", 10),
-  makePost("p29", "Month Wrap-Up Thread",          "March recap — wins, lessons, numbers",      "twitter",   "tweet",    "scheduled", "2026-03-31", "09:00", 195),
-  makePost("p30", "TikTok Month Review",           "March content stats breakdown",             "tiktok",    "short",    "scheduled", "2026-03-31", "20:00", 170),
+  makePost("p16", "WhatsApp AI ROI Breakdown",     "The ROI of a WhatsApp AI Agent for Malaysian SMEs — real numbers 💰", "instagram", "carousel", "scheduled", "2026-03-25", "10:00", 200),
+  makePost("p17", "Hotel Industry Spotlight",      "How boutique hotels in KL handle booking enquiries 24/7 with AI 🏨",  "instagram", "reel",     "scheduled", "2026-03-25", "08:00", 320),
+  makePost("p18", "Flogen AI Product Demo",        "Full walkthrough: how Flogen AI works for your WhatsApp business 📱", "instagram", "reel",     "scheduled", "2026-03-27", "09:00", 140),
+  makePost("p19", "LinkedIn: AI Adoption MY",      "AI adoption in Malaysia is accelerating. Here's what SMEs need to know.", "linkedin", "article", "scheduled", "2026-03-27", "09:00", 220),
+  makePost("p20", "XHS: Flogen Demo Video",        "Flogen AI 真实演示 — 看看 WhatsApp AI 如何帮助马来西亚中小企业 🎬", "xiaohongshu", "post", "scheduled", "2026-03-28", "11:00", 165),
+  makePost("p21", "Beauty Industry Spotlight",     "A Malaysian beauty brand 3x their consultation bookings using WhatsApp AI 💄", "instagram", "carousel", "scheduled", "2026-03-29", "10:00", 300),
+  makePost("p22", "March Wrap — Stats",            "March content recap: what worked, what didn't, the numbers 📈",        "instagram", "post",     "scheduled", "2026-03-31", "09:00", 195),
 
-  // ── Drafts scattered across April ───────────────────────────────────────────
-  makePost("p31", "April Launch Teaser",           "Something big is coming…",                  "instagram", "reel",     "draft",     "2026-04-02", "10:00", 300),
-  makePost("p32", "Q2 Goals Video",                "My content goals for April–June",           "youtube",   "video",    "draft",     "2026-04-05", "15:00", 20),
-  makePost("p33", "LinkedIn Growth Breakdown",     "How I grew 2k followers in 30 days",       "linkedin",  "article",  "scheduled", "2026-04-07", "09:00", 215),
-  makePost("p34", "TikTok Collab Post",            "Collab with @creator coming soon",          "tiktok",    "short",    "draft",     "2026-04-10", "18:00", 175),
+  // ── Drafts — April ───────────────────────────────────────────────────────────
+  makePost("p23", "April AI Trends Thread",        "5 AI trends Malaysian businesses must watch in Q2 2026 🔥",           "instagram", "carousel", "draft",     "2026-04-02", "10:00", 60),
+  makePost("p24", "Retail AI Spotlight",           "How a KL fashion retail store used AI to recover abandoned carts 🛒",  "instagram", "reel",     "draft",     "2026-04-05", "09:00", 30),
+  makePost("p25", "LinkedIn: Flogen Case Studies", "3 case studies: how Malaysian SMEs transformed with WhatsApp AI.",    "linkedin",  "article",  "scheduled", "2026-04-07", "09:00", 215),
+  makePost("p26", "XHS: April Campaign",           "四月特辑：Flogen AI 如何帮助不同行业的马来西亚企业 🏆",              "xiaohongshu","post",   "draft",     "2026-04-10", "11:00", 175),
 ];

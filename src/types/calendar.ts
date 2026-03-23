@@ -4,7 +4,8 @@ export type Platform =
   | "tiktok"
   | "twitter"
   | "linkedin"
-  | "facebook";
+  | "facebook"
+  | "xiaohongshu";
 
 export type ContentType =
   | "post"
@@ -75,6 +76,13 @@ export const PLATFORM_META: Record<
     bg: "bg-indigo-500/15",
     border: "border-indigo-500/30",
     chip: "bg-indigo-500",
+  },
+  xiaohongshu: {
+    label: "Xiaohongshu",
+    color: "text-rose-400",
+    bg: "bg-rose-500/15",
+    border: "border-rose-500/30",
+    chip: "bg-rose-500",
   },
 };
 

@@ -48,12 +48,13 @@ const EMPTY: Omit<CalendarPost, "id" | "coverHue"> = {
 };
 
 const CONTENT_TYPES: Record<Platform, ContentType[]> = {
-  instagram: ["post", "reel", "story", "carousel"],
-  youtube:   ["video", "short"],
-  tiktok:    ["short"],
-  twitter:   ["tweet"],
-  linkedin:  ["article", "post"],
-  facebook:  ["post", "video"],
+  instagram:    ["post", "reel", "story", "carousel"],
+  youtube:      ["video", "short"],
+  tiktok:       ["short"],
+  twitter:      ["tweet"],
+  linkedin:     ["article", "post"],
+  facebook:     ["post", "video"],
+  xiaohongshu:  ["post", "carousel"],
 };
 
 export function PostFormDialog({

@@ -1,9 +1,9 @@
-import { InstagramBoard } from "@/components/instagram/instagram-board";
+import { ContentStudio } from "@/components/instagram/content-studio";
 
 export default function InstagramPage() {
   return (
-    <div className="space-y-6">
-      <InstagramBoard />
+    <div className="-m-6">
+      <ContentStudio />
     </div>
   );
 }
