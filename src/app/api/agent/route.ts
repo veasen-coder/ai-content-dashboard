@@ -23,7 +23,13 @@ export async function POST(req: NextRequest) {
     });
 
     const content = msg.content[0].type === "text" ? msg.content[0].text : "";
-    return Response.json({ content });
+    return Response.json({
+      content,
+      usage: {
+        input_tokens: msg.usage.input_tokens,
+        output_tokens: msg.usage.output_tokens,
+      },
+    });
   } catch (err: unknown) {
     const e = err as { message?: string; status?: number };
     return Response.json({ error: e.message ?? "Agent call failed" }, { status: e.status ?? 500 });

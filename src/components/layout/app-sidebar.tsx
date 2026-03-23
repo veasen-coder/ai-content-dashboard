@@ -5,7 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   Instagram, BarChart2, CalendarDays, Users,
-  Newspaper, Zap, Layers, Settings,
+  Newspaper, Zap, Layers, Settings, Bot,
 } from "lucide-react";
 import {
   Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent,
@@ -24,6 +24,7 @@ const DEFAULT_PREFS: DashboardPrefs = {
 
 const navItems = [
   { title: "Flogen AI",         href: "/projects",    icon: Layers,       badge: "PM" },
+  { title: "AI Assistant",      href: "/agent",       icon: Bot,          badge: "AI" },
   { title: "Content Studio",    href: "/instagram",   icon: Instagram,    badge: null },
   { title: "Analytics",         href: "/analytics",   icon: BarChart2,    badge: null },
   { title: "Content Calendar",  href: "/calendar",    icon: CalendarDays, badge: null },

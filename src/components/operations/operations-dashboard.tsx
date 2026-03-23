@@ -5,7 +5,7 @@ import {
   Plus, X, Trash2, Loader2, RefreshCw, Copy, CheckCheck,
   Zap, TrendingUp, CalendarDays, Users, Target, Sparkles,
   MessageSquare, Send, ArrowRight, GripVertical, Check,
-  ChevronLeft, ChevronRight, Instagram, BarChart3, Hash,
+  ChevronLeft, ChevronRight, Instagram, BarChart3, Hash, Archive,
 } from "lucide-react";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -38,7 +38,7 @@ const C = {
 // ─────────────────────────────────────────────────────────────────────────────
 // TYPES
 // ─────────────────────────────────────────────────────────────────────────────
-type Tab         = "kanban" | "pipeline" | "calendar" | "agents" | "trends";
+type Tab         = "kanban" | "pipeline" | "calendar" | "agents" | "trends" | "scripts";
 type KCol        = "today" | "week" | "backlog" | "done";
 type KTag        = "Flogen AI" | "JCI" | "Personal";
 type PStage      = "lead" | "contacted" | "demo" | "negotiation" | "closed";
@@ -51,6 +51,14 @@ interface KCard  { id: number; title: string; tag: KTag; }
 interface Deal   { id: number; name: string; industry: string; stage: PStage; lastContact: string | null; value: string; nextAction: string; }
 interface CalPost{ id: number; date: string; platform: PostPlat; type: PostType; topic: string; caption: string; status: PostStatus; }
 interface Trend  { id: number; title: string; category: TrendCat; description: string; relevance: string; }
+interface SavedScript {
+  id: number;
+  title: string;
+  content: string;
+  type: "Content Plan" | "Script" | "Pitch" | "Trend";
+  savedAt: string;
+  platform?: string;
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // UTILS
@@ -97,6 +105,15 @@ async function callAgent(sys: string, msg: string, max = 1200): Promise<string> 
   const data = await res.json();
   if (data.error) throw new Error(data.error);
   return data.content as string;
+}
+
+function trackTokens(usage: { input_tokens: number; output_tokens: number }) {
+  const key = "flogen_token_log";
+  try {
+    const existing = JSON.parse(localStorage.getItem(key) || "[]");
+    existing.push({ ts: Date.now(), input: usage.input_tokens, output: usage.output_tokens });
+    localStorage.setItem(key, JSON.stringify(existing));
+  } catch { /* ignore */ }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -198,12 +215,39 @@ Format:
 
 const SYS_SCRIPT = `You are the Script Writer for Flogen AI, a Malaysian B2B WhatsApp AI Agency. Write compelling content for Malaysian SME-focused social media.
 
+CORE IDENTITY
+- Description: Flogen AI builds WhatsApp AI Agents that handle enquiries, capture leads & book appointments — 24/7.
+- Tagline: We build the bots. You build the brand.
+- Problem: Malaysian SMEs are drowning in WhatsApp messages, losing leads daily.
+- Target: Malaysian SME owners in Klang Valley — Real Estate, Clinics, Salons, F&B, Hotels.
+
+VOICE & TONE
+- Sounds like: Confident · Direct · Results-first
+- Never sounds like: Corporate · Salesy · Generic
+- Language: Malaysian English (lah/lor naturally), KL/Selangor context
+- Never use: "revolutionary", "cutting-edge", "leverage", "synergy"
+
+CONTENT PILLARS
+1. Pain-point Education — problems Malaysian SMEs face
+2. Case Study / Result — real client wins
+3. Product Showcase — how Flogen AI works
+4. Industry Spotlight — Clinic/Salon/F&B/Property rotation
+5. Brand Story — behind the scenes, founder story
+
+PACKAGES
+- RM299/mo: FAQ bot, lead capture, auto-reply
+- RM649/mo: Appointment booking, follow-up, CRM sync
+- RM1499/mo: Full custom flows, multi-agent, analytics
+
 For Reels: Hook (3 secs) → 3–5 scenes/points → CTA
 For Carousels: Slide 1 (hook) → Slides 2–5 (value) → Final slide (CTA)
 For Static posts: Punchy headline + 2–3 lines + CTA
 For XHS Posts: Lifestyle tone in Simplified Chinese, relatable to Chinese-Malaysian SME owners
 
-Always: strong hook, clear benefit, Malaysian context (KL/Selangor SMEs), direct CTA pointing to WhatsApp or DM.`;
+Always: strong hook, clear benefit, Malaysian context (KL/Selangor SMEs), direct CTA pointing to WhatsApp or DM.
+
+---
+[GENERATED SCRIPT BELOW]`;
 
 const SYS_CONSULT = `You are the Consulting Assistant for Flogen AI, a Malaysian B2B WhatsApp AI Agency. When given a client's business name and problem, generate a structured WhatsApp AI Agent pitch.
 
@@ -633,17 +677,46 @@ function AgentCard({ title, description, icon: Icon, children }: { title: string
   );
 }
 
-function OutputPanel({ text, loading, error }: { text: string; loading: boolean; error: string }) {
+function OutputPanel({
+  text, loading, error, onAccept, scriptType, scriptTitle
+}: {
+  text: string; loading: boolean; error: string;
+  onAccept?: (content: string) => void;
+  scriptType?: "Content Plan" | "Script" | "Pitch" | "Trend";
+  scriptTitle?: string;
+}) {
+  const [accepted, setAccepted] = useState(false);
+  const [rejected, setRejected] = useState(false);
+  void scriptTitle; // used by parent for save title
+
   if (loading) return (
     <div style={{ background: C.s2, borderRadius: C.r, padding: "20px", display: "flex", alignItems: "center", gap: 10, color: C.t2, fontSize: 13 }}>
-      <Loader2 size={15} className="animate-spin" style={{ animation: "spin 1s linear infinite" }} /> Generating…
+      <Loader2 size={15} style={{ animation: "spin 1s linear infinite" }} /> Generating…
     </div>
   );
   if (error) return <div style={{ background: "rgba(248,113,113,.08)", border: `1px solid rgba(248,113,113,.2)`, borderRadius: C.r, padding: "12px 14px", color: C.red, fontSize: 12.5 }}>{error}</div>;
   if (!text) return null;
+
   return (
-    <div style={{ background: C.s2, border: `1px solid ${C.border}`, borderRadius: C.r, overflow: "hidden" }}>
-      <div style={{ padding: "6px 10px", borderBottom: `1px solid ${C.border}`, display: "flex", justifyContent: "flex-end" }}>
+    <div style={{ background: C.s2, border: `1px solid ${accepted ? C.aBd : rejected ? "rgba(248,113,113,.3)" : C.border}`, borderRadius: C.r, overflow: "hidden" }}>
+      {/* Top bar: accept/reject + copy */}
+      <div style={{ padding: "6px 10px", borderBottom: `1px solid ${C.border}`, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+        <div style={{ display: "flex", gap: 6 }}>
+          {!accepted && !rejected && (
+            <>
+              <button onClick={() => { setAccepted(true); onAccept?.(text); }}
+                style={{ display: "flex", alignItems: "center", gap: 4, background: C.aBg, border: `1px solid ${C.aBd}`, color: C.accent, fontSize: 11.5, padding: "3px 10px", borderRadius: 4, cursor: "pointer", fontWeight: 500 }}>
+                ✓ Accept
+              </button>
+              <button onClick={() => setRejected(true)}
+                style={{ display: "flex", alignItems: "center", gap: 4, background: "rgba(248,113,113,.08)", border: "1px solid rgba(248,113,113,.2)", color: C.red, fontSize: 11.5, padding: "3px 10px", borderRadius: 4, cursor: "pointer" }}>
+                ✕ Reject
+              </button>
+            </>
+          )}
+          {accepted && <span style={{ fontSize: 11.5, color: C.accent, fontWeight: 500 }}>✓ Saved to Scripts Library</span>}
+          {rejected && <span style={{ fontSize: 11.5, color: C.red }}>✕ Rejected</span>}
+        </div>
         <CopyBtn text={text} />
       </div>
       <pre style={{ margin: 0, padding: "14px 16px", color: C.cream, fontSize: 12.5, lineHeight: 1.8, fontFamily: "inherit", whiteSpace: "pre-wrap", maxHeight: 380, overflowY: "auto" }}>{text}</pre>
@@ -651,7 +724,7 @@ function OutputPanel({ text, loading, error }: { text: string; loading: boolean;
   );
 }
 
-function ContentPlannerAgent({ prefill }: { prefill: string }) {
+function ContentPlannerAgent({ prefill, onSave }: { prefill: string; onSave: (content: string, type: "Content Plan" | "Script" | "Pitch") => void }) {
   const [industry, setIndustry] = useState(prefill || "Real Estate");
   const [focus, setFocus]       = useState("");
   const [out, setOut]           = useState("");
@@ -663,7 +736,13 @@ function ContentPlannerAgent({ prefill }: { prefill: string }) {
 
   async function run() {
     setLoading(true); setErr(""); setOut("");
-    try { setOut(await callAgent(SYS_PLANNER, `Industry/vertical: ${industry}\nWeek focus / theme: ${focus || "general WhatsApp AI automation"}`)); }
+    try {
+      const res = await fetch("/api/agent", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ systemPrompt: SYS_PLANNER, userMessage: `Industry/vertical: ${industry}\nWeek focus / theme: ${focus || "general WhatsApp AI automation"}`, maxTokens: 1200 }) });
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      if (data.usage) trackTokens(data.usage);
+      setOut(data.content as string);
+    }
     catch (e: unknown) { setErr((e as Error).message); }
     finally { setLoading(false); }
   }
@@ -673,12 +752,16 @@ function ContentPlannerAgent({ prefill }: { prefill: string }) {
       <input value={industry} onChange={e => setIndustry(e.target.value)} placeholder="Industry (e.g. Real Estate, Clinic, F&B)" style={inp} />
       <input value={focus} onChange={e => setFocus(e.target.value)} placeholder="Week focus or trend (optional)" style={inp} />
       <Btn accent full onClick={run} disabled={loading || !industry.trim()}><Send size={13} /> Generate 3 posts</Btn>
-      <OutputPanel text={out} loading={loading} error={err} />
+      <OutputPanel text={out} loading={loading} error={err}
+        onAccept={(c) => onSave(c, "Content Plan")}
+        scriptType="Content Plan"
+        scriptTitle={`Content Plan — ${industry}`}
+      />
     </AgentCard>
   );
 }
 
-function ScriptWriterAgent() {
+function ScriptWriterAgent({ onSave }: { onSave: (content: string, type: "Content Plan" | "Script" | "Pitch") => void }) {
   const [topic, setTopic]     = useState("");
   const [platform, setPlat]   = useState<PostPlat>("instagram");
   const [type, setType]       = useState<PostType>("Reel");
@@ -690,7 +773,13 @@ function ScriptWriterAgent() {
 
   async function run() {
     setLoading(true); setErr(""); setOut("");
-    try { setOut(await callAgent(SYS_SCRIPT, `Topic: ${topic}\nPlatform: ${platform}\nContent type: ${type}`)); }
+    try {
+      const res = await fetch("/api/agent", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ systemPrompt: SYS_SCRIPT, userMessage: `Topic: ${topic}\nPlatform: ${platform}\nContent type: ${type}`, maxTokens: 1200 }) });
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      if (data.usage) trackTokens(data.usage);
+      setOut(data.content as string);
+    }
     catch (e: unknown) { setErr((e as Error).message); }
     finally { setLoading(false); }
   }
@@ -707,12 +796,16 @@ function ScriptWriterAgent() {
         </select>
       </div>
       <Btn accent full onClick={run} disabled={loading || !topic.trim()}><Send size={13} /> Write script</Btn>
-      <OutputPanel text={out} loading={loading} error={err} />
+      <OutputPanel text={out} loading={loading} error={err}
+        onAccept={(c) => onSave(c, "Script")}
+        scriptType="Script"
+        scriptTitle={`${type} — ${topic}`}
+      />
     </AgentCard>
   );
 }
 
-function ConsultingAgent() {
+function ConsultingAgent({ onSave }: { onSave: (content: string, type: "Content Plan" | "Script" | "Pitch") => void }) {
   const [client, setClient]   = useState("");
   const [problem, setProblem] = useState("");
   const [out, setOut]         = useState("");
@@ -722,7 +815,13 @@ function ConsultingAgent() {
 
   async function run() {
     setLoading(true); setErr(""); setOut("");
-    try { setOut(await callAgent(SYS_CONSULT, `Client name: ${client}\nBusiness problem: ${problem}`)); }
+    try {
+      const res = await fetch("/api/agent", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ systemPrompt: SYS_CONSULT, userMessage: `Client name: ${client}\nBusiness problem: ${problem}`, maxTokens: 1200 }) });
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      if (data.usage) trackTokens(data.usage);
+      setOut(data.content as string);
+    }
     catch (e: unknown) { setErr((e as Error).message); }
     finally { setLoading(false); }
   }
@@ -732,12 +831,16 @@ function ConsultingAgent() {
       <input value={client} onChange={e => setClient(e.target.value)} placeholder="Client name (e.g. The Great Haus Sdn Bhd)" style={inp} />
       <textarea value={problem} onChange={e => setProblem(e.target.value)} placeholder="Describe their business problem (e.g. They receive 50+ WhatsApp enquiries daily but miss 40% after 8pm…)" rows={3} style={{ ...inp, resize: "vertical" as const, fontFamily: "inherit" }} />
       <Btn accent full onClick={run} disabled={loading || !client.trim() || !problem.trim()}><Send size={13} /> Generate pitch</Btn>
-      <OutputPanel text={out} loading={loading} error={err} />
+      <OutputPanel text={out} loading={loading} error={err}
+        onAccept={(c) => onSave(c, "Pitch")}
+        scriptType="Pitch"
+        scriptTitle={`Pitch — ${client}`}
+      />
     </AgentCard>
   );
 }
 
-function AgentsSection({ plannerPrefill }: { plannerPrefill: string }) {
+function AgentsSection({ plannerPrefill, onSave }: { plannerPrefill: string; onSave: (content: string, type: SavedScript["type"], platform?: string) => void }) {
   return (
     <div>
       <div style={{ background: C.s, border: `1px solid ${C.aBd}`, borderRadius: C.r, padding: "10px 16px", marginBottom: 20, display: "flex", alignItems: "center", gap: 8 }}>
@@ -745,9 +848,9 @@ function AgentsSection({ plannerPrefill }: { plannerPrefill: string }) {
         <span style={{ fontSize: 12.5, color: C.t2 }}>Calls <strong style={{ color: C.text }}>claude-sonnet-4-5</strong> via your Anthropic API key — add it in Settings if you haven't already</span>
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(380px,1fr))", gap: 12 }}>
-        <ContentPlannerAgent prefill={plannerPrefill} />
-        <ScriptWriterAgent />
-        <ConsultingAgent />
+        <ContentPlannerAgent prefill={plannerPrefill} onSave={(c, t) => onSave(c, t)} />
+        <ScriptWriterAgent onSave={(c, t) => onSave(c, t)} />
+        <ConsultingAgent onSave={(c, t) => onSave(c, t)} />
       </div>
     </div>
   );
@@ -816,21 +919,76 @@ function TrendsSection({ onUseTrend }: { onUseTrend: (title: string) => void }) 
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// SECTION 6 — SCRIPTS LIBRARY
+// ─────────────────────────────────────────────────────────────────────────────
+const TYPE_COLOR: Record<string, string> = {
+  "Content Plan": C.blue,
+  "Script":       C.accent,
+  "Pitch":        C.orange,
+  "Trend":        C.purple,
+};
+
+function ScriptsLibrary({ scripts, onDelete }: { scripts: SavedScript[]; onDelete: (id: number) => void }) {
+  if (scripts.length === 0) {
+    return (
+      <div style={{ textAlign: "center", padding: "80px 20px", color: C.t3 }}>
+        <Archive size={32} style={{ margin: "0 auto 12px", display: "block" }} color={C.t3} />
+        <p style={{ margin: "0 0 8px", color: C.t2, fontSize: 14 }}>No saved scripts yet.</p>
+        <p style={{ fontSize: 12.5, color: C.t3 }}>Accept generated content in the Agents tab to save it here.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+      <p style={{ fontSize: 12.5, color: C.t2, margin: 0 }}>{scripts.length} saved {scripts.length === 1 ? "script" : "scripts"} — accepted from AI agents</p>
+      {scripts.map(s => (
+        <div key={s.id} style={{ background: C.s, border: `1px solid ${C.border}`, borderRadius: C.r, overflow: "hidden" }}>
+          <div style={{ padding: "10px 16px", borderBottom: `1px solid ${C.border}`, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <span style={{ fontSize: 11, background: `${TYPE_COLOR[s.type] || C.t2}18`, color: TYPE_COLOR[s.type] || C.t2, padding: "2px 8px", borderRadius: 4, fontWeight: 500 }}>{s.type}</span>
+              <span style={{ fontSize: 13, fontWeight: 600, color: C.text }}>{s.title}</span>
+              {s.platform && <span style={{ fontSize: 11, color: C.t3 }}>· {s.platform}</span>}
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <span style={{ fontSize: 11, color: C.t3 }}>{new Date(s.savedAt).toLocaleDateString("en-MY", { day: "numeric", month: "short", year: "numeric" })}</span>
+              <button onClick={() => onDelete(s.id)} style={{ background: "none", border: "none", color: C.t3, cursor: "pointer", padding: "2px", display: "flex" }}
+                onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = C.red; }}
+                onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = C.t3; }}>
+                <X size={13} />
+              </button>
+            </div>
+          </div>
+          <pre style={{ margin: 0, padding: "14px 16px", color: C.cream, fontSize: 12, lineHeight: 1.8, fontFamily: "inherit", whiteSpace: "pre-wrap", maxHeight: 300, overflowY: "auto" }}>{s.content}</pre>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // ROOT
 // ─────────────────────────────────────────────────────────────────────────────
 const TABS: { id: Tab; label: string; Icon: React.ElementType }[] = [
-  { id: "kanban",   label: "Kanban",   Icon: Target       },
-  { id: "pipeline", label: "Pipeline", Icon: BarChart3     },
-  { id: "calendar", label: "Calendar", Icon: CalendarDays  },
-  { id: "agents",   label: "Agents",   Icon: Sparkles      },
-  { id: "trends",   label: "Trends",   Icon: TrendingUp    },
+  { id: "kanban",   label: "Kanban",          Icon: Target       },
+  { id: "pipeline", label: "Pipeline",        Icon: BarChart3     },
+  { id: "calendar", label: "Calendar",        Icon: CalendarDays  },
+  { id: "agents",   label: "Agents",          Icon: Sparkles      },
+  { id: "trends",   label: "Trends",          Icon: TrendingUp    },
+  { id: "scripts",  label: "Scripts Library", Icon: Archive       },
 ];
 
 export function OperationsDashboard() {
   const [tab, setTab]               = useState<Tab>("kanban");
   const [plannerPrefill, setPrefill] = useState("");
+  const [saved, setSaved] = useLocal<SavedScript[]>("flogen_saved_scripts", []);
 
   function useTrend(title: string) { setPrefill(title); setTab("agents"); }
+
+  function handleSave(content: string, type: SavedScript["type"], platform?: string) {
+    const title = content.split("\n")[0].replace(/^#+\s*/, "").slice(0, 60) || type;
+    setSaved(prev => [{ id: uid(), title, content, type, platform, savedAt: new Date().toISOString() }, ...prev]);
+  }
 
   return (
     <>
@@ -886,8 +1044,9 @@ export function OperationsDashboard() {
           {tab === "kanban"   && <KanbanSection />}
           {tab === "pipeline" && <PipelineSection />}
           {tab === "calendar" && <CalendarSection onPlannerPrefill={setPrefill} />}
-          {tab === "agents"   && <AgentsSection plannerPrefill={plannerPrefill} />}
+          {tab === "agents"   && <AgentsSection plannerPrefill={plannerPrefill} onSave={handleSave} />}
           {tab === "trends"   && <TrendsSection onUseTrend={useTrend} />}
+          {tab === "scripts"  && <ScriptsLibrary scripts={saved} onDelete={(id) => setSaved(prev => prev.filter(s => s.id !== id))} />}
         </div>
       </div>
     </>
