@@ -100,16 +100,18 @@ const POST_TYPES: Record<Platform, string[]> = {
 };
 
 const CAPTION_TEMPLATES = [
-  "Breaking down exactly how we hit {n}k views in 7 days 🔥",
-  "The strategy no one talks about (until now) 👀",
-  "If you're still doing {n} things the old way, read this thread",
-  "Sharing my full {n}-step content system — save this!",
-  "We tested {n} content formats. Here's what actually worked.",
-  "POV: you finally cracked the algorithm 💡",
-  "Unpopular opinion: consistency > virality every time",
-  "How I grew from {n}k to {n2}k in 90 days (no ads)",
-  "The one metric most creators completely ignore 📊",
-  "Content batching system walkthrough — full breakdown inside",
+  "Your customers are messaging you right now. Are you responding fast enough? 📲",
+  "{n}% of WhatsApp leads go cold within 1 hour. Here's how to fix it.",
+  "We automated {n}00 customer replies in one week — here's how 🤖",
+  "Stop hiring customer service staff. Do this instead 👇",
+  "The WhatsApp AI setup that saved our client {n} hours a week ⏱️",
+  "POV: your WhatsApp replies itself at 2am 💡",
+  "Chatbot vs AI Agent — the difference no one talks about",
+  "How a {n}-person SME handles {n2}+ daily enquiries without extra staff",
+  "The #1 reason Malaysian businesses lose WhatsApp leads 📊",
+  "We built a WhatsApp AI for a KL clinic — here's what happened in 30 days",
+  "Your competitor is already using AI. Are you? 🇲🇾",
+  "3 WhatsApp automation flows every SME should have right now",
 ];
 
 function buildPosts(handle: string, accounts: CompetitorAccount[]): RecentPost[] {
@@ -165,14 +167,65 @@ interface CompetitorDef {
   avatarHue: number;
   platforms: Platform[];
   baseFollowers: number;
+  /** Context passed to AI estimator for accurate mock data */
+  description: string;
 }
 
 export const DEFAULT_COMPETITORS: CompetitorDef[] = [
-  { id: "c1", name: "GrowthLab Studio",  handle: "growthlabstudio",  avatarHue: 210, platforms: ["instagram","youtube","tiktok"],             baseFollowers: 85000 },
-  { id: "c2", name: "The Content Co.",   handle: "thecontentco",    avatarHue: 340, platforms: ["instagram","twitter","linkedin"],             baseFollowers: 52000 },
-  { id: "c3", name: "Creator Pulse",     handle: "creatorpulse",    avatarHue: 150, platforms: ["youtube","tiktok","instagram"],              baseFollowers: 210000 },
-  { id: "c4", name: "BrandWave Agency",  handle: "brandwaveagency", avatarHue: 30,  platforms: ["instagram","facebook","linkedin"],            baseFollowers: 38000 },
-  { id: "c5", name: "Vibe Social",       handle: "vibesocial",      avatarHue: 280, platforms: ["tiktok","instagram","twitter"],               baseFollowers: 125000 },
+  {
+    id: "c1",
+    name: "Mampu.ai",
+    handle: "mampu.ai",
+    avatarHue: 160,
+    platforms: ["instagram", "xiaohongshu"],
+    baseFollowers: 1200,
+    description: "Malaysian AI automation startup targeting SMEs. Early-stage, KL-based. Posts in BM and English. Focuses on WhatsApp & business automation for local SMEs.",
+  },
+  {
+    id: "c2",
+    name: "ChatsHero",
+    handle: "chatshero",
+    avatarHue: 200,
+    platforms: ["instagram", "facebook"],
+    baseFollowers: 4500,
+    description: "WhatsApp automation platform focused on Malaysian market. Offers chatbot builder and broadcast tools. Posts product demos and SME use cases.",
+  },
+  {
+    id: "c3",
+    name: "Wati",
+    handle: "wati.io",
+    avatarHue: 45,
+    platforms: ["instagram", "linkedin"],
+    baseFollowers: 22000,
+    description: "Global WhatsApp Business API provider (YC-backed). Enterprise-grade platform. Posts case studies, product updates, and WhatsApp marketing tips. Large international following.",
+  },
+  {
+    id: "c4",
+    name: "Respond.io",
+    handle: "respond.io",
+    avatarHue: 260,
+    platforms: ["instagram", "linkedin"],
+    baseFollowers: 18000,
+    description: "Omnichannel messaging automation platform (WhatsApp, IG, FB Messenger). Regional Southeast Asia focus. Posts messaging strategy content and platform comparisons.",
+  },
+  {
+    id: "c5",
+    name: "AiSensy",
+    handle: "aisensy",
+    avatarHue: 20,
+    platforms: ["instagram", "linkedin"],
+    baseFollowers: 14000,
+    description: "WhatsApp marketing & AI platform from India. Strong in e-commerce and D2C brands. Posts WhatsApp automation tips, campaign results, and feature launches.",
+  },
+  {
+    id: "c6",
+    name: "Supamoto MY",
+    handle: "supamoto.my",
+    avatarHue: 340,
+    platforms: ["instagram", "facebook"],
+    baseFollowers: 600,
+    description: "Local Malaysian automation agency. Very small, early-stage. Posts automation and business productivity tips for local SME audience in BM and English.",
+  },
 ];
 
 export function buildCompetitor(def: CompetitorDef): Competitor {
@@ -211,6 +264,7 @@ export function buildCompetitorFromHandle(
     avatarHue: Math.round(seed(handle) * 360),
     platforms,
     baseFollowers: 10000 + Math.round(seed(handle) * 200000),
+    description: `Custom competitor: ${name} on ${platforms.join(", ")}`,
   };
   return buildCompetitor(def);
 }

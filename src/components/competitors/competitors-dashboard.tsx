@@ -155,9 +155,14 @@ export function CompetitorsDashboard() {
               <Users className="h-5 w-5 text-emerald-400" />
             </div>
             <div>
-              <h1 className="text-xl font-semibold tracking-tight">Competitor Tracker</h1>
+              <div className="flex items-center gap-2">
+                <h1 className="text-xl font-semibold tracking-tight">Competitor Tracker</h1>
+                <Badge variant="outline" className="text-[10px] border-amber-500/30 text-amber-400 bg-amber-500/10">
+                  AI Estimated
+                </Badge>
+              </div>
               <p className="text-sm text-muted-foreground">
-                {competitors.length} competitor{competitors.length !== 1 ? "s" : ""} · {totalPlatforms} platforms monitored
+                {competitors.length} WhatsApp AI competitors · {totalPlatforms} platforms monitored
               </p>
             </div>
           </div>

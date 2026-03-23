@@ -186,7 +186,12 @@ export function CompetitorDetailPanel({ competitor, onClose }: CompetitorDetailP
           {initials}
         </div>
         <div className="flex-1 min-w-0">
-          <p className="text-sm font-semibold truncate">{competitor.name}</p>
+          <div className="flex items-center gap-2 flex-wrap">
+            <p className="text-sm font-semibold truncate">{competitor.name}</p>
+            <Badge variant="outline" className="text-[9px] px-1.5 py-0 border-amber-500/30 text-amber-400 bg-amber-500/10 shrink-0">
+              AI Estimated
+            </Badge>
+          </div>
           <p className="text-[11px] text-zinc-500">
             {competitor.accounts.length} platform{competitor.accounts.length !== 1 ? "s" : ""} · Added{" "}
             {format(new Date(competitor.addedAt), "MMM d, yyyy")}
