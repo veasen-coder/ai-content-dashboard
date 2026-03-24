@@ -80,6 +80,13 @@ export function FollowerChart({ data }: FollowerChartProps) {
       {/* Follower count line chart */}
       <div>
         <p className="text-xs text-zinc-500 mb-3">Total followers over time</p>
+        {/* 6A: Projected / Demo Data watermark */}
+        <div className="relative">
+          <div className="pointer-events-none absolute inset-0 flex items-center justify-center z-10">
+            <span className="text-[11px] font-bold tracking-[0.18em] uppercase text-white/[0.06] select-none" style={{ transform: "rotate(-18deg)", whiteSpace: "nowrap" }}>
+              Projected / Demo Data
+            </span>
+          </div>
         <ResponsiveContainer width="100%" height={180}>
           <LineChart data={data} margin={{ top: 4, right: 4, left: -10, bottom: 0 }}>
             <defs>
@@ -114,6 +121,7 @@ export function FollowerChart({ data }: FollowerChartProps) {
             />
           </LineChart>
         </ResponsiveContainer>
+        </div>
       </div>
 
       {/* Daily gained vs lost bars */}

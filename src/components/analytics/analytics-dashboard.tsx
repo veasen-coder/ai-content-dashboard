@@ -9,9 +9,11 @@ import {
   Download,
   Eye,
   Heart,
+  Lightbulb,
   MessageCircle,
   Repeat2,
   Sparkles,
+  Trophy,
   TrendingUp,
   Users,
 } from "lucide-react";
@@ -125,6 +127,43 @@ function ChartSkeleton({ height = 240 }: { height?: number }) {
   );
 }
 
+// ─── 6B: Content Pillar Performance bar chart ─────────────────────────────────
+
+const PILLAR_DATA = [
+  { label: "Pain Point",    pct: 45, color: "#f59e0b", best: true  },
+  { label: "Proof/Social",  pct: 38, color: "#8b5cf6", best: false },
+  { label: "Education",     pct: 29, color: "#3b82f6", best: false },
+  { label: "Brand",         pct: 18, color: "#10b981", best: false },
+];
+
+function PillarChart() {
+  return (
+    <div className="space-y-3">
+      {PILLAR_DATA.map(({ label, pct, color, best }) => (
+        <div key={label} className="flex items-center gap-3">
+          <span className="text-xs text-zinc-400 w-[100px] shrink-0 flex items-center gap-1.5">
+            {label}
+            {best && (
+              <span className="inline-flex items-center gap-0.5 rounded px-1 py-0 text-[9px] font-bold bg-amber-500/15 text-amber-400 border border-amber-500/20">
+                <Trophy className="h-2.5 w-2.5" />Best
+              </span>
+            )}
+          </span>
+          <div className="flex-1 h-5 rounded-md bg-zinc-800/60 overflow-hidden">
+            <div
+              className="h-full rounded-md transition-all duration-700"
+              style={{ width: `${pct}%`, background: `linear-gradient(90deg, ${color}cc, ${color})` }}
+            />
+          </div>
+          <span className="text-xs font-semibold tabular-nums w-8 text-right" style={{ color }}>
+            {pct}%
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 // ─── Main dashboard ───────────────────────────────────────────────────────────
 
 // ── Live Instagram analytics shape ───────────────────────────────────────────
@@ -160,6 +199,50 @@ export function AnalyticsDashboard() {
   const [followers, setFollowers] = useState<FollowerMetric[]>([]);
   const [topPosts, setTopPosts] = useState<TopPost[]>([]);
   const [igLive, setIgLive] = useState<IGAnalytics | null>(null);
+
+  // ── 6D: Export CSV ──────────────────────────────────────────────────────────
+  function exportCsv() {
+    const today = new Date().toISOString().slice(0, 10);
+    const dateFrom = range.from.toISOString().slice(0, 10);
+    const dateTo   = range.to.toISOString().slice(0, 10);
+    const followerCount = igLive ? igLive.profile.followers : (followers[followers.length - 1]?.followers ?? 0);
+    const totalPosts    = igLive ? igLive.kpi.totalPosts    : topPosts.length;
+    const avgEngRate    = igLive ? igLive.kpi.engagementRate : (kpi?.engagementRate ?? 0);
+    const top3 = [...topPosts].sort((a, b) => b.engagementRate - a.engagementRate).slice(0, 3);
+
+    const rows: (string | number)[][] = [
+      ["Flogen AI \u2014 Analytics Report"],
+      ["Generated", today],
+      ["Date Range", `${dateFrom} to ${dateTo}`],
+      [],
+      ["Metric", "Value"],
+      ["Follower Count", followerCount],
+      ["Total Posts", totalPosts],
+      ["Avg Engagement Rate", `${avgEngRate}%`],
+      [],
+      ["Top 3 Posts by Engagement"],
+      ["#", "Caption", "Published", "Likes", "Comments", "Eng. Rate"],
+      ...top3.map((p, i) => [
+        i + 1,
+        `"${p.caption.replace(/"/g, '""').slice(0, 120)}"`,
+        p.publishedAt.slice(0, 10),
+        p.likes,
+        p.comments,
+        `${p.engagementRate}%`,
+      ]),
+    ];
+
+    const csv = rows.map(r => r.join(",")).join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement("a");
+    a.href     = url;
+    a.download = `flogen-ai-report-${today}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
 
   const load = useCallback(async (r: DateRange) => {
     setLoading(true);
@@ -239,6 +322,8 @@ export function AnalyticsDashboard() {
             size="sm"
             variant="outline"
             className="text-xs h-9"
+            onClick={exportCsv}
+            disabled={loading}
           >
             <Download className="h-3.5 w-3.5 mr-1.5" />
             Export
@@ -374,6 +459,71 @@ export function AnalyticsDashboard() {
           </CardContent>
         </Card>
       </div>
+
+      {/* ── 6B + 6C: Pillar performance + Insight card ── */}
+      {!loading && (
+        <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+          {/* 6B: Content Pillar Performance */}
+          <Card className="border-border bg-card">
+            <CardHeader className="pb-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle className="text-sm font-medium">Content Pillar Performance</CardTitle>
+                  <CardDescription className="text-xs">Average engagement rate by content theme</CardDescription>
+                </div>
+                <Badge variant="outline" className="text-[10px] border-amber-500/30 text-amber-400 bg-amber-500/10 gap-1">
+                  <Trophy className="h-2.5 w-2.5" /> Pain Point wins
+                </Badge>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <PillarChart />
+            </CardContent>
+          </Card>
+
+          {/* 6C: Dynamic insight card */}
+          {(() => {
+            const postingDays = new Set(topPosts.map(p => p.publishedAt.slice(0, 10))).size || 1;
+            const totalPostsCount = igLive ? igLive.kpi.totalPosts : topPosts.length;
+            const totalLikesCount = igLive ? igLive.kpi.totalLikes : topPosts.reduce((s, p) => s + p.likes, 0);
+            const avgLikesPerDay  = postingDays > 0 ? Math.round(totalLikesCount / postingDays) : 0;
+            return (
+              <Card className="border-border bg-card border-primary/20">
+                <CardHeader className="pb-3">
+                  <div className="flex items-center gap-2">
+                    <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary/20">
+                      <Lightbulb className="h-3.5 w-3.5 text-primary" />
+                    </div>
+                    <div>
+                      <CardTitle className="text-sm font-medium">AI Insight</CardTitle>
+                      <CardDescription className="text-xs">Calculated from your published post data</CardDescription>
+                    </div>
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  <p className="text-sm text-zinc-300 leading-relaxed">
+                    Your{" "}
+                    <span className="font-bold text-primary">{postingDays}</span>
+                    {" "}posting day{postingDays !== 1 ? "s" : ""} generated all{" "}
+                    <span className="font-bold text-zinc-100">{totalPostsCount}</span>
+                    {" "}post{totalPostsCount !== 1 ? "s" : ""} and{" "}
+                    <span className="font-bold text-rose-400">{totalLikesCount.toLocaleString()}</span>
+                    {" "}likes.
+                  </p>
+                  <div className="mt-4 rounded-lg border border-primary/20 bg-primary/5 px-4 py-3 flex items-center gap-3">
+                    <TrendingUp className="h-4 w-4 text-primary shrink-0" />
+                    <p className="text-sm">
+                      Each active posting day ={" "}
+                      <span className="font-bold text-primary">+{avgLikesPerDay.toLocaleString()}</span>
+                      {" "}avg likes
+                    </p>
+                  </div>
+                </CardContent>
+              </Card>
+            );
+          })()}
+        </div>
+      )}
     </div>
   );
 }
