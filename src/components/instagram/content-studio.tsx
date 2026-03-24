@@ -373,6 +373,7 @@ export function ContentStudio() {
   const [loading, setLoading] = useState(true);
   const [apiErr, setApiErr]   = useState("");
   const [refreshing, setRefreshing] = useState(false);
+  const [lastRefreshed, setLastRefreshed] = useState("");
 
   useEffect(() => { setDrafts(loadDrafts()); }, []);
 
@@ -390,6 +391,7 @@ export function ContentStudio() {
       if (!postsData.error && postsData.data) setPosts(postsData.data);
     } catch { setApiErr("Failed to connect to Instagram API"); }
     setLoading(false); setRefreshing(false);
+    setLastRefreshed(new Date().toLocaleTimeString("en-MY", { hour: "2-digit", minute: "2-digit" }));
   }
 
   useEffect(() => { fetchData(); }, []);
@@ -536,6 +538,11 @@ export function ContentStudio() {
 
           {/* CREATE */}
           {tab === "create" && <CreatePanel onSaveDraft={addDraft} />}
+
+          {/* 9E: Last refreshed */}
+          {lastRefreshed && (
+            <p style={{ fontSize: 11, color: C.t3, textAlign: "right", marginTop: 24 }}>Last refreshed: {lastRefreshed}</p>
+          )}
         </div>
       </div>
     </>

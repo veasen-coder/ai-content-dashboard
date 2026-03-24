@@ -5,8 +5,9 @@ import {
   Plus, X, Trash2, Loader2, RefreshCw, Copy, CheckCheck,
   Zap, TrendingUp, CalendarDays, Users, Target, Sparkles,
   MessageSquare, Send, ArrowRight, GripVertical, Check, Search,
-  ChevronLeft, ChevronRight, Instagram, BarChart3, Hash, Archive, Bell,
+  ChevronLeft, ChevronRight, Instagram, BarChart3, Hash, Archive, Bell, Keyboard,
 } from "lucide-react";
+import { useRouter as useNextRouter } from "next/navigation";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // TOKENS
@@ -542,6 +543,7 @@ function KanbanCard({ card, onDelete, onEdit, col, priority, dueDate, onSetPrior
       draggable onDragStart={e => { e.dataTransfer.setData("cardId", String(card.id)); e.dataTransfer.setData("fromCol", col); e.dataTransfer.effectAllowed = "move"; }}
       onMouseEnter={() => setHov(true)} onMouseLeave={() => setHov(false)}
       onClick={handleClick} onDoubleClick={handleDblClick}
+      title={edit ? undefined : "Double-click to edit"}
       className="fop-kcard"
       style={{ background: hov ? C.s3 : C.s2, borderTop: `1px solid ${hov ? C.borderHi : C.border}`, borderRight: `1px solid ${hov ? C.borderHi : C.border}`, borderBottom: `1px solid ${hov ? C.borderHi : C.border}`, borderLeft: priority === "high" ? `3px solid ${C.red}` : `1px solid ${hov ? C.borderHi : C.border}`, borderRadius: C.r, padding: "10px 12px", cursor: "pointer", transition: "all .12s", position: "relative" }}>
       <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
@@ -630,6 +632,41 @@ function KanbanSection({ onGoToPipeline }: { onGoToPipeline: (dealId: number) =>
   const [kanbanNotes, setKanbanNotes] = useLocal<Record<number, string>>("flogen_kanban_notes", {});
   const [dragOver, setDragOver]   = useState<KCol | null>(null);
   const [selected, setSelected]   = useState<{ card: KCard; col: KCol } | null>(null);
+  // 9A: Daily briefing
+  const [briefingOpen, setBriefingOpen] = useState(() => {
+    if (typeof window === "undefined") return true;
+    try { return localStorage.getItem("flogen_kanban_briefing_dismissed") !== new Date().toISOString().slice(0, 10); }
+    catch { return true; }
+  });
+  const [briefingData] = useState(() => {
+    try {
+      const deals: Deal[] = JSON.parse(localStorage.getItem("flogen_pipeline") || "null") ?? INIT_DEALS;
+      const posts: CalPost[] = JSON.parse(localStorage.getItem("flogen_calendar") || "null") ?? INIT_POSTS;
+      let stalledDeal: Deal | null = null;
+      let maxDays = 0;
+      for (const d of deals) {
+        if (d.lastContact) {
+          const days = Math.floor((Date.now() - new Date(d.lastContact).getTime()) / 86_400_000);
+          if (days > maxDays) { maxDays = days; stalledDeal = d; }
+        }
+      }
+      const weekDates = new Set(getWeekDates(0).map(isoDate));
+      const scheduledThisWeek = posts.filter(p => weekDates.has(p.date)).length;
+      return { stalledDeal, stalledDays: maxDays, scheduledThisWeek };
+    } catch { return { stalledDeal: null as Deal | null, stalledDays: 0, scheduledThisWeek: 0 }; }
+  });
+  const greet = (() => { const h = new Date().getHours(); return h < 12 ? "morning" : h < 17 ? "afternoon" : "evening"; })();
+  // 9D: Shortcuts overlay
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
+  useEffect(() => {
+    function kbHandler(e: KeyboardEvent) {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+      if (e.key === "?" && !e.metaKey && !e.ctrlKey) { e.preventDefault(); setShortcutsOpen(true); }
+      if (e.key === "Escape") setShortcutsOpen(false);
+    }
+    window.addEventListener("keydown", kbHandler);
+    return () => window.removeEventListener("keydown", kbHandler);
+  }, []);
 
   function moveCard(id: number, from: KCol, to: KCol) {
     if (from === to) return;
@@ -652,26 +689,63 @@ function KanbanSection({ onGoToPipeline }: { onGoToPipeline: (dealId: number) =>
 
   return (
     <div>
+      {/* 9A: Daily Briefing */}
+      {briefingOpen && (
+        <div style={{ background: C.s, border: `1px solid ${C.aBd}`, borderRadius: C.r, padding: "12px 16px", marginBottom: 14, display: "flex", alignItems: "flex-start", gap: 10 }}>
+          <Bell size={14} style={{ color: C.accent, marginTop: 2, flexShrink: 0 }} />
+          <p style={{ flex: 1, fontSize: 12.5, color: C.text, margin: 0, lineHeight: 1.65 }}>
+            <span style={{ color: C.accent, fontWeight: 600 }}>Good {greet}.</span>{" "}
+            Today is {new Date().toLocaleDateString("en-MY", { weekday: "long", month: "long", day: "numeric" })}.{" "}
+            You have <strong style={{ color: C.accent }}>{board.today.length}</strong> task{board.today.length !== 1 ? "s" : ""} in Today.{" "}
+            {briefingData.stalledDeal && <>
+              <strong>{briefingData.stalledDeal.name.length > 22 ? briefingData.stalledDeal.name.slice(0, 22) + "…" : briefingData.stalledDeal.name}</strong>{" "}
+              has been in {STAGE_LABEL[briefingData.stalledDeal.stage]} for{" "}
+              <strong style={{ color: C.yellow }}>{briefingData.stalledDays}d</strong> — follow up today.{" "}
+            </>}
+            You have{" "}
+            <strong style={{ color: briefingData.scheduledThisWeek < 2 ? C.red : C.accent }}>{briefingData.scheduledThisWeek}</strong>{" "}
+            post{briefingData.scheduledThisWeek !== 1 ? "s" : ""} scheduled this week.
+          </p>
+          <button
+            onClick={() => { setBriefingOpen(false); try { localStorage.setItem("flogen_kanban_briefing_dismissed", new Date().toISOString().slice(0, 10)); } catch {} }}
+            title="Dismiss for today"
+            style={{ background: "none", border: "none", color: C.t3, cursor: "pointer", padding: "2px 3px", display: "flex", flexShrink: 0 }}
+            onMouseEnter={e => (e.currentTarget.style.color = C.t2)}
+            onMouseLeave={e => (e.currentTarget.style.color = C.t3)}>
+            <X size={13} />
+          </button>
+        </div>
+      )}
+
       {/* 2D: Weekly Focus Counter */}
-      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14, flexWrap: "wrap", padding: "8px 12px", background: C.s, border: `1px solid ${C.border}`, borderRadius: C.r }}>
-        <span style={{ fontSize: 12, color: C.t2 }}>
-          <span style={{ color: C.accent, fontWeight: 700 }}>{board.today.length}</span>
-          <span style={{ color: C.t3 }}> Today</span>
-        </span>
-        <span style={{ color: C.t3, fontSize: 11 }}>·</span>
-        <span style={{ fontSize: 12, color: C.t2 }}>
-          <span style={{ color: C.yellow, fontWeight: 700 }}>{board.week.length}</span>
-          <span style={{ color: C.t3 }}> This Week</span>
-        </span>
-        <span style={{ color: C.t3, fontSize: 11 }}>·</span>
-        <span style={{ fontSize: 12, color: C.t2 }}>
-          <span style={{ color: C.blue, fontWeight: 700 }}>{board.backlog.length}</span>
-          <span style={{ color: C.t3 }}> Backlog</span>
-        </span>
-        {board.done.length > 0 && <>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14, flexWrap: "wrap", padding: "8px 12px", background: C.s, border: `1px solid ${C.border}`, borderRadius: C.r, justifyContent: "space-between" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+          <span style={{ fontSize: 12, color: C.t2 }}>
+            <span style={{ color: C.accent, fontWeight: 700 }}>{board.today.length}</span>
+            <span style={{ color: C.t3 }}> Today</span>
+          </span>
           <span style={{ color: C.t3, fontSize: 11 }}>·</span>
-          <span style={{ fontSize: 12, color: C.t3 }}>{board.done.length} Done</span>
-        </>}
+          <span style={{ fontSize: 12, color: C.t2 }}>
+            <span style={{ color: C.yellow, fontWeight: 700 }}>{board.week.length}</span>
+            <span style={{ color: C.t3 }}> This Week</span>
+          </span>
+          <span style={{ color: C.t3, fontSize: 11 }}>·</span>
+          <span style={{ fontSize: 12, color: C.t2 }}>
+            <span style={{ color: C.blue, fontWeight: 700 }}>{board.backlog.length}</span>
+            <span style={{ color: C.t3 }}> Backlog</span>
+          </span>
+          {board.done.length > 0 && <>
+            <span style={{ color: C.t3, fontSize: 11 }}>·</span>
+            <span style={{ fontSize: 12, color: C.t3 }}>{board.done.length} Done</span>
+          </>}
+        </div>
+        {/* 9D: Shortcuts button */}
+        <button onClick={() => setShortcutsOpen(true)} title="Keyboard shortcuts (?)"
+          style={{ background: "none", border: `1px solid ${C.border}`, color: C.t3, cursor: "pointer", padding: "3px 8px", borderRadius: C.r2, display: "flex", alignItems: "center", gap: 4, fontSize: 11, transition: "all .12s" }}
+          onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = C.borderHi; (e.currentTarget as HTMLElement).style.color = C.t2; }}
+          onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = C.border; (e.currentTarget as HTMLElement).style.color = C.t3; }}>
+          <Keyboard size={11} /> ?
+        </button>
       </div>
 
       <div className="fop-hscroll">
@@ -721,6 +795,36 @@ function KanbanSection({ onGoToPipeline }: { onGoToPipeline: (dealId: number) =>
         })}
       </div>
       </div>
+
+      {/* 9D: Keyboard shortcuts overlay */}
+      {shortcutsOpen && (
+        <>
+          <div onClick={() => setShortcutsOpen(false)} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.55)", backdropFilter: "blur(3px)", zIndex: 50 }} />
+          <div style={{ position: "fixed", top: "50%", left: "50%", transform: "translate(-50%,-50%)", background: C.s, border: `1px solid ${C.borderHi}`, borderRadius: C.r, width: 360, padding: "20px 24px", zIndex: 60 }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 18 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <Keyboard size={14} style={{ color: C.accent }} />
+                <span style={{ fontSize: 14, fontWeight: 700, color: C.text }}>Keyboard Shortcuts</span>
+              </div>
+              <button onClick={() => setShortcutsOpen(false)} style={{ background: "none", border: "none", color: C.t2, cursor: "pointer", display: "flex" }}><X size={15} /></button>
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 11 }}>
+              {([
+                { key: "N",           desc: "Add new card in focused column" },
+                { key: "Esc",         desc: "Close modal or slide-over"      },
+                { key: "Enter",       desc: "Save card edit"                  },
+                { key: "⌘K / Ctrl+K", desc: "Jump to AI Assistant"           },
+                { key: "?",           desc: "Open this shortcuts overlay"     },
+              ] as { key: string; desc: string }[]).map(({ key, desc }) => (
+                <div key={key} style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                  <span style={{ fontSize: 12.5, color: C.t2 }}>{desc}</span>
+                  <kbd style={{ background: C.s2, border: `1px solid ${C.borderHi}`, borderRadius: 4, padding: "2px 8px", fontSize: 11.5, color: C.text, fontFamily: "inherit", whiteSpace: "nowrap" }}>{key}</kbd>
+                </div>
+              ))}
+            </div>
+          </div>
+        </>
+      )}
 
       {/* 2E: Task slide-over */}
       {syncedSelected && (
@@ -2045,12 +2149,33 @@ const TABS: { id: Tab; label: string; Icon: React.ElementType }[] = [
 ];
 
 export function OperationsDashboard() {
+  const router                        = useNextRouter();
   const [tab, setTab]                 = useState<Tab>("kanban");
   const [plannerPrefill, setPrefill]  = useState("");
   const [saved, setSaved]             = useLocal<SavedScript[]>("flogen_saved_scripts", SCRIPT_SEEDS);
   const [highlightDealId, setHighlightDealId] = useState<number | null>(null);
   const [calendarPrefill, setCalendarPrefill] = useState<{ topic: string; platform: PostPlat; type: PostType } | null>(null);
   const [scriptPrefill, setScriptPrefill] = useState("");
+  // 9B: Nav badge alerts
+  const [pipelineAlert, setPipelineAlert] = useState(false);
+  const [calendarAlert, setCalendarAlert] = useState(false);
+  useEffect(() => {
+    try {
+      const deals: Deal[] = JSON.parse(localStorage.getItem("flogen_pipeline") || "null") ?? INIT_DEALS;
+      setPipelineAlert(deals.some(d => d.lastContact && Math.floor((Date.now() - new Date(d.lastContact).getTime()) / 86_400_000) >= 7));
+      const posts: CalPost[] = JSON.parse(localStorage.getItem("flogen_calendar") || "null") ?? INIT_POSTS;
+      const wk = new Set(getWeekDates(0).map(isoDate));
+      setCalendarAlert(posts.filter(p => wk.has(p.date)).length < 2);
+    } catch {}
+  }, []);
+  // 9D: Cmd+K → AI Assistant
+  useEffect(() => {
+    function ckHandler(e: KeyboardEvent) {
+      if ((e.metaKey || e.ctrlKey) && e.key === "k") { e.preventDefault(); router.push("/agent"); }
+    }
+    window.addEventListener("keydown", ckHandler);
+    return () => window.removeEventListener("keydown", ckHandler);
+  }, [router]);
 
   // 5B: Read script prefill written by Competitors → Content Gap "Create this post →"
   useEffect(() => {
@@ -2149,11 +2274,15 @@ export function OperationsDashboard() {
         <div className="fop-tabs" style={{ background: C.s, borderBottom: `1px solid ${C.border}`, display: "flex", gap: 2 }}>
           {TABS.map(({ id, label, Icon }) => {
             const on = tab === id;
+            const showRed   = id === "pipeline" && pipelineAlert;
+            const showAmber = id === "calendar" && calendarAlert;
             return (
               <button key={id} onClick={() => setTab(id)} className="fop-tab-btn"
-                style={{ background: "transparent", border: "none", borderBottom: `2px solid ${on ? C.accent : "transparent"}`, color: on ? C.text : C.t2, fontSize: 13, fontWeight: on ? 600 : 400, padding: "10px 16px", cursor: "pointer", display: "flex", alignItems: "center", gap: 6, transition: "all .15s", marginBottom: -1, whiteSpace: "nowrap" }}>
+                style={{ background: "transparent", border: "none", borderBottom: `2px solid ${on ? C.accent : "transparent"}`, color: on ? C.text : C.t2, fontSize: 13, fontWeight: on ? 600 : 400, padding: "10px 16px", cursor: "pointer", display: "flex", alignItems: "center", gap: 6, transition: "all .15s", marginBottom: -1, whiteSpace: "nowrap", position: "relative" }}>
                 <Icon size={13} />
                 {label}
+                {showRed   && <span style={{ width: 7, height: 7, borderRadius: "50%", background: "#ef4444", flexShrink: 0 }} />}
+                {showAmber && <span style={{ width: 7, height: 7, borderRadius: "50%", background: "#f59e0b", flexShrink: 0 }} />}
               </button>
             );
           })}

@@ -117,6 +117,9 @@ export function CompetitorsDashboard() {
   const [sortDir, setSortDir] = useState<SortDir>("desc");
   const [refreshing, setRefreshing] = useState<string | null>(null);
   const [gapOpen, setGapOpen] = useState(false);
+  const [lastRefreshed, setLastRefreshed] = useState(() =>
+    new Date().toLocaleTimeString("en-MY", { hour: "2-digit", minute: "2-digit" })
+  );
 
   const selectedCompetitor = competitors.find((c) => c.id === selectedId) ?? null;
 
@@ -171,6 +174,7 @@ export function CompetitorsDashboard() {
     setRefreshing(id);
     await new Promise((r) => setTimeout(r, 1000));
     setRefreshing(null);
+    setLastRefreshed(new Date().toLocaleTimeString("en-MY", { hour: "2-digit", minute: "2-digit" }));
   }
 
   function handleDelete(id: string) {
@@ -437,6 +441,7 @@ export function CompetitorsDashboard() {
             Showing {filtered.length} of {competitors.length} competitors
           </p>
         )}
+        <p className="text-[11px] text-zinc-700 text-right">Last refreshed: {lastRefreshed}</p>
 
         {/* ── 5B: Content Gap Analysis panel ── */}
         <div className="rounded-xl border border-zinc-800 overflow-hidden">

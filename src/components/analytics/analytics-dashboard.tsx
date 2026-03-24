@@ -199,6 +199,7 @@ export function AnalyticsDashboard() {
   const [followers, setFollowers] = useState<FollowerMetric[]>([]);
   const [topPosts, setTopPosts] = useState<TopPost[]>([]);
   const [igLive, setIgLive] = useState<IGAnalytics | null>(null);
+  const [lastRefreshed, setLastRefreshed] = useState("");
 
   // ── 6D: Export CSV ──────────────────────────────────────────────────────────
   function exportCsv() {
@@ -282,6 +283,7 @@ export function AnalyticsDashboard() {
       }
     } catch { /* live data unavailable — keep mock */ }
     setLoading(false);
+    setLastRefreshed(new Date().toLocaleTimeString("en-MY", { hour: "2-digit", minute: "2-digit" }));
   }, []);
 
   useEffect(() => {
@@ -523,6 +525,11 @@ export function AnalyticsDashboard() {
             );
           })()}
         </div>
+      )}
+
+      {/* 9E: Last refreshed */}
+      {lastRefreshed && (
+        <p className="text-[11px] text-zinc-700 text-right pt-2">Last refreshed: {lastRefreshed}</p>
       )}
     </div>
   );
