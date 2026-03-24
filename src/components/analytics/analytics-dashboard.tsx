@@ -527,6 +527,70 @@ export function AnalyticsDashboard() {
         </div>
       )}
 
+      {/* ── Xiaohongshu Analytics ── */}
+      <div className="space-y-4">
+        <div className="flex items-center gap-2">
+          <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-rose-500/20">
+            <span className="text-[13px]">📕</span>
+          </div>
+          <div>
+            <h2 className="text-sm font-semibold">Xiaohongshu Analytics</h2>
+            <p className="text-xs text-muted-foreground">XHS post performance · AI Estimated</p>
+          </div>
+          <Badge variant="outline" className="text-[10px] border-amber-500/30 text-amber-400 bg-amber-500/10 ml-auto">AI Estimated</Badge>
+        </div>
+
+        {/* XHS KPI strip */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          {[
+            { label: "XHS Posts",    value: "10",    delta: 2,  color: "text-rose-400",   bg: "bg-rose-500/20"   },
+            { label: "Avg Likes",    value: "314",   delta: 18, color: "text-pink-400",   bg: "bg-pink-500/20"   },
+            { label: "Avg Comments", value: "28",    delta: 5,  color: "text-orange-400", bg: "bg-orange-500/20" },
+            { label: "Avg Saves",    value: "87",    delta: 12, color: "text-amber-400",  bg: "bg-amber-500/20"  },
+          ].map(s => (
+            <div key={s.label} className="rounded-xl border border-border bg-card px-4 py-3">
+              <p className={`text-xl font-bold tabular-nums ${s.color}`}>{s.value}</p>
+              <p className="text-[11px] text-zinc-500 mt-0.5">{s.label}</p>
+              <p className={`text-[10px] mt-0.5 ${s.delta >= 0 ? "text-emerald-400" : "text-red-400"}`}>
+                {s.delta >= 0 ? "+" : ""}{s.delta}% vs prev period
+              </p>
+            </div>
+          ))}
+        </div>
+
+        {/* XHS post table */}
+        <Card className="border-border bg-card">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm font-medium">XHS Post Performance</CardTitle>
+            <CardDescription className="text-xs">Ranked by saves · Chinese-market engagement</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-2">
+              {[
+                { title: "介绍 Flogen AI — WhatsApp AI 助理",          date: "17 Mar",  likes: 412, comments: 34, saves: 128, type: "Post"     },
+                { title: "AI 助理帮你管WhatsApp客户 — 3个实用方法",    date: "23 Mar",  likes: 387, comments: 29, saves: 105, type: "Post"     },
+                { title: "中小企业最大痛点：回复太慢、失去客户",        date: "23 Mar",  likes: 298, comments: 41, saves:  91, type: "Post"     },
+                { title: "Flogen AI 真实演示 — 看看 WhatsApp AI 如何工作", date: "28 Mar", likes: 263, comments: 19, saves:  74, type: "Video"    },
+                { title: "四月特辑：不同行业如何使用AI助理",            date: "10 Apr",  likes: 201, comments: 15, saves:  48, type: "Carousel" },
+              ].map((post, i) => (
+                <div key={i} className="flex items-center gap-3 rounded-lg border border-zinc-800 bg-zinc-900/40 px-3 py-2.5">
+                  <span className="text-[11px] font-bold text-zinc-600 w-5 shrink-0">#{i + 1}</span>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-medium text-zinc-200 truncate">{post.title}</p>
+                    <p className="text-[10px] text-zinc-500">{post.date} · {post.type}</p>
+                  </div>
+                  <div className="hidden sm:flex items-center gap-4 text-[11px] text-zinc-400 shrink-0 tabular-nums">
+                    <span>❤ {post.likes}</span>
+                    <span>💬 {post.comments}</span>
+                    <span className="text-amber-400 font-medium">🔖 {post.saves}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
       {/* 9E: Last refreshed */}
       {lastRefreshed && (
         <p className="text-[11px] text-zinc-700 text-right pt-2">Last refreshed: {lastRefreshed}</p>

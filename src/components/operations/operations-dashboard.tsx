@@ -44,6 +44,7 @@ type KCol        = "today" | "week" | "backlog" | "done";
 type KTag        = "Flogen AI" | "JCI" | "Personal";
 type KPriority   = "high" | "medium" | "low";
 type PStage      = "lead" | "contacted" | "demo" | "negotiation" | "closed";
+type LeadSource  = "IG DM" | "WhatsApp" | "Cold List" | "Referral" | "Other";
 type PostPlat    = "instagram" | "xiaohongshu";
 type PostType    = "Reel" | "Carousel" | "Static" | "XHS Post" | "Story";
 type PostStatus  = "Draft" | "Scheduled" | "Posted";
@@ -52,7 +53,8 @@ type PlatFilter  = "all" | "instagram" | "xiaohongshu" | "both";
 type TrendCat    = "AI" | "WhatsApp" | "SME" | "Social";
 
 interface KCard  { id: number; title: string; tag: KTag; }
-interface Deal   { id: number; name: string; industry: string; stage: PStage; lastContact: string | null; value: string; nextAction: string; probability?: number; }
+interface Deal   { id: number; name: string; industry: string; stage: PStage; lastContact: string | null; value: string; nextAction: string; probability?: number; source?: LeadSource; }
+type OutreachEntry = { id: number; date: string; note: string };
 interface CalPost{ id: number; date: string; platform: PostPlat; type: PostType; topic: string; caption: string; status: PostStatus; pillar?: PostPillar; }
 interface Trend  { id: number; title: string; category: TrendCat; description: string; relevance: string; }
 type ScriptType = "Content Plan" | "Script" | "Pitch" | "Trend" | "Caption" | "Reel Script" | "DM Template" | "Other";
@@ -221,10 +223,10 @@ const INIT_KANBAN: Record<KCol, KCard[]> = {
 };
 
 const INIT_DEALS: Deal[] = [
-  { id: 4, name: "Makan House PJ",               industry: "F&B",          stage: "closed",      lastContact: "2026-03-15", value: "RM 399/mo",            nextAction: "Monthly check-in — confirm bot performance & upsell Growth plan", probability: 100 },
-  { id: 1, name: "The Great Haus Sdn Bhd",       industry: "Real Estate",  stage: "negotiation", lastContact: "2026-03-20", value: "RM 399–899/mo",       nextAction: "Follow up post-pilot — confirm package tier & sign-off",          probability: 75 },
-  { id: 2, name: "Devin (Property Agent Leader)", industry: "Real Estate",  stage: "lead",        lastContact: null,         value: "TBD",                 nextAction: "Curiosity-first WhatsApp outreach — no pitch yet, ask questions", probability: 10 },
-  { id: 3, name: "Beauty & Wellness Cold List",   industry: "Hair & Beauty",stage: "lead",        lastContact: null,         value: "RM 399/mo × 61 leads",nextAction: "Start with top 5 Klang Valley hair salons — personalised DMs",  probability: 10 },
+  { id: 4, name: "Makan House PJ",               industry: "F&B",          stage: "closed",      lastContact: "2026-03-15", value: "RM 399/mo",            nextAction: "Monthly check-in — confirm bot performance & upsell Growth plan", probability: 100, source: "Referral"   },
+  { id: 1, name: "The Great Haus Sdn Bhd",       industry: "Real Estate",  stage: "negotiation", lastContact: "2026-03-20", value: "RM 399–899/mo",       nextAction: "Follow up post-pilot — confirm package tier & sign-off",          probability: 75,  source: "IG DM"      },
+  { id: 2, name: "Devin (Property Agent Leader)", industry: "Real Estate",  stage: "lead",        lastContact: null,         value: "TBD",                 nextAction: "Curiosity-first WhatsApp outreach — no pitch yet, ask questions", probability: 10,  source: "WhatsApp"   },
+  { id: 3, name: "Beauty & Wellness Cold List",   industry: "Hair & Beauty",stage: "lead",        lastContact: null,         value: "RM 399/mo × 61 leads",nextAction: "Start with top 5 Klang Valley hair salons — personalised DMs",  probability: 10,  source: "Cold List"  },
 ];
 
 const INIT_POSTS: CalPost[] = [
@@ -248,6 +250,8 @@ const TAG_S: Record<KTag, { bg: string; color: string }> = {
   "JCI":       { bg: "rgba(96,165,250,.1)",         color: C.blue    },
   "Personal":  { bg: "rgba(251,146,60,.1)",         color: C.orange  },
 };
+const LEAD_SOURCES: LeadSource[] = ["IG DM", "WhatsApp", "Cold List", "Referral", "Other"];
+const SOURCE_COLOR: Record<LeadSource, string> = { "IG DM": C.orange, "WhatsApp": "#25d366", "Cold List": C.blue, "Referral": C.accent, "Other": C.t2 };
 const STAGE_ORDER: PStage[] = ["lead","contacted","demo","negotiation","closed"];
 const STAGE_LABEL: Record<PStage, string> = { lead: "Lead", contacted: "Contacted", demo: "Demo Sent", negotiation: "Negotiation", closed: "Closed" };
 const STAGE_COLOR: Record<PStage, string> = { lead: C.t2, contacted: C.blue, demo: C.purple, negotiation: C.yellow, closed: C.accent };
@@ -626,6 +630,70 @@ function AddKCard({ onAdd }: { onAdd: (t: string, tag: KTag) => void }) {
   );
 }
 
+// ── Week In Review ────────────────────────────────────────────────────────────
+function WeekInReview({ board }: { board: Record<KCol, KCard[]> }) {
+  const [open, setOpen] = useState(false);
+  const today = new Date();
+  const isFriday = today.getDay() === 5;
+  const weekIsos = new Set(getWeekDates(0).map(isoDate));
+
+  const stats = (() => {
+    try {
+      const deals: Deal[]    = JSON.parse(localStorage.getItem("flogen_pipeline") || "null") ?? INIT_DEALS;
+      const posts: CalPost[] = JSON.parse(localStorage.getItem("flogen_calendar") || "null") ?? INIT_POSTS;
+      const leadsContacted   = deals.filter(d => d.lastContact && weekIsos.has(d.lastContact)).length;
+      const postsPublished   = posts.filter(p => weekIsos.has(p.date) && p.status === "Posted").length;
+      const dealsInNegotiation = deals.filter(d => d.stage === "negotiation").length;
+      const tasksDone        = board.done.length;
+      return { leadsContacted, postsPublished, dealsInNegotiation, tasksDone };
+    } catch {
+      return { leadsContacted: 0, postsPublished: 0, dealsInNegotiation: 0, tasksDone: 0 };
+    }
+  })();
+
+  const weekLabel = (() => {
+    const dates = getWeekDates(0);
+    return `${dates[0].toLocaleDateString("en-MY",{month:"short",day:"numeric"})} – ${dates[6].toLocaleDateString("en-MY",{month:"short",day:"numeric",year:"numeric"})}`;
+  })();
+
+  return (
+    <div style={{ background: isFriday ? "rgba(187,240,136,.05)" : C.s, border: `1px solid ${isFriday ? C.aBd : C.border}`, borderRadius: C.r, marginTop: 14, overflow: "hidden" }}>
+      <button onClick={() => setOpen(o => !o)}
+        style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 16px", background: "transparent", border: "none", cursor: "pointer", color: C.text }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <BarChart3 size={13} color={isFriday ? C.accent : C.t2} />
+          <span style={{ fontSize: 12.5, fontWeight: 600, color: isFriday ? C.accent : C.text }}>Week in Review</span>
+          <span style={{ fontSize: 11, color: C.t3 }}>{weekLabel}</span>
+          {isFriday && <span style={{ fontSize: 10, background: C.aBg, border: `1px solid ${C.aBd}`, color: C.accent, padding: "1px 6px", borderRadius: 4, fontWeight: 600 }}>Friday wrap-up</span>}
+        </div>
+        {open ? <ChevronLeft size={13} color={C.t3} style={{ transform: "rotate(-90deg)" }} /> : <ChevronRight size={13} color={C.t3} style={{ transform: "rotate(90deg)" }} />}
+      </button>
+      {open && (
+        <div style={{ padding: "0 16px 14px", borderTop: `1px solid ${C.border}` }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(130px,1fr))", gap: 8, marginTop: 12 }}>
+            {[
+              { label: "Posts published",       value: stats.postsPublished,     color: C.accent, goal: 2 },
+              { label: "Leads contacted",        value: stats.leadsContacted,     color: C.blue,   goal: 3 },
+              { label: "Deals in negotiation",   value: stats.dealsInNegotiation, color: C.yellow, goal: null },
+              { label: "Tasks completed",        value: stats.tasksDone,          color: C.purple, goal: null },
+            ].map(s => (
+              <div key={s.label} style={{ background: C.s2, border: `1px solid ${C.border}`, borderRadius: C.r2, padding: "10px 12px" }}>
+                <p style={{ fontSize: 22, fontWeight: 700, color: s.color, margin: 0, lineHeight: 1 }}>
+                  {s.value}{s.goal ? <span style={{ fontSize: 13, color: C.t3, fontWeight: 400 }}>/{s.goal}</span> : ""}
+                </p>
+                <p style={{ fontSize: 10.5, color: C.t3, margin: "4px 0 0" }}>{s.label}</p>
+              </div>
+            ))}
+          </div>
+          <p style={{ fontSize: 11, color: C.t3, margin: "10px 0 0", fontStyle: "italic" }}>
+            Auto-generated · Data from Pipeline & Calendar tabs
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function KanbanSection({ onGoToPipeline }: { onGoToPipeline: (dealId: number) => void }) {
   const [board, setBoard]         = useLocal<Record<KCol, KCard[]>>("flogen_kanban", INIT_KANBAN);
   const [priorities, setPriorities] = useLocal<Record<number, KPriority>>("flogen_kanban_priorities", PRIORITY_DEFAULTS);
@@ -843,6 +911,9 @@ function KanbanSection({ onGoToPipeline }: { onGoToPipeline: (dealId: number) =>
           onSetNotes={n => setKanbanNotes(prev => ({ ...prev, [syncedSelected.card.id]: n }))}
           onGoToPipeline={onGoToPipeline} />
       )}
+
+      {/* Week in Review */}
+      <WeekInReview board={board} />
     </div>
   );
 }
@@ -990,9 +1061,19 @@ function convRate(from: number, to: number): { label: string; isZero: boolean } 
 // Deal Detail Slide-Over
 function DealSlideOver({ deal, onClose, onEdit }: { deal: Deal; onClose: () => void; onEdit: (f: Partial<Deal>) => void }) {
   const [notes, setNotes] = useLocal<Record<number, string>>("flogen_pipeline_notes", {});
-  const noteVal = notes[deal.id] ?? "";
-  const stale = staleStatus(deal.lastContact);
+  const [outreach, setOutreach] = useLocal<Record<number, OutreachEntry[]>>("flogen_outreach_log", {});
+  const [newEntry, setNewEntry] = useState("");
+  const noteVal  = notes[deal.id] ?? "";
+  const dealLog  = outreach[deal.id] ?? [];
+  const stale    = staleStatus(deal.lastContact);
   const indColor = INDUSTRY_COLOR[deal.industry] ?? C.t2;
+
+  function addOutreachEntry() {
+    if (!newEntry.trim()) return;
+    const entry: OutreachEntry = { id: Date.now(), date: isoDate(new Date()), note: newEntry.trim() };
+    setOutreach(prev => ({ ...prev, [deal.id]: [entry, ...(prev[deal.id] ?? [])] }));
+    setNewEntry("");
+  }
 
   return (
     <>
@@ -1045,6 +1126,42 @@ function DealSlideOver({ deal, onClose, onEdit }: { deal: Deal; onClose: () => v
             <label style={{ fontSize: 11, color: C.t2, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", display: "block", marginBottom: 5 }}>Next Action</label>
             <input value={deal.nextAction} onChange={e => onEdit({ nextAction: e.target.value })}
               style={{ width: "100%", fontSize: 12.5, color: C.text, background: C.s2, border: `1px solid ${C.border}`, borderRadius: C.r2, padding: "6px 10px", boxSizing: "border-box" }} />
+          </div>
+
+          {/* Lead source */}
+          <div>
+            <label style={{ fontSize: 11, color: C.t2, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", display: "block", marginBottom: 5 }}>Lead Source</label>
+            <select value={deal.source ?? ""} onChange={e => onEdit({ source: (e.target.value as LeadSource) || undefined })}
+              style={{ background: C.s2, border: `1px solid ${C.border}`, color: deal.source ? (SOURCE_COLOR[deal.source] ?? C.text) : C.t3, fontSize: 12.5, padding: "6px 10px", borderRadius: C.r2, outline: "none", width: "100%" }}>
+              <option value="">Unknown source</option>
+              {LEAD_SOURCES.map(s => <option key={s} value={s}>{s}</option>)}
+            </select>
+          </div>
+
+          {/* Outreach log */}
+          <div>
+            <label style={{ fontSize: 11, color: C.t2, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", display: "block", marginBottom: 5 }}>Outreach Log</label>
+            <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
+              <input value={newEntry} onChange={e => setNewEntry(e.target.value)}
+                onKeyDown={e => { if (e.key === "Enter") addOutreachEntry(); }}
+                placeholder="What did you say or send?"
+                style={{ flex: 1, fontSize: 12, color: C.text, background: C.s2, border: `1px solid ${C.border}`, borderRadius: C.r2, padding: "5px 9px", outline: "none", fontFamily: "inherit" }} />
+              <button onClick={addOutreachEntry}
+                style={{ fontSize: 11.5, color: C.accent, background: C.aBg, border: `1px solid ${C.aBd}`, borderRadius: C.r2, padding: "5px 12px", cursor: "pointer", whiteSpace: "nowrap", fontFamily: "inherit" }}>
+                + Log
+              </button>
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 0, maxHeight: 160, overflowY: "auto" }}>
+              {dealLog.length === 0 && (
+                <p style={{ fontSize: 11.5, color: C.t3, margin: 0, fontStyle: "italic" }}>No outreach logged yet.</p>
+              )}
+              {dealLog.map((entry, i) => (
+                <div key={entry.id} style={{ display: "flex", gap: 8, padding: "7px 0", borderBottom: i < dealLog.length - 1 ? `1px solid ${C.border}` : "none" }}>
+                  <span style={{ fontSize: 10.5, color: C.t3, flexShrink: 0, whiteSpace: "nowrap", marginTop: 1 }}>{entry.date}</span>
+                  <span style={{ fontSize: 12, color: C.t2, lineHeight: 1.5 }}>{entry.note}</span>
+                </div>
+              ))}
+            </div>
           </div>
 
           {/* Notes */}
@@ -1129,9 +1246,10 @@ function DealCard({ deal, onAdvance, onDelete, onEdit, onOpen, reminder, onSetRe
         </div>
       )}
 
-      {/* Industry + date chips */}
+      {/* Industry + source + date chips */}
       <div style={{ display: "flex", gap: 5, flexWrap: "wrap", marginBottom: 5 }}>
         <Chip label={deal.industry} bg={`${indColor}18`} color={indColor} />
+        {deal.source && <Chip label={`via ${deal.source}`} bg={`${SOURCE_COLOR[deal.source]}18`} color={SOURCE_COLOR[deal.source]} />}
         <Chip label={daysAgo(deal.lastContact)} bg={C.s3} color={C.t2} />
       </div>
 
@@ -1595,6 +1713,45 @@ function CalendarSection({ onPlannerPrefill, prefillPost }: {
         </div>
       </div>
 
+      {/* Content Pillar Goal Tracker — weekly targets */}
+      {(() => {
+        const WEEKLY_TARGETS: Partial<Record<PostPillar, number>> = { "Pain Point": 2, "Proof/Social": 1, "Education": 1, "Brand": 1 };
+        const weekIsos = new Set(getWeekDates(0).map(isoDate));
+        const weekCounts = PILLARS.reduce((acc, p) => ({
+          ...acc, [p]: posts.filter(x => x.pillar === p && weekIsos.has(x.date)).length,
+        }), {} as Record<PostPillar, number>);
+        const trackedPillars = PILLARS.filter(p => WEEKLY_TARGETS[p] !== undefined);
+        return (
+          <div style={{ background: C.s, border: `1px solid ${C.border}`, borderRadius: C.r, padding: "14px 18px" }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+              <p style={{ fontSize: 11, fontWeight: 600, color: C.t3, letterSpacing: "0.07em", textTransform: "uppercase", margin: 0 }}>Weekly Pillar Goals</p>
+              <span style={{ fontSize: 10.5, color: C.t3 }}>Current week</span>
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {trackedPillars.map(p => {
+                const target = WEEKLY_TARGETS[p]!;
+                const count  = weekCounts[p];
+                const hit    = count >= target;
+                const pct    = Math.min(100, Math.round((count / target) * 100));
+                const color  = PILLAR_META[p].color;
+                return (
+                  <div key={p}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                      <span style={{ fontSize: 11.5, color: hit ? color : C.t2, flex: 1 }}>{p}</span>
+                      <span style={{ fontSize: 11, fontWeight: 600, color: hit ? color : C.t3 }}>{count}/{target}</span>
+                      {hit && <span style={{ fontSize: 10, background: `${color}18`, color, padding: "1px 5px", borderRadius: 3, fontWeight: 700 }}>✓ Done</span>}
+                    </div>
+                    <div style={{ height: 5, background: C.s3, borderRadius: 3, overflow: "hidden" }}>
+                      <div style={{ height: "100%", width: `${pct}%`, background: hit ? color : `${color}99`, borderRadius: 3, transition: "width .3s" }} />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })()}
+
       {/* 3E: Copy caption toast */}
       {copyToast && (
         <div style={{ position: "fixed", bottom: 24, left: "50%", transform: "translateX(-50%)", background: C.s2, border: `1px solid ${C.aBd}`, borderRadius: C.r, padding: "10px 20px", color: C.accent, fontSize: 13, fontWeight: 500, zIndex: 100, display: "flex", alignItems: "center", gap: 8, boxShadow: "0 4px 20px rgba(0,0,0,.4)", whiteSpace: "nowrap" }}>
@@ -2007,6 +2164,8 @@ const TYPE_COLOR: Record<string, string> = {
 const SCRIPT_TYPES: ScriptType[] = ["Caption", "Reel Script", "DM Template", "Pitch", "Content Plan", "Script", "Trend", "Other"];
 const SCRIPT_PLATFORMS = ["Instagram", "XHS", "WhatsApp", "Both"] as const;
 const BLANK_FORM = { title: "", type: "Caption" as ScriptType, platform: "Instagram", content: "", date: "" };
+type ABTest = { id: number; title: string; hookA: string; hookB: string; votesA: number; votesB: number; createdAt: string };
+const BLANK_AB: Omit<ABTest, "id" | "votesA" | "votesB" | "createdAt"> = { title: "", hookA: "", hookB: "" };
 
 function ScriptsLibrary({
   scripts, onAdd, onUpdate, onDelete,
@@ -2026,6 +2185,11 @@ function ScriptsLibrary({
   const [deleteTarget, setDeleteTarget] = useState<SavedScript | null>(null);
   const [copyToast,  setCopyToast]  = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<number | null>(null);
+  // A/B Hook Tester
+  const [abTests, setAbTests]       = useLocal<ABTest[]>("flogen_ab_tests", []);
+  const [showABModal, setShowABModal] = useState(false);
+  const [abForm, setAbForm]         = useState(BLANK_AB);
+  const [abOpen, setAbOpen]         = useState(true);
 
   // Filter + sort
   const filtered = (() => {
@@ -2198,6 +2362,111 @@ function ScriptsLibrary({
           );
         })}
       </div>
+
+      {/* ── A/B Hook Tester ── */}
+      <div style={{ marginTop: 24, border: `1px solid ${C.border}`, borderRadius: C.r, overflow: "hidden" }}>
+        <button onClick={() => setAbOpen(o => !o)}
+          style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 16px", background: C.s, border: "none", cursor: "pointer", color: C.text }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
+            <Zap size={12} color={C.accent} />
+            <span style={{ fontSize: 12.5, fontWeight: 600, color: C.text }}>A/B Hook Tester</span>
+            {abTests.length > 0 && <span style={{ fontSize: 10.5, color: C.t3 }}>{abTests.length} test{abTests.length !== 1 ? "s" : ""}</span>}
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <button onClick={e => { e.stopPropagation(); setAbForm(BLANK_AB); setShowABModal(true); }}
+              style={{ fontSize: 11, color: C.accent, background: C.aBg, border: `1px solid ${C.aBd}`, borderRadius: C.r2, padding: "3px 10px", cursor: "pointer" }}>
+              + New Test
+            </button>
+            {abOpen ? <ChevronLeft size={13} color={C.t3} style={{ transform: "rotate(-90deg)" }} /> : <ChevronRight size={13} color={C.t3} style={{ transform: "rotate(90deg)" }} />}
+          </div>
+        </button>
+        {abOpen && (
+          <div style={{ padding: "0 14px 14px", background: C.bg, borderTop: `1px solid ${C.border}` }}>
+            {abTests.length === 0 && (
+              <p style={{ fontSize: 12, color: C.t3, margin: "14px 0", textAlign: "center" }}>No A/B tests yet. Write 2 hook variants and track which resonates more.</p>
+            )}
+            {abTests.map(test => {
+              const total = test.votesA + test.votesB;
+              const pctA  = total > 0 ? Math.round((test.votesA / total) * 100) : 50;
+              const pctB  = 100 - pctA;
+              const winnerA = total > 0 && test.votesA > test.votesB;
+              const winnerB = total > 0 && test.votesB > test.votesA;
+              return (
+                <div key={test.id} style={{ background: C.s, border: `1px solid ${C.border}`, borderRadius: C.r, padding: "12px 14px", marginTop: 10 }}>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+                    <span style={{ fontSize: 12.5, fontWeight: 600, color: C.text }}>{test.title || "Untitled test"}</span>
+                    <div style={{ display: "flex", gap: 6 }}>
+                      <span style={{ fontSize: 10.5, color: C.t3 }}>{new Date(test.createdAt).toLocaleDateString("en-MY",{day:"numeric",month:"short"})}</span>
+                      <button onClick={() => setAbTests(prev => prev.filter(t => t.id !== test.id))}
+                        style={{ background: "none", border: "none", color: C.t3, cursor: "pointer", display: "flex" }}><X size={12} /></button>
+                    </div>
+                  </div>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                    {[
+                      { label: "Hook A", text: test.hookA, votes: test.votesA, pct: pctA, winner: winnerA, onVote: () => setAbTests(prev => prev.map(t => t.id === test.id ? { ...t, votesA: t.votesA + 1 } : t)) },
+                      { label: "Hook B", text: test.hookB, votes: test.votesB, pct: pctB, winner: winnerB, onVote: () => setAbTests(prev => prev.map(t => t.id === test.id ? { ...t, votesB: t.votesB + 1 } : t)) },
+                    ].map(side => (
+                      <div key={side.label} style={{ background: side.winner ? "rgba(187,240,136,.06)" : C.s2, border: `1px solid ${side.winner ? C.aBd : C.border}`, borderRadius: C.r2, padding: "10px 12px" }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 5, marginBottom: 6 }}>
+                          <span style={{ fontSize: 10, fontWeight: 700, color: side.winner ? C.accent : C.t2, background: side.winner ? C.aBg : C.s3, padding: "1px 6px", borderRadius: 3 }}>
+                            {side.label}{side.winner ? " 🏆" : ""}
+                          </span>
+                          <span style={{ fontSize: 11, color: C.t2, marginLeft: "auto" }}>{side.pct}%</span>
+                        </div>
+                        <p style={{ fontSize: 12, color: C.cream, margin: "0 0 8px", lineHeight: 1.5 }}>{side.text}</p>
+                        <div style={{ height: 4, background: C.s3, borderRadius: 2, overflow: "hidden", marginBottom: 8 }}>
+                          <div style={{ height: "100%", width: `${side.pct}%`, background: side.winner ? C.accent : C.blue, borderRadius: 2, transition: "width .3s" }} />
+                        </div>
+                        <button onClick={side.onVote}
+                          style={{ display: "flex", alignItems: "center", gap: 4, width: "100%", justifyContent: "center", background: "transparent", border: `1px solid ${C.borderHi}`, color: C.t2, fontSize: 11.5, padding: "4px 8px", borderRadius: C.r2, cursor: "pointer" }}
+                          onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = C.aBd; (e.currentTarget as HTMLElement).style.color = C.accent; }}
+                          onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = C.borderHi; (e.currentTarget as HTMLElement).style.color = C.t2; }}>
+                          👍 {side.votes} save{side.votes !== 1 ? "s" : ""}
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* ── A/B Modal ── */}
+      {showABModal && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.6)", zIndex: 200, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}
+          onClick={e => { if (e.target === e.currentTarget) setShowABModal(false); }}>
+          <div style={{ background: C.bg, border: `1px solid ${C.borderHi}`, borderRadius: C.r, width: "100%", maxWidth: 500, padding: 24 }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 18 }}>
+              <span style={{ fontSize: 14, fontWeight: 700, color: C.text }}>New A/B Hook Test</span>
+              <button onClick={() => setShowABModal(false)} style={{ background: "none", border: "none", color: C.t3, cursor: "pointer", display: "flex" }}><X size={15} /></button>
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              <div>
+                <label style={{ fontSize: 11.5, color: C.t2, display: "block", marginBottom: 4 }}>Test Name</label>
+                <input value={abForm.title} onChange={e => setAbForm(f => ({ ...f, title: e.target.value }))} placeholder="e.g. Property Reel Hook Test"
+                  style={{ ...inp }} />
+              </div>
+              <div>
+                <label style={{ fontSize: 11.5, color: C.t2, display: "block", marginBottom: 4 }}>Hook A</label>
+                <textarea value={abForm.hookA} onChange={e => setAbForm(f => ({ ...f, hookA: e.target.value }))} placeholder="First hook variant…" rows={3}
+                  style={{ ...inp, resize: "none" }} />
+              </div>
+              <div>
+                <label style={{ fontSize: 11.5, color: C.t2, display: "block", marginBottom: 4 }}>Hook B</label>
+                <textarea value={abForm.hookB} onChange={e => setAbForm(f => ({ ...f, hookB: e.target.value }))} placeholder="Second hook variant…" rows={3}
+                  style={{ ...inp, resize: "none" }} />
+              </div>
+              <Btn accent full onClick={() => {
+                if (!abForm.hookA.trim() || !abForm.hookB.trim()) return;
+                setAbTests(prev => [{ id: uid(), title: abForm.title, hookA: abForm.hookA, hookB: abForm.hookB, votesA: 0, votesB: 0, createdAt: new Date().toISOString() }, ...prev]);
+                setShowABModal(false);
+              }}>Create Test</Btn>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── New/Edit Modal ── */}
       {showModal && (

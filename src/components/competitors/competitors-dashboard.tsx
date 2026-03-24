@@ -1,6 +1,23 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useCallback } from "react";
+
+// ── Lightweight localStorage persistence hook ─────────────────────────────────
+function useLocal<T>(key: string, init: T): [T, (v: T | ((prev: T) => T)) => void] {
+  const [st, setSt] = useState<T>(() => {
+    if (typeof window === "undefined") return init;
+    try { const s = localStorage.getItem(key); return s ? JSON.parse(s) : init; }
+    catch { return init; }
+  });
+  const set = useCallback((v: T | ((prev: T) => T)) => {
+    setSt(prev => {
+      const next = typeof v === "function" ? (v as (p: T) => T)(prev) : v;
+      localStorage.setItem(key, JSON.stringify(next));
+      return next;
+    });
+  }, [key]);
+  return [st, set];
+}
 import { useRouter } from "next/navigation";
 import { formatDistanceToNow } from "date-fns";
 import {
@@ -108,7 +125,7 @@ function ColHeader({
 // ── Main dashboard ────────────────────────────────────────────────────────────
 export function CompetitorsDashboard() {
   const router = useRouter();
-  const [competitors, setCompetitors] = useState<Competitor[]>(SEED);
+  const [competitors, setCompetitors] = useLocal<Competitor[]>("flogen_competitors", SEED);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [query, setQuery] = useState("");
