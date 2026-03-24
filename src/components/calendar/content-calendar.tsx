@@ -77,6 +77,9 @@ function PostChip({
           style={{ backgroundColor: `color-mix(in srgb, ${pm.chip.replace("bg-", "")} 80%, white)` }}
         />
         <span className="truncate text-zinc-200">{post.title}</span>
+        {post.type === "story" && (
+          <span className="shrink-0 rounded px-1 text-[9px] font-bold" style={{ background: "rgba(249,115,22,.18)", color: "#fb923c", border: "1px solid rgba(249,115,22,.3)" }}>24h</span>
+        )}
         {isDraft && (
           <span className="ml-auto shrink-0 text-[9px] text-zinc-500">draft</span>
         )}
@@ -181,7 +184,9 @@ function ListRow({
       </div>
 
       {/* Type */}
-      <span className="hidden sm:block text-[11px] text-zinc-500 capitalize shrink-0">{post.type}</span>
+      <span className="hidden sm:block text-[11px] text-zinc-500 capitalize shrink-0">
+        {post.type}{post.type === "story" ? " · 24h" : ""}
+      </span>
 
       {/* Date + time */}
       <span className="hidden md:block text-[11px] text-zinc-400 shrink-0 tabular-nums">

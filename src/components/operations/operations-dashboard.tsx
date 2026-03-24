@@ -45,7 +45,7 @@ type KTag        = "Flogen AI" | "JCI" | "Personal";
 type KPriority   = "high" | "medium" | "low";
 type PStage      = "lead" | "contacted" | "demo" | "negotiation" | "closed";
 type PostPlat    = "instagram" | "xiaohongshu";
-type PostType    = "Reel" | "Carousel" | "Static" | "XHS Post";
+type PostType    = "Reel" | "Carousel" | "Static" | "XHS Post" | "Story";
 type PostStatus  = "Draft" | "Scheduled" | "Posted";
 type PostPillar  = "Pain Point" | "Proof/Social" | "Education" | "Brand" | "Promotion";
 type PlatFilter  = "all" | "instagram" | "xiaohongshu" | "both";
@@ -221,6 +221,7 @@ const INIT_KANBAN: Record<KCol, KCard[]> = {
 };
 
 const INIT_DEALS: Deal[] = [
+  { id: 4, name: "Makan House PJ",               industry: "F&B",          stage: "closed",      lastContact: "2026-03-15", value: "RM 399/mo",            nextAction: "Monthly check-in — confirm bot performance & upsell Growth plan", probability: 100 },
   { id: 1, name: "The Great Haus Sdn Bhd",       industry: "Real Estate",  stage: "negotiation", lastContact: "2026-03-20", value: "RM 399–899/mo",       nextAction: "Follow up post-pilot — confirm package tier & sign-off",          probability: 75 },
   { id: 2, name: "Devin (Property Agent Leader)", industry: "Real Estate",  stage: "lead",        lastContact: null,         value: "TBD",                 nextAction: "Curiosity-first WhatsApp outreach — no pitch yet, ask questions", probability: 10 },
   { id: 3, name: "Beauty & Wellness Cold List",   industry: "Hair & Beauty",stage: "lead",        lastContact: null,         value: "RM 399/mo × 61 leads",nextAction: "Start with top 5 Klang Valley hair salons — personalised DMs",  probability: 10 },
@@ -850,6 +851,123 @@ function KanbanSection({ onGoToPipeline }: { onGoToPipeline: (dealId: number) =>
 // SECTION 2 — PIPELINE
 // ─────────────────────────────────────────────────────────────────────────────
 
+// ── Revenue Tracker widget ──────────────────────────────────────────────────
+function RevenueTracker({ deals }: { deals: Deal[] }) {
+  const MRR_GOAL = 1800;
+  const closedDeals = deals.filter(d => d.stage === "closed");
+  const currentMRR  = closedDeals.reduce((sum, d) => sum + parseRM(d.value), 0);
+  const pct         = Math.min(100, Math.round((currentMRR / MRR_GOAL) * 100));
+  const remaining   = Math.max(0, MRR_GOAL - currentMRR);
+
+  return (
+    <div style={{ background: C.s, border: `1px solid ${currentMRR > 0 ? C.aBd : C.border}`, borderRadius: C.r, padding: "14px 18px", marginBottom: 14 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8, marginBottom: 10 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <TrendingUp size={14} color={C.accent} />
+          <span style={{ fontSize: 13, fontWeight: 700, color: C.text }}>Monthly Recurring Revenue</span>
+        </div>
+        <span style={{ fontSize: 11, color: C.t2 }}>Goal: RM {MRR_GOAL.toLocaleString()}/mo by June 2026</span>
+      </div>
+      <div style={{ display: "flex", alignItems: "flex-end", gap: 14, flexWrap: "wrap", marginBottom: 10 }}>
+        <div style={{ lineHeight: 1 }}>
+          <span style={{ fontSize: 30, fontWeight: 800, color: C.accent }}>RM {currentMRR.toLocaleString()}</span>
+          <span style={{ fontSize: 12, color: C.t2 }}>/mo</span>
+        </div>
+        <div style={{ display: "flex", gap: 5, flexWrap: "wrap", alignItems: "center" }}>
+          {closedDeals.map(d => (
+            <span key={d.id} style={{ fontSize: 10.5, background: C.aBg, border: `1px solid ${C.aBd}`, color: C.accent, padding: "2px 8px", borderRadius: 4, whiteSpace: "nowrap" }}>
+              {d.name.split(" ").slice(0, 2).join(" ")} · {d.value}
+            </span>
+          ))}
+          {closedDeals.length === 0 && <span style={{ fontSize: 11.5, color: C.t3 }}>No paying clients yet — close your first deal!</span>}
+        </div>
+        {remaining > 0 && currentMRR > 0 && (
+          <span style={{ fontSize: 11, color: C.t2, marginLeft: "auto" }}>RM {remaining.toLocaleString()} to goal</span>
+        )}
+      </div>
+      {/* Progress bar */}
+      <div style={{ height: 6, background: C.s3, borderRadius: 3, overflow: "hidden" }}>
+        <div style={{ height: "100%", width: `${pct}%`, background: pct >= 100 ? C.accent : "linear-gradient(90deg, #bbf088, #60efff)", borderRadius: 3, transition: "width .5s ease" }} />
+      </div>
+      <div style={{ display: "flex", justifyContent: "space-between", marginTop: 5 }}>
+        <span style={{ fontSize: 10.5, color: pct >= 100 ? C.accent : C.t3 }}>{pct}% of goal{pct >= 100 ? " 🎉" : ""}</span>
+        <span style={{ fontSize: 10.5, color: C.t3 }}>RM {MRR_GOAL.toLocaleString()}/mo</span>
+      </div>
+    </div>
+  );
+}
+
+// ── Client Onboarding Checklist modal ───────────────────────────────────────
+const ONBOARDING_STEPS = [
+  { label: "Setup WhatsApp number", desc: "Register & verify Business API number" },
+  { label: "Build flows",           desc: "Map out conversation flows & responses" },
+  { label: "Test bot",              desc: "End-to-end QA with real WhatsApp messages" },
+  { label: "Go live",               desc: "Switch bot to production & brief client" },
+];
+
+function OnboardingModal({ deal, onClose }: { deal: Deal; onClose: () => void }) {
+  const [checks, setChecks] = useLocal<Record<string, boolean[]>>("flogen_onboarding_checks", {});
+  const key   = String(deal.id);
+  const steps = checks[key] ?? new Array(ONBOARDING_STEPS.length).fill(false);
+  const done  = steps.filter(Boolean).length;
+
+  function toggle(i: number) {
+    const next = [...steps];
+    next[i] = !next[i];
+    setChecks(prev => ({ ...prev, [key]: next }));
+  }
+
+  return (
+    <>
+      <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.55)", backdropFilter: "blur(3px)", zIndex: 60 }} />
+      <div style={{ position: "fixed", top: "50%", left: "50%", transform: "translate(-50%,-50%)", background: C.s, border: `1px solid ${C.aBd}`, borderRadius: C.r, width: 420, maxWidth: "90vw", padding: 24, zIndex: 70 }}>
+        {/* Header */}
+        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 4 }}>
+          <div>
+            <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 3 }}>
+              <Check size={14} color={C.accent} />
+              <span style={{ fontSize: 14, fontWeight: 700, color: C.text }}>Client Onboarding</span>
+            </div>
+            <p style={{ fontSize: 12, color: C.t2, margin: 0 }}>{deal.name} · {done}/{ONBOARDING_STEPS.length} steps complete</p>
+          </div>
+          <button onClick={onClose} style={{ background: "none", border: "none", color: C.t2, cursor: "pointer", display: "flex", padding: 2 }}><X size={15} /></button>
+        </div>
+
+        {/* Progress bar */}
+        <div style={{ height: 4, background: C.s3, borderRadius: 2, overflow: "hidden", margin: "12px 0 16px" }}>
+          <div style={{ height: "100%", width: `${(done / ONBOARDING_STEPS.length) * 100}%`, background: C.accent, borderRadius: 2, transition: "width .3s" }} />
+        </div>
+
+        {/* Steps */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          {ONBOARDING_STEPS.map((step, i) => {
+            const checked = steps[i] ?? false;
+            return (
+              <button key={i} onClick={() => toggle(i)}
+                style={{ display: "flex", alignItems: "center", gap: 10, background: checked ? "rgba(187,240,136,.06)" : C.s2, border: `1px solid ${checked ? C.aBd : C.border}`, borderRadius: C.r2, padding: "11px 14px", cursor: "pointer", textAlign: "left", width: "100%", transition: "all .12s" }}>
+                <div style={{ width: 19, height: 19, borderRadius: 5, border: `2px solid ${checked ? C.accent : C.borderHi}`, background: checked ? C.accent : "transparent", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, transition: "all .15s" }}>
+                  {checked && <Check size={11} color="#0a0a0a" strokeWidth={3} />}
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <p style={{ fontSize: 13, color: checked ? C.t2 : C.text, textDecoration: checked ? "line-through" : "none", margin: 0, fontWeight: 500 }}>{step.label}</p>
+                  <p style={{ fontSize: 11, color: C.t3, margin: 0 }}>{step.desc}</p>
+                </div>
+              </button>
+            );
+          })}
+        </div>
+
+        {/* All done banner */}
+        {done === ONBOARDING_STEPS.length && (
+          <div style={{ marginTop: 14, background: C.aBg, border: `1px solid ${C.aBd}`, borderRadius: C.r2, padding: "10px 14px" }}>
+            <p style={{ fontSize: 12.5, color: C.accent, fontWeight: 600, margin: 0 }}>🎉 Client fully onboarded! Document this as a case study.</p>
+          </div>
+        )}
+      </div>
+    </>
+  );
+}
+
 function staleStatus(iso: string | null): { label: string; color: string; bg: string } {
   if (!iso) return { label: "No contact", color: C.t3, bg: C.s3 };
   const d = Math.floor((Date.now() - new Date(iso).getTime()) / 86_400_000);
@@ -955,11 +1073,11 @@ function DealSlideOver({ deal, onClose, onEdit }: { deal: Deal; onClose: () => v
   );
 }
 
-function DealCard({ deal, onAdvance, onDelete, onEdit, onOpen, reminder, onSetReminder, highlighted }: {
+function DealCard({ deal, onAdvance, onDelete, onEdit, onOpen, reminder, onSetReminder, highlighted, onOpenOnboarding }: {
   deal: Deal; onAdvance: () => void; onDelete: () => void;
   onEdit: (f: Partial<Deal>) => void; onOpen: () => void;
   reminder?: string; onSetReminder: (date: string | null) => void;
-  highlighted?: boolean;
+  highlighted?: boolean; onOpenOnboarding?: () => void;
 }) {
   const [hov, setHov] = useState(false);
   const [showDatePick, setShowDatePick] = useState(false);
@@ -1043,7 +1161,17 @@ function DealCard({ deal, onAdvance, onDelete, onEdit, onOpen, reminder, onSetRe
           Move to {STAGE_LABEL[nextStage]} <ArrowRight size={11} />
         </button>
       )}
-      {isClosed && <div style={{ display: "flex", alignItems: "center", gap: 5, color: C.accent, fontSize: 12 }}><Check size={13} /> Closed — paid client</div>}
+      {isClosed && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 5, color: C.accent, fontSize: 12 }}><Check size={13} /> Closed — paid client</div>
+          <button onClick={e => { e.stopPropagation(); onOpenOnboarding?.(); }}
+            style={{ display: "flex", alignItems: "center", gap: 4, background: C.aBg, border: `1px solid ${C.aBd}`, color: C.accent, fontSize: 11, padding: "5px 10px", borderRadius: C.r2, cursor: "pointer", width: "100%", justifyContent: "center", transition: "all .12s" }}
+            onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = "rgba(187,240,136,.15)"; }}
+            onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = C.aBg; }}>
+            <Check size={10} /> Onboarding Checklist →
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -1053,6 +1181,7 @@ function PipelineSection({ highlightDealId }: { highlightDealId?: number | null 
   const [reminders, setReminders] = useLocal<Record<number, string>>("flogen_pipeline_reminders", {});
   const [selectedDeal, setSelectedDeal] = useState<Deal | null>(null);
   const [dismissed, setDismissed] = useState<number[]>([]);
+  const [onboardingDeal, setOnboardingDeal] = useState<Deal | null>(null);
   const closedCount = deals.filter(d => d.stage === "closed").length;
   const today = isoDate(new Date());
 
@@ -1089,6 +1218,9 @@ function PipelineSection({ highlightDealId }: { highlightDealId?: number | null 
 
   return (
     <div>
+      {/* Revenue Tracker */}
+      <RevenueTracker deals={deals} />
+
       {/* Overdue reminder banners */}
       {overdueDeals.map(d => (
         <div key={d.id} style={{ background: "rgba(248,113,113,.1)", border: `1px solid rgba(248,113,113,.3)`, borderRadius: C.r, padding: "10px 14px", marginBottom: 10, display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
@@ -1169,6 +1301,7 @@ function PipelineSection({ highlightDealId }: { highlightDealId?: number | null 
                     onOpen={() => setSelectedDeal(d)}
                     reminder={reminders[d.id]}
                     highlighted={highlightDealId === d.id}
+                    onOpenOnboarding={d.stage === "closed" ? () => setOnboardingDeal(d) : undefined}
                     onSetReminder={date => setReminders(prev => {
                       if (!date) { const n = { ...prev }; delete n[d.id]; return n; }
                       return { ...prev, [d.id]: date };
@@ -1195,6 +1328,13 @@ function PipelineSection({ highlightDealId }: { highlightDealId?: number | null 
           deal={deals.find(d => d.id === selectedDeal.id) ?? selectedDeal}
           onClose={() => setSelectedDeal(null)}
           onEdit={f => setDeals(prev => prev.map(x => x.id === selectedDeal.id ? { ...x, ...f } : x))} />
+      )}
+
+      {/* Onboarding checklist modal */}
+      {onboardingDeal && (
+        <OnboardingModal
+          deal={deals.find(d => d.id === onboardingDeal.id) ?? onboardingDeal}
+          onClose={() => setOnboardingDeal(null)} />
       )}
     </div>
   );
@@ -1230,6 +1370,9 @@ function PostCard({ post, onDelete, onCopyCaption }: { post: CalPost; onDelete: 
       <div style={{ display: "flex", alignItems: "center", gap: 5, marginBottom: 4 }}>
         {isIG ? <Instagram size={11} color={C.orange} /> : <Hash size={11} color={C.red} />}
         <span style={{ fontSize: 10.5, fontWeight: 500, color: isIG ? C.orange : C.red }}>{post.type}</span>
+        {post.type === "Story" && (
+          <span style={{ fontSize: 9, fontWeight: 700, background: "rgba(249,115,22,.15)", color: C.orange, padding: "1px 5px", borderRadius: 3, border: "1px solid rgba(249,115,22,.3)" }}>24h</span>
+        )}
         <span style={{ marginLeft: "auto" }}><Chip label={post.status} bg={ps.bg} color={ps.color} /></span>
         {hov && <button onClick={e => { e.stopPropagation(); onDelete(); }} style={{ background: "none", border: "none", color: C.t3, cursor: "pointer", padding: 0, display: "flex" }}><X size={11} /></button>}
       </div>
@@ -1398,7 +1541,7 @@ function CalendarSection({ onPlannerPrefill, prefillPost }: {
                     <option value="instagram">Instagram</option><option value="xiaohongshu">Xiaohongshu</option>
                   </select>
                   <select value={form.type} onChange={e => setForm(f => ({...f, type: e.target.value as PostType}))} style={sel}>
-                    {["Reel","Carousel","Static","XHS Post"].map(t => <option key={t} value={t}>{t}</option>)}
+                    {["Reel","Carousel","Static","Story","XHS Post"].map(t => <option key={t} value={t}>{t}</option>)}
                   </select>
                   <select value={form.status} onChange={e => setForm(f => ({...f, status: e.target.value as PostStatus}))} style={sel}>
                     {["Draft","Scheduled","Posted"].map(s => <option key={s} value={s}>{s}</option>)}
