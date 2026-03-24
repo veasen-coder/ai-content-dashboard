@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import {
   Plus, X, Trash2, Loader2, RefreshCw, Copy, CheckCheck,
   Zap, TrendingUp, CalendarDays, Users, Target, Sparkles,
-  MessageSquare, Send, ArrowRight, GripVertical, Check,
+  MessageSquare, Send, ArrowRight, GripVertical, Check, Search,
   ChevronLeft, ChevronRight, Instagram, BarChart3, Hash, Archive, Bell,
 } from "lucide-react";
 
@@ -54,14 +54,87 @@ interface KCard  { id: number; title: string; tag: KTag; }
 interface Deal   { id: number; name: string; industry: string; stage: PStage; lastContact: string | null; value: string; nextAction: string; probability?: number; }
 interface CalPost{ id: number; date: string; platform: PostPlat; type: PostType; topic: string; caption: string; status: PostStatus; pillar?: PostPillar; }
 interface Trend  { id: number; title: string; category: TrendCat; description: string; relevance: string; }
+type ScriptType = "Content Plan" | "Script" | "Pitch" | "Trend" | "Caption" | "Reel Script" | "DM Template" | "Other";
 interface SavedScript {
   id: number;
   title: string;
   content: string;
-  type: "Content Plan" | "Script" | "Pitch" | "Trend";
+  type: ScriptType;
   savedAt: string;
   platform?: string;
 }
+
+// 7D: Starter templates — seeded on first load (when localStorage is empty)
+const SCRIPT_SEEDS: SavedScript[] = [
+  {
+    id: 1,
+    title: "Hair Salon Cold DM",
+    type: "DM Template",
+    platform: "WhatsApp",
+    savedAt: new Date("2026-03-20").toISOString(),
+    content: `Hey [Name]! 👋
+
+Quick question — how often do your stylists miss WhatsApp messages when they're mid-appointment?
+
+Most salons we talk to lose 3–5 bookings a week just from slow replies after hours.
+
+Curious — is that something you'd want to fix? 😊`,
+  },
+  {
+    id: 2,
+    title: "Property Agent Losing Leads After Hours",
+    type: "Reel Script",
+    platform: "Instagram",
+    savedAt: new Date("2026-03-21").toISOString(),
+    content: `[Hook — 0-3s]
+"This property agent was losing leads every night at 9pm. Here's what changed."
+
+[Problem — 3-10s]
+Visual: phone screen filling with unread messages.
+"Most Malaysian property agents reply to leads the next morning. By then? They've already booked a viewing with someone else."
+
+[Solution — 10-20s]
+"We built them a WhatsApp AI Agent that replies in under 30 seconds. 24/7. No extra staff needed."
+
+[Result — 20-27s]
+"First month: 3× more qualified viewings. Zero missed leads after 9pm."
+
+[CTA — 27-30s]
+"Want this for your agency? Link in bio."`,
+  },
+  {
+    id: 3,
+    title: "Chatbot vs AI Agent",
+    type: "Caption",
+    platform: "Instagram",
+    savedAt: new Date("2026-03-22").toISOString(),
+    content: `🤖 Chatbot vs AI Agent — what's the actual difference?
+
+Most people think they're the same thing. They're not.
+
+A chatbot follows a script.
+An AI Agent thinks.
+
+Here's what that means for your business 👇
+
+Chatbot:
+❌ "Press 1 for booking, press 2 for price"
+❌ Breaks when customer goes off-script
+❌ Frustrates people
+
+AI Agent:
+✅ Understands natural language
+✅ Handles any question, books appointments, qualifies leads
+✅ Feels like talking to a real person — at 3am
+
+The difference? One saves you time.
+The other saves you time AND converts leads.
+
+Which one does your business need? Drop a comment 👇
+
+#WhatsAppAI #AIAgent #MalaysianBusiness #FlogenAI #BusinessAutomation`,
+  },
+];
 
 // ─────────────────────────────────────────────────────────────────────────────
 // UTILS
@@ -1678,42 +1751,283 @@ const TYPE_COLOR: Record<string, string> = {
   "Script":       C.accent,
   "Pitch":        C.orange,
   "Trend":        C.purple,
+  "Caption":      "#06b6d4",
+  "Reel Script":  C.accent,
+  "DM Template":  "#10b981",
+  "Other":        C.t2,
 };
 
-function ScriptsLibrary({ scripts, onDelete }: { scripts: SavedScript[]; onDelete: (id: number) => void }) {
-  if (scripts.length === 0) {
-    return (
-      <div style={{ textAlign: "center", padding: "80px 20px", color: C.t3 }}>
-        <Archive size={32} style={{ margin: "0 auto 12px", display: "block" }} color={C.t3} />
-        <p style={{ margin: "0 0 8px", color: C.t2, fontSize: 14 }}>No saved scripts yet.</p>
-        <p style={{ fontSize: 12.5, color: C.t3 }}>Accept generated content in the Agents tab to save it here.</p>
-      </div>
-    );
+const SCRIPT_TYPES: ScriptType[] = ["Caption", "Reel Script", "DM Template", "Pitch", "Content Plan", "Script", "Trend", "Other"];
+const SCRIPT_PLATFORMS = ["Instagram", "XHS", "WhatsApp", "Both"] as const;
+const BLANK_FORM = { title: "", type: "Caption" as ScriptType, platform: "Instagram", content: "", date: "" };
+
+function ScriptsLibrary({
+  scripts, onAdd, onUpdate, onDelete,
+}: {
+  scripts: SavedScript[];
+  onAdd: (s: Omit<SavedScript, "id">) => void;
+  onUpdate: (s: SavedScript) => void;
+  onDelete: (id: number) => void;
+}) {
+  const [query,      setQuery]      = useState("");
+  const [typeFilter, setTypeFilter] = useState<string>("all");
+  const [platFilter, setPlatFilter] = useState<string>("all");
+  const [sort,       setSort]       = useState<"newest" | "oldest" | "az">("newest");
+  const [showModal,  setShowModal]  = useState(false);
+  const [form,       setForm]       = useState(BLANK_FORM);
+  const [editId,     setEditId]     = useState<number | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<SavedScript | null>(null);
+  const [copyToast,  setCopyToast]  = useState<string | null>(null);
+  const [expandedId, setExpandedId] = useState<number | null>(null);
+
+  // Filter + sort
+  const filtered = (() => {
+    let list = scripts.filter(s => {
+      const q = query.toLowerCase();
+      const matchQ = !q || s.title.toLowerCase().includes(q) || s.content.toLowerCase().includes(q);
+      const matchT = typeFilter === "all" || s.type === typeFilter;
+      const matchP = platFilter === "all" || (s.platform || "").toLowerCase() === platFilter.toLowerCase();
+      return matchQ && matchT && matchP;
+    });
+    if (sort === "newest") list = [...list].sort((a, b) => new Date(b.savedAt).getTime() - new Date(a.savedAt).getTime());
+    else if (sort === "oldest") list = [...list].sort((a, b) => new Date(a.savedAt).getTime() - new Date(b.savedAt).getTime());
+    else list = [...list].sort((a, b) => a.title.localeCompare(b.title));
+    return list;
+  })();
+
+  function openNew() {
+    setForm({ ...BLANK_FORM, date: new Date().toISOString().slice(0, 10) });
+    setEditId(null);
+    setShowModal(true);
   }
 
+  function openEdit(s: SavedScript) {
+    setForm({ title: s.title, type: s.type, platform: s.platform || "Instagram", content: s.content, date: s.savedAt.slice(0, 10) });
+    setEditId(s.id);
+    setShowModal(true);
+  }
+
+  function saveModal() {
+    if (!form.title.trim() || !form.content.trim()) return;
+    const savedAt = form.date ? new Date(form.date).toISOString() : new Date().toISOString();
+    if (editId !== null) {
+      onUpdate({ id: editId, title: form.title, type: form.type, platform: form.platform, content: form.content, savedAt });
+    } else {
+      onAdd({ title: form.title, type: form.type, platform: form.platform, content: form.content, savedAt });
+    }
+    setShowModal(false);
+  }
+
+  function copyScript(s: SavedScript) {
+    navigator.clipboard.writeText(s.content).catch(() => {});
+    setCopyToast(`"${s.title}" copied to clipboard`);
+    setTimeout(() => setCopyToast(null), 2500);
+  }
+
+  const inp: React.CSSProperties = { background: C.s2, border: `1px solid ${C.borderHi}`, color: C.cream, fontSize: 13, padding: "8px 12px", borderRadius: C.r2, outline: "none", width: "100%", fontFamily: "inherit" };
+
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-      <p style={{ fontSize: 12.5, color: C.t2, margin: 0 }}>{scripts.length} saved {scripts.length === 1 ? "script" : "scripts"} — accepted from AI agents</p>
-      {scripts.map(s => (
-        <div key={s.id} style={{ background: C.s, border: `1px solid ${C.border}`, borderRadius: C.r, overflow: "hidden" }}>
-          <div style={{ padding: "10px 16px", borderBottom: `1px solid ${C.border}`, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <span style={{ fontSize: 11, background: `${TYPE_COLOR[s.type] || C.t2}18`, color: TYPE_COLOR[s.type] || C.t2, padding: "2px 8px", borderRadius: 4, fontWeight: 500 }}>{s.type}</span>
-              <span style={{ fontSize: 13, fontWeight: 600, color: C.text }}>{s.title}</span>
-              {s.platform && <span style={{ fontSize: 11, color: C.t3 }}>· {s.platform}</span>}
+    <div style={{ position: "relative" }}>
+      {/* ── Header ── */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 16, flexWrap: "wrap" }}>
+        <div>
+          <p style={{ fontSize: 15, fontWeight: 700, color: C.text, margin: "0 0 2px" }}>Scripts Library</p>
+          <p style={{ fontSize: 12, color: C.t2, margin: 0 }}>{scripts.length} {scripts.length === 1 ? "script" : "scripts"} saved</p>
+        </div>
+        <Btn accent onClick={openNew}><Plus size={13} /> New Script</Btn>
+      </div>
+
+      {/* ── Search + Sort ── */}
+      <div style={{ display: "flex", gap: 8, marginBottom: 10, flexWrap: "wrap", alignItems: "center" }}>
+        <div style={{ position: "relative", flex: 1, minWidth: 180 }}>
+          <Search size={13} color={C.t3} style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", pointerEvents: "none" }} />
+          <input value={query} onChange={e => setQuery(e.target.value)} placeholder="Search title or content…"
+            style={{ ...inp, paddingLeft: 30, fontSize: 12 }} />
+        </div>
+        <select value={sort} onChange={e => setSort(e.target.value as typeof sort)}
+          style={{ ...inp, width: "auto", fontSize: 12, padding: "8px 10px" }}>
+          <option value="newest">Newest</option>
+          <option value="oldest">Oldest</option>
+          <option value="az">A–Z</option>
+        </select>
+      </div>
+
+      {/* ── Filter pills: Type ── */}
+      <div style={{ display: "flex", gap: 5, marginBottom: 6, flexWrap: "wrap" }}>
+        {["all", ...SCRIPT_TYPES].map(t => {
+          const active = typeFilter === t;
+          const col = t === "all" ? C.t2 : (TYPE_COLOR[t] || C.t2);
+          return (
+            <button key={t} onClick={() => setTypeFilter(t)} style={{
+              fontSize: 11, fontWeight: active ? 600 : 400, padding: "3px 10px", borderRadius: 99, cursor: "pointer",
+              border: `1px solid ${active ? col : C.border}`,
+              background: active ? `${col}18` : "transparent",
+              color: active ? col : C.t3, transition: "all .12s",
+            }}>{t === "all" ? "All Types" : t}</button>
+          );
+        })}
+      </div>
+
+      {/* ── Filter pills: Platform ── */}
+      <div style={{ display: "flex", gap: 5, marginBottom: 16, flexWrap: "wrap" }}>
+        {["all", ...SCRIPT_PLATFORMS].map(p => {
+          const active = platFilter === p;
+          return (
+            <button key={p} onClick={() => setPlatFilter(p)} style={{
+              fontSize: 11, fontWeight: active ? 600 : 400, padding: "3px 10px", borderRadius: 99, cursor: "pointer",
+              border: `1px solid ${active ? C.borderHi : C.border}`,
+              background: active ? C.s2 : "transparent",
+              color: active ? C.text : C.t3, transition: "all .12s",
+            }}>{p === "all" ? "All Platforms" : p}</button>
+          );
+        })}
+      </div>
+
+      {/* ── Empty state ── */}
+      {filtered.length === 0 && (
+        <div style={{ textAlign: "center", padding: "60px 20px", color: C.t3 }}>
+          <Archive size={28} style={{ margin: "0 auto 10px", display: "block" }} color={C.t3} />
+          <p style={{ margin: "0 0 6px", color: C.t2, fontSize: 13.5 }}>
+            {scripts.length === 0 ? "No scripts yet" : "No results match your filters"}
+          </p>
+          <p style={{ fontSize: 12, color: C.t3 }}>
+            {scripts.length === 0 ? "Click \"+ New Script\" to create your first, or save content from the Agents tab." : "Try adjusting your search or filters."}
+          </p>
+        </div>
+      )}
+
+      {/* ── Script cards ── */}
+      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+        {filtered.map(s => {
+          const col = TYPE_COLOR[s.type] || C.t2;
+          const expanded = expandedId === s.id;
+          return (
+            <div key={s.id} style={{ background: C.s, border: `1px solid ${C.border}`, borderRadius: C.r, overflow: "hidden" }}>
+              {/* Card header */}
+              <div style={{ padding: "10px 14px", borderBottom: `1px solid ${C.border}`, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 7, minWidth: 0, flex: 1 }}>
+                  <span style={{ fontSize: 10.5, background: `${col}18`, color: col, padding: "2px 7px", borderRadius: 4, fontWeight: 600, flexShrink: 0 }}>{s.type}</span>
+                  {s.platform && <span style={{ fontSize: 10.5, background: C.s2, color: C.t2, padding: "2px 7px", borderRadius: 4, flexShrink: 0 }}>{s.platform}</span>}
+                  <span style={{ fontSize: 13, fontWeight: 600, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.title}</span>
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: 4, flexShrink: 0 }}>
+                  <span style={{ fontSize: 11, color: C.t3, marginRight: 4 }}>
+                    {new Date(s.savedAt).toLocaleDateString("en-MY", { day: "numeric", month: "short", year: "numeric" })}
+                  </span>
+                  {/* Copy */}
+                  <button onClick={() => copyScript(s)} title="Copy content"
+                    style={{ display: "flex", alignItems: "center", gap: 4, background: C.s2, border: `1px solid ${C.border}`, color: C.t2, fontSize: 11, padding: "4px 8px", borderRadius: C.r2, cursor: "pointer", transition: "all .12s" }}
+                    onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = C.accent; (e.currentTarget as HTMLElement).style.borderColor = C.aBd; }}
+                    onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = C.t2; (e.currentTarget as HTMLElement).style.borderColor = C.border; }}>
+                    <Copy size={11} /> Copy
+                  </button>
+                  {/* Edit */}
+                  <button onClick={() => openEdit(s)} title="Edit script"
+                    style={{ display: "flex", alignItems: "center", gap: 4, background: C.s2, border: `1px solid ${C.border}`, color: C.t2, fontSize: 11, padding: "4px 8px", borderRadius: C.r2, cursor: "pointer", transition: "all .12s" }}
+                    onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = C.yellow; (e.currentTarget as HTMLElement).style.borderColor = "rgba(251,191,36,.4)"; }}
+                    onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = C.t2; (e.currentTarget as HTMLElement).style.borderColor = C.border; }}>
+                    <Bell size={11} /> Edit
+                  </button>
+                  {/* Delete */}
+                  <button onClick={() => setDeleteTarget(s)} title="Delete script"
+                    style={{ display: "flex", alignItems: "center", gap: 4, background: C.s2, border: `1px solid ${C.border}`, color: C.t2, fontSize: 11, padding: "4px 8px", borderRadius: C.r2, cursor: "pointer", transition: "all .12s" }}
+                    onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = C.red; (e.currentTarget as HTMLElement).style.borderColor = "rgba(248,113,113,.4)"; }}
+                    onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = C.t2; (e.currentTarget as HTMLElement).style.borderColor = C.border; }}>
+                    <Trash2 size={11} /> Delete
+                  </button>
+                  {/* Expand toggle */}
+                  <button onClick={() => setExpandedId(expanded ? null : s.id)}
+                    style={{ display: "flex", background: "none", border: "none", color: C.t3, cursor: "pointer", padding: 2, transition: "transform .15s", transform: expanded ? "rotate(90deg)" : "rotate(0deg)" }}>
+                    <ChevronRight size={14} />
+                  </button>
+                </div>
+              </div>
+              {/* Content preview / expanded */}
+              <pre style={{ margin: 0, padding: expanded ? "14px 16px" : "10px 16px", color: C.cream, fontSize: 12, lineHeight: 1.8, fontFamily: "inherit", whiteSpace: "pre-wrap", maxHeight: expanded ? 500 : 80, overflowY: expanded ? "auto" : "hidden", position: "relative", transition: "max-height .2s" }}>
+                {s.content}
+                {!expanded && <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, height: 36, background: `linear-gradient(transparent, ${C.s})`, pointerEvents: "none" }} />}
+              </pre>
             </div>
-            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-              <span style={{ fontSize: 11, color: C.t3 }}>{new Date(s.savedAt).toLocaleDateString("en-MY", { day: "numeric", month: "short", year: "numeric" })}</span>
-              <button onClick={() => onDelete(s.id)} style={{ background: "none", border: "none", color: C.t3, cursor: "pointer", padding: "2px", display: "flex" }}
-                onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = C.red; }}
-                onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = C.t3; }}>
-                <X size={13} />
+          );
+        })}
+      </div>
+
+      {/* ── New/Edit Modal ── */}
+      {showModal && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.6)", zIndex: 200, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}
+          onClick={e => { if (e.target === e.currentTarget) setShowModal(false); }}>
+          <div style={{ background: C.bg, border: `1px solid ${C.borderHi}`, borderRadius: C.r, width: "100%", maxWidth: 560, maxHeight: "90vh", overflowY: "auto", padding: 24 }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20 }}>
+              <p style={{ fontSize: 15, fontWeight: 700, color: C.text, margin: 0 }}>{editId ? "Edit Script" : "New Script"}</p>
+              <button onClick={() => setShowModal(false)} style={{ background: "none", border: "none", color: C.t3, cursor: "pointer", padding: 2, display: "flex" }}><X size={16} /></button>
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              <div>
+                <label style={{ fontSize: 11.5, color: C.t2, display: "block", marginBottom: 4 }}>Title *</label>
+                <input value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))} placeholder="e.g. Hair Salon Cold DM" style={inp} />
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                <div>
+                  <label style={{ fontSize: 11.5, color: C.t2, display: "block", marginBottom: 4 }}>Type *</label>
+                  <select value={form.type} onChange={e => setForm(f => ({ ...f, type: e.target.value as ScriptType }))} style={{ ...inp }}>
+                    {SCRIPT_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label style={{ fontSize: 11.5, color: C.t2, display: "block", marginBottom: 4 }}>Platform</label>
+                  <select value={form.platform} onChange={e => setForm(f => ({ ...f, platform: e.target.value }))} style={{ ...inp }}>
+                    {SCRIPT_PLATFORMS.map(p => <option key={p} value={p}>{p}</option>)}
+                  </select>
+                </div>
+              </div>
+              <div>
+                <label style={{ fontSize: 11.5, color: C.t2, display: "block", marginBottom: 4 }}>Date</label>
+                <input type="date" value={form.date} onChange={e => setForm(f => ({ ...f, date: e.target.value }))} style={{ ...inp, colorScheme: "dark" }} />
+              </div>
+              <div>
+                <label style={{ fontSize: 11.5, color: C.t2, display: "block", marginBottom: 4 }}>Content *</label>
+                <textarea value={form.content} onChange={e => setForm(f => ({ ...f, content: e.target.value }))} placeholder="Paste or type your script, caption, or DM template…" rows={10}
+                  style={{ ...inp, resize: "vertical" as const, lineHeight: 1.7 }} />
+              </div>
+              <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 4 }}>
+                <Btn onClick={() => setShowModal(false)}>Cancel</Btn>
+                <Btn accent onClick={saveModal} disabled={!form.title.trim() || !form.content.trim()}>
+                  {editId ? "Save Changes" : "Add Script"}
+                </Btn>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Delete Confirmation Dialog ── */}
+      {deleteTarget && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.6)", zIndex: 200, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}
+          onClick={e => { if (e.target === e.currentTarget) setDeleteTarget(null); }}>
+          <div style={{ background: C.bg, border: `1px solid rgba(248,113,113,.3)`, borderRadius: C.r, width: "100%", maxWidth: 380, padding: 24 }}>
+            <p style={{ fontSize: 15, fontWeight: 700, color: C.text, margin: "0 0 8px" }}>Delete script?</p>
+            <p style={{ fontSize: 13, color: C.t2, margin: "0 0 20px", lineHeight: 1.5 }}>
+              "<strong style={{ color: C.text }}>{deleteTarget.title}</strong>" will be permanently removed.
+            </p>
+            <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+              <Btn onClick={() => setDeleteTarget(null)}>Cancel</Btn>
+              <button
+                onClick={() => { onDelete(deleteTarget.id); setDeleteTarget(null); }}
+                style={{ display: "flex", alignItems: "center", gap: 6, background: "rgba(248,113,113,.15)", border: "1px solid rgba(248,113,113,.3)", color: C.red, fontSize: 12.5, fontWeight: 600, padding: "7px 16px", borderRadius: C.r2, cursor: "pointer", transition: "all .15s" }}
+              >
+                <Trash2 size={13} /> Delete
               </button>
             </div>
           </div>
-          <pre style={{ margin: 0, padding: "14px 16px", color: C.cream, fontSize: 12, lineHeight: 1.8, fontFamily: "inherit", whiteSpace: "pre-wrap", maxHeight: 300, overflowY: "auto" }}>{s.content}</pre>
         </div>
-      ))}
+      )}
+
+      {/* ── Copy toast ── */}
+      {copyToast && (
+        <div style={{ position: "fixed", bottom: 24, left: "50%", transform: "translateX(-50%)", background: C.s2, border: `1px solid ${C.aBd}`, borderRadius: C.r, padding: "10px 20px", color: C.accent, fontSize: 13, fontWeight: 500, zIndex: 300, display: "flex", alignItems: "center", gap: 8, boxShadow: "0 4px 20px rgba(0,0,0,.5)", whiteSpace: "nowrap" }}>
+          <CheckCheck size={14} /> {copyToast}
+        </div>
+      )}
     </div>
   );
 }
@@ -1733,7 +2047,7 @@ const TABS: { id: Tab; label: string; Icon: React.ElementType }[] = [
 export function OperationsDashboard() {
   const [tab, setTab]                 = useState<Tab>("kanban");
   const [plannerPrefill, setPrefill]  = useState("");
-  const [saved, setSaved]             = useLocal<SavedScript[]>("flogen_saved_scripts", []);
+  const [saved, setSaved]             = useLocal<SavedScript[]>("flogen_saved_scripts", SCRIPT_SEEDS);
   const [highlightDealId, setHighlightDealId] = useState<number | null>(null);
   const [calendarPrefill, setCalendarPrefill] = useState<{ topic: string; platform: PostPlat; type: PostType } | null>(null);
   const [scriptPrefill, setScriptPrefill] = useState("");
@@ -1852,7 +2166,12 @@ export function OperationsDashboard() {
           {tab === "calendar" && <CalendarSection onPlannerPrefill={setPrefill} prefillPost={calendarPrefill} />}
           {tab === "agents"   && <AgentsSection plannerPrefill={plannerPrefill} scriptPrefill={scriptPrefill} onSave={handleSave} onGoToCalendar={goToCalendar} />}
           {tab === "trends"   && <TrendsSection onUseTrend={useTrend} />}
-          {tab === "scripts"  && <ScriptsLibrary scripts={saved} onDelete={(id) => setSaved(prev => prev.filter(s => s.id !== id))} />}
+          {tab === "scripts"  && <ScriptsLibrary
+            scripts={saved}
+            onAdd={(s) => setSaved(prev => [{ ...s, id: uid() }, ...prev])}
+            onUpdate={(s) => setSaved(prev => prev.map(x => x.id === s.id ? s : x))}
+            onDelete={(id) => setSaved(prev => prev.filter(s => s.id !== id))}
+          />}
         </div>
       </div>
     </>
