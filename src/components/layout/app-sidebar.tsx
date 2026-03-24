@@ -1,6 +1,5 @@
 "use client";
 
-import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
@@ -13,14 +12,6 @@ import {
   SidebarMenuItem, SidebarFooter,
 } from "@/components/ui/sidebar";
 import { Badge } from "@/components/ui/badge";
-import { SettingsPanel, DashboardPrefs } from "@/components/settings/settings-panel";
-
-const DEFAULT_PREFS: DashboardPrefs = {
-  colNames:    { today: "Today", week: "This Week", backlog: "Backlog" },
-  visibleTabs: { sprint: true, projects: true, agents: true, focus: true },
-  accentColor: "#bbf088",
-  appTagline:  "We build the bots. You build the brand.",
-};
 
 const navItems = [
   { title: "Flogen AI",         href: "/projects",    icon: Layers,       badge: "PM" },
@@ -33,9 +24,7 @@ const navItems = [
 ];
 
 export function AppSidebar() {
-  const pathname           = usePathname();
-  const [settingsOpen, setSettingsOpen] = useState(false);
-  const [prefs, setPrefs]  = useState<DashboardPrefs>(DEFAULT_PREFS);
+  const pathname = usePathname();
 
   return (
     <>
@@ -89,13 +78,14 @@ export function AppSidebar() {
         </SidebarContent>
 
         <SidebarFooter className="border-t border-sidebar-border">
-          {/* Settings button */}
+          {/* Settings link */}
           <SidebarMenu>
             <SidebarMenuItem>
               <SidebarMenuButton
-                onClick={() => setSettingsOpen(true)}
+                render={<Link href="/settings" />}
+                isActive={pathname === "/settings"}
                 tooltip="Settings"
-                className="flex items-center gap-2 cursor-pointer"
+                className="flex items-center gap-2"
               >
                 <Settings className="h-4 w-4 shrink-0" />
                 <span className="flex-1">Settings</span>
@@ -114,13 +104,6 @@ export function AppSidebar() {
         </SidebarFooter>
       </Sidebar>
 
-      {/* Settings panel — lives outside the sidebar so it can overlay the full page */}
-      <SettingsPanel
-        open={settingsOpen}
-        onClose={() => setSettingsOpen(false)}
-        prefs={prefs}
-        onPrefs={setPrefs}
-      />
     </>
   );
 }
