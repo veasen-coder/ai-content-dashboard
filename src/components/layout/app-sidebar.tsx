@@ -1,5 +1,6 @@
 "use client";
 
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
@@ -25,21 +26,48 @@ const navItems = [
 
 export function AppSidebar() {
   const pathname = usePathname();
+  const [businessName, setBusinessName] = useState("Flogen AI");
+  const [tagline, setTagline] = useState("Content OS");
+  const [logoDataUrl, setLogoDataUrl] = useState("");
+  const [lang, setLang] = useState("en");
+
+  // Read workspace settings from localStorage (updated via Settings page)
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem("flogen_workspace_settings");
+      if (raw) {
+        const ws = JSON.parse(raw);
+        if (ws.businessName) setBusinessName(ws.businessName);
+        if (ws.tagline) setTagline(ws.tagline);
+        if (ws.logoDataUrl) setLogoDataUrl(ws.logoDataUrl);
+        if (ws.language) setLang(ws.language);
+      }
+    } catch { /* ignore */ }
+  }, [pathname]); // re-read whenever the user navigates (picks up Settings changes)
 
   return (
     <>
       <Sidebar collapsible="icon">
         <SidebarHeader className="border-b border-sidebar-border px-4 py-4">
           <div className="flex items-center gap-2.5">
-            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[#bbf088]">
-              <Zap className="h-4 w-4 text-[#0a0a0a]" />
-            </div>
+            {logoDataUrl ? (
+              <img src={logoDataUrl} alt="" className="h-8 w-8 shrink-0 rounded-lg object-cover" />
+            ) : (
+              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[#bbf088]">
+                <Zap className="h-4 w-4 text-[#0a0a0a]" />
+              </div>
+            )}
             <div className="flex flex-col group-data-[collapsible=icon]:hidden">
               <span className="text-sm font-bold tracking-tight text-sidebar-foreground">
-                Flogen AI
+                {businessName}
               </span>
-              <span className="text-[11px] text-sidebar-foreground/60">Content OS</span>
+              <span className="text-[11px] text-sidebar-foreground/60">{tagline || "Content OS"}</span>
             </div>
+            {lang !== "en" && (
+              <span className="ml-auto text-[10px] font-semibold uppercase px-1.5 py-0.5 rounded bg-[#bbf088]/15 text-[#bbf088] group-data-[collapsible=icon]:hidden">
+                {lang}
+              </span>
+            )}
           </div>
         </SidebarHeader>
 
@@ -98,7 +126,7 @@ export function AppSidebar() {
             <div className="flex items-center gap-2">
               <span className="text-[11px] text-sidebar-foreground/40">v0.2.0</span>
               <span className="text-[11px] text-sidebar-foreground/40">·</span>
-              <span className="text-[11px] text-[#bbf088]/70">Flogen AI</span>
+              <span className="text-[11px] text-[#bbf088]/70">{businessName}</span>
             </div>
           </div>
         </SidebarFooter>

@@ -146,15 +146,17 @@ let _uid = 500;
 const uid = () => ++_uid;
 
 function useLocal<T>(key: string, init: T): [T, (v: T | ((prev: T) => T)) => void] {
-  const [st, setSt] = useState<T>(() => {
-    if (typeof window === "undefined") return init;
-    try { const s = localStorage.getItem(key); return s ? JSON.parse(s) : init; }
-    catch { return init; }
-  });
+  const [st, setSt] = useState<T>(init);
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(key);
+      if (raw) setSt(JSON.parse(raw) as T);
+    } catch { /* ignore */ }
+  }, [key]);
   const set = useCallback((v: T | ((prev: T) => T)) => {
     setSt(prev => {
       const next = typeof v === "function" ? (v as (p: T) => T)(prev) : v;
-      localStorage.setItem(key, JSON.stringify(next));
+      try { localStorage.setItem(key, JSON.stringify(next)); } catch { /* ignore */ }
       return next;
     });
   }, [key]);

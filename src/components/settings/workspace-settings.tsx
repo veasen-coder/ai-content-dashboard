@@ -219,11 +219,17 @@ export function WorkspaceSettings() {
   }, []);
 
   const upd = useCallback(<K extends keyof WSettings>(key: K, val: WSettings[K]) => {
-    setS(prev => ({ ...prev, [key]: val }));
+    setS(prev => {
+      const next = { ...prev, [key]: val };
+      try { localStorage.setItem(LS_KEY, JSON.stringify(next)); } catch { /* ignore */ }
+      return next;
+    });
+    setSaved(true);
+    setTimeout(() => setSaved(false), 1500);
   }, []);
 
   function save() {
-    localStorage.setItem(LS_KEY, JSON.stringify(s));
+    try { localStorage.setItem(LS_KEY, JSON.stringify(s)); } catch { /* ignore */ }
     setSaved(true);
     setTimeout(() => setSaved(false), 2500);
   }
@@ -297,6 +303,7 @@ export function WorkspaceSettings() {
           .ws-nav { display: none !important; }
           .ws-nav-mobile { display: flex !important; }
         }
+        @keyframes ws-fade-in { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } }
       `}</style>
 
       <div className="ws-root" style={{ background: C.bg, minHeight: "100vh", color: C.text }}>
@@ -308,11 +315,18 @@ export function WorkspaceSettings() {
               <h1 style={{ fontSize: 22, fontWeight: 800, color: C.text, letterSpacing: "-0.02em", margin: 0 }}>Settings</h1>
               <p style={{ fontSize: 13, color: C.t2, margin: "4px 0 0" }}>Workspace configuration · AI behaviour · Integrations</p>
             </div>
-            <button onClick={save}
-              style={{ background: saved ? C.green : C.accent, border: "none", color: "#0a0a0a", fontSize: 13, fontWeight: 700, padding: "9px 20px", borderRadius: C.r, cursor: "pointer", display: "flex", alignItems: "center", gap: 6, transition: "all .2s" }}>
-              {saved ? <CheckCheck size={14} /> : <Check size={14} />}
-              {saved ? "Saved!" : "Save changes"}
-            </button>
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              {saved && (
+                <span style={{ fontSize: 12, color: C.green, display: "flex", alignItems: "center", gap: 4, animation: "ws-fade-in .2s ease" }}>
+                  <CheckCheck size={13} /> Auto-saved
+                </span>
+              )}
+              <button onClick={save}
+                style={{ background: saved ? C.green : C.accent, border: "none", color: "#0a0a0a", fontSize: 13, fontWeight: 700, padding: "9px 20px", borderRadius: C.r, cursor: "pointer", display: "flex", alignItems: "center", gap: 6, transition: "all .2s" }}>
+                {saved ? <CheckCheck size={14} /> : <Check size={14} />}
+                {saved ? "Saved!" : "Save changes"}
+              </button>
+            </div>
           </div>
         </div>
 
