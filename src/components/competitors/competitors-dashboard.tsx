@@ -1,10 +1,11 @@
 "use client";
 
 import { useState, useMemo } from "react";
+import { useRouter } from "next/navigation";
 import { formatDistanceToNow } from "date-fns";
 import {
   ArrowUpDown, ArrowUp, ArrowDown,
-  ChevronRight, Plus, RefreshCw, Search,
+  ChevronDown, ChevronRight, Plus, RefreshCw, Search,
   Trash2, TrendingUp, Users,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -12,6 +13,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { PLATFORM_META } from "@/types/calendar";
 import { PlatformIcon } from "@/components/calendar/platform-icons";
 import {
@@ -23,11 +25,56 @@ import {
 } from "@/lib/competitor-service";
 import { AddCompetitorDialog } from "./add-competitor-dialog";
 import { CompetitorDetailPanel } from "./competitor-detail-panel";
-import { Sparkline } from "./sparkline";
 import type { Competitor, Platform, SortDir, SortKey } from "@/types/competitor";
 
 // ── Bootstrap seed data ──────────────────────────────────────────────────────
 const SEED: Competitor[] = DEFAULT_COMPETITORS.map(buildCompetitor);
+
+// ── 5C: 8-point SVG sparkline ─────────────────────────────────────────────────
+// Preset shapes: Wati/AiSensy = steep upward, Mampu.ai = flat but consistent
+const SPARKLINE_PRESETS: Record<string, number[]> = {
+  c1: [100, 102, 101, 103, 102, 104, 103, 105],  // Mampu.ai: flat/consistent
+  c2: [100, 103, 105, 104, 108, 107, 111, 110],  // ChatsHero: moderate
+  c3: [100, 108, 117, 127, 139, 152, 167, 184],  // Wati: steep upward
+  c4: [100, 105, 109, 113, 118, 123, 128, 134],  // Respond.io: steady
+  c5: [100, 107, 115, 125, 136, 148, 162, 178],  // AiSensy: steep upward
+  c6: [100,  99, 101, 100, 102, 101, 103, 102],  // Supamoto: very flat
+};
+
+function SvgSparkline({ data, color = "auto" }: { data: number[]; color?: string }) {
+  const pts = data.slice(-8);
+  if (pts.length < 2) return null;
+  const min = Math.min(...pts);
+  const max = Math.max(...pts);
+  const range = max - min || 1;
+  const W = 72, H = 24;
+  const xStep = W / (pts.length - 1);
+  const coords = pts.map((v, i) => `${i * xStep},${H - 2 - ((v - min) / range) * (H - 6)}`).join(" ");
+  const trend = pts[pts.length - 1] >= pts[0];
+  const lineColor = color === "auto" ? (trend ? "#10b981" : "#ef4444") : color;
+  return (
+    <svg width={W} height={H} style={{ display: "block", overflow: "visible" }}>
+      <polyline points={coords} fill="none" stroke={lineColor} strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" opacity={0.85} />
+      <circle cx={(pts.length - 1) * xStep} cy={H - 2 - ((pts[pts.length - 1] - min) / range) * (H - 6)} r={2} fill={lineColor} />
+    </svg>
+  );
+}
+
+// ── 5B: Content Gap Analysis data ────────────────────────────────────────────
+const GAP_THEMES = [
+  { theme: "How-To/Listicle",     topic: "3 WhatsApp automation flows every Malaysian SME needs right now" },
+  { theme: "Cost Comparison",     topic: "WhatsApp AI Agent vs hiring extra staff — real cost breakdown for Malaysian SMEs" },
+  { theme: "30-Day Case Study",   topic: "How we helped a KL clinic handle 200+ daily WhatsApp enquiries in 30 days" },
+  { theme: "Chatbot vs AI Agent", topic: "Chatbot vs AI Agent — the difference that matters for your business" },
+  { theme: "XHS Video",           topic: "WhatsApp AI setup walkthrough for SMEs (Xiaohongshu video)" },
+];
+
+// ✅ = competitor does it, ❌ = doesn't
+const GAP_MATRIX: Record<string, Record<string, boolean>> = {
+  "Mampu.ai":  { "How-To/Listicle": true,  "Cost Comparison": false, "30-Day Case Study": false, "Chatbot vs AI Agent": false, "XHS Video": true  },
+  "ChatsHero": { "How-To/Listicle": true,  "Cost Comparison": true,  "30-Day Case Study": false, "Chatbot vs AI Agent": true,  "XHS Video": false },
+  "Wati":      { "How-To/Listicle": true,  "Cost Comparison": true,  "30-Day Case Study": true,  "Chatbot vs AI Agent": true,  "XHS Video": false },
+};
 
 // ── Sort icon helper ─────────────────────────────────────────────────────────
 function SortIcon({ col, active, dir }: { col: string; active: boolean; dir: SortDir }) {
@@ -60,6 +107,7 @@ function ColHeader({
 
 // ── Main dashboard ────────────────────────────────────────────────────────────
 export function CompetitorsDashboard() {
+  const router = useRouter();
   const [competitors, setCompetitors] = useState<Competitor[]>(SEED);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -68,6 +116,7 @@ export function CompetitorsDashboard() {
   const [sortKey, setSortKey] = useState<SortKey>("totalFollowers");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
   const [refreshing, setRefreshing] = useState<string | null>(null);
+  const [gapOpen, setGapOpen] = useState(false);
 
   const selectedCompetitor = competitors.find((c) => c.id === selectedId) ?? null;
 
@@ -268,8 +317,10 @@ export function CompetitorsDashboard() {
                   const t = new Date(a.lastPostedAt).getTime();
                   return t > latest ? t : latest;
                 }, 0);
-                // Use first account's follower history for sparkline
-                const sparkData = c.accounts[0]?.followerHistory ?? [];
+                // 5C: Use preset or derived 8-point sparkline data
+                const sparkData = SPARKLINE_PRESETS[c.id] ?? c.accounts[0]?.followerHistory.slice(-8) ?? [];
+                // 5D: Most recent post caption for tooltip
+                const latestPostCaption = c.recentPosts[0]?.caption ?? null;
                 const initials = c.name.split(" ").map((w) => w[0]).join("").slice(0, 2).toUpperCase();
 
                 return (
@@ -322,21 +373,32 @@ export function CompetitorsDashboard() {
                       <span className="text-[10px] text-zinc-500">per week</span>
                     </div>
 
-                    {/* Growth sparkline */}
+                    {/* 5C: Growth — 8-point SVG sparkline */}
                     <div className="flex flex-col gap-1 w-[90px]">
                       <span className={`text-xs font-semibold tabular-nums ${avgGrowth >= 0 ? "text-emerald-400" : "text-red-400"}`}>
                         {avgGrowth >= 0 ? "+" : ""}{avgGrowth}%
                       </span>
-                      <div className="w-full">
-                        <Sparkline data={sparkData} color="auto" height={28} />
-                      </div>
+                      <SvgSparkline data={sparkData} color="auto" />
                     </div>
 
-                    {/* Last posted */}
+                    {/* 5D: Last posted with hover tooltip showing post title */}
                     <div className="flex flex-col">
-                      <span className="text-xs text-zinc-300">
-                        {lastPosted ? formatDistanceToNow(new Date(lastPosted), { addSuffix: true }) : "—"}
-                      </span>
+                      {latestPostCaption ? (
+                        <Tooltip>
+                          <TooltipTrigger className="cursor-default text-left">
+                            <span className="text-xs text-zinc-300 underline decoration-dotted decoration-zinc-600 underline-offset-2">
+                              {lastPosted ? formatDistanceToNow(new Date(lastPosted), { addSuffix: true }) : "—"}
+                            </span>
+                          </TooltipTrigger>
+                          <TooltipContent side="left" className="max-w-[220px] text-[11px] leading-relaxed">
+                            {latestPostCaption.length > 80 ? latestPostCaption.slice(0, 80) + "…" : latestPostCaption}
+                          </TooltipContent>
+                        </Tooltip>
+                      ) : (
+                        <span className="text-xs text-zinc-300">
+                          {lastPosted ? formatDistanceToNow(new Date(lastPosted), { addSuffix: true }) : "—"}
+                        </span>
+                      )}
                       <span className="text-[10px] text-zinc-600">last post</span>
                     </div>
 
@@ -375,6 +437,71 @@ export function CompetitorsDashboard() {
             Showing {filtered.length} of {competitors.length} competitors
           </p>
         )}
+
+        {/* ── 5B: Content Gap Analysis panel ── */}
+        <div className="rounded-xl border border-zinc-800 overflow-hidden">
+          <button
+            onClick={() => setGapOpen(o => !o)}
+            className="w-full flex items-center justify-between px-4 py-3 bg-zinc-900/80 hover:bg-zinc-800/60 transition-colors text-left"
+          >
+            <div className="flex items-center gap-2.5">
+              <TrendingUp className="h-4 w-4 text-emerald-400" />
+              <span className="text-sm font-semibold">Content Gap Analysis</span>
+              <Badge variant="outline" className="text-[10px] border-emerald-500/30 text-emerald-400 bg-emerald-500/10">
+                5 opportunities for Flogen AI
+              </Badge>
+            </div>
+            {gapOpen
+              ? <ChevronDown className="h-4 w-4 text-zinc-500" />
+              : <ChevronRight className="h-4 w-4 text-zinc-500" />
+            }
+          </button>
+
+          {gapOpen && (
+            <div className="overflow-x-auto">
+              <table className="w-full text-[12px]">
+                <thead>
+                  <tr className="border-b border-zinc-800 bg-zinc-900/50">
+                    <th className="text-left px-4 py-2.5 font-semibold text-zinc-400 w-[180px]">Content Theme</th>
+                    {["Mampu.ai", "ChatsHero", "Wati"].map(name => (
+                      <th key={name} className="text-center px-3 py-2.5 font-semibold text-zinc-400 w-[90px]">{name}</th>
+                    ))}
+                    <th className="text-center px-3 py-2.5 font-semibold text-emerald-400 w-[160px]">Flogen AI</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-zinc-800/60">
+                  {GAP_THEMES.map(({ theme, topic }) => (
+                    <tr key={theme} className="hover:bg-zinc-800/20 transition-colors">
+                      <td className="px-4 py-2.5 text-zinc-300 font-medium">{theme}</td>
+                      {["Mampu.ai", "ChatsHero", "Wati"].map(name => (
+                        <td key={name} className="text-center px-3 py-2.5">
+                          {GAP_MATRIX[name]?.[theme]
+                            ? <span className="text-emerald-400 text-sm">✓</span>
+                            : <span className="text-zinc-600 text-sm">—</span>
+                          }
+                        </td>
+                      ))}
+                      <td className="px-3 py-2">
+                        <div className="flex flex-col items-center gap-1">
+                          <span className="text-red-400 text-sm">❌</span>
+                          <button
+                            onClick={() => {
+                              try { localStorage.setItem("flogen_script_prefill", topic); } catch {}
+                              router.push("/projects");
+                            }}
+                            className="text-[10.5px] font-medium text-emerald-400 hover:text-emerald-300 whitespace-nowrap border border-emerald-500/20 hover:border-emerald-500/50 px-2 py-0.5 rounded transition-all"
+                          >
+                            Create this post →
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* ── Right: detail panel ── */}

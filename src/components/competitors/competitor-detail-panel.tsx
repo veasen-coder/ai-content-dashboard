@@ -110,9 +110,32 @@ function AccountCard({ account }: { account: CompetitorAccount }) {
   );
 }
 
+// ── 5A: Theme tag detection ───────────────────────────────────────────────────
+const THEME_TAGS: Array<{ label: string; color: string; bg: string; keywords: string[] }> = [
+  { label: "Lead Gen",     color: "#10b981", bg: "rgba(16,185,129,.12)", keywords: ["lead", "enquir", "customer", "prospect", "contact", "sales", "convert"] },
+  { label: "Pain Point",   color: "#f59e0b", bg: "rgba(245,158,11,.12)", keywords: ["miss", "slow", "lose", "problem", "struggle", "pain", "issue", "fail", "cold", "unanswer"] },
+  { label: "Social Proof", color: "#8b5cf6", bg: "rgba(139,92,246,.12)", keywords: ["client", "case study", "result", "saved", "helped", "grew", "what happened", "30 day"] },
+  { label: "Education",    color: "#3b82f6", bg: "rgba(59,130,246,.12)", keywords: ["how", "tip", "guide", "step", "learn", "setup", "flow", "automat", "3 ", "here's"] },
+  { label: "Competitor",   color: "#ec4899", bg: "rgba(236,72,153,.12)", keywords: ["vs", "chatbot vs", "compare", "alternative", "better than", "difference"] },
+  { label: "Brand",        color: "#f97316", bg: "rgba(249,115,22,.12)", keywords: ["we built", "we automated", "our client", "pov:", "behind the"] },
+];
+
+function detectThemeTags(caption: string): Array<{ label: string; color: string; bg: string }> {
+  const lower = caption.toLowerCase();
+  const found: Array<{ label: string; color: string; bg: string }> = [];
+  for (const tag of THEME_TAGS) {
+    if (tag.keywords.some(k => lower.includes(k))) {
+      found.push({ label: tag.label, color: tag.color, bg: tag.bg });
+      if (found.length >= 2) break;
+    }
+  }
+  return found;
+}
+
 // ── Post card ────────────────────────────────────────────────────────────────
 function PostCard({ post }: { post: RecentPost }) {
   const pm = PLATFORM_META[post.platform];
+  const themeTags = detectThemeTags(post.caption);
   return (
     <div className="flex items-start gap-3 rounded-xl border border-zinc-800 bg-zinc-900/60 p-3 hover:border-zinc-700 transition-colors">
       <div
@@ -129,6 +152,11 @@ function PostCard({ post }: { post: RecentPost }) {
             {pm.label}
           </Badge>
           <span className="text-[10px] text-zinc-500 capitalize">{post.type}</span>
+          {themeTags.map(tag => (
+            <span key={tag.label} style={{ fontSize: 9, fontWeight: 600, padding: "1px 5px", borderRadius: 3, background: tag.bg, color: tag.color, letterSpacing: "0.03em", textTransform: "uppercase" }}>
+              {tag.label}
+            </span>
+          ))}
           <span className="text-[10px] text-zinc-600 ml-auto">
             {format(new Date(post.postedAt), "MMM d")}
           </span>

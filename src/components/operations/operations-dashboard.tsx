@@ -290,6 +290,8 @@ Format your response exactly as:
 ## Opening Message
 [Curiosity-first WhatsApp message — no pitch, just a question that gets them talking]`;
 
+const SYS_OUTREACH = `You are writing a cold WhatsApp outreach message for Flogen AI, a Malaysian B2B AI automation agency selling WhatsApp AI Agents to SMEs. Write a 2–3 sentence curiosity-first opening DM. Do not pitch. Ask one specific question about missed WhatsApp messages or slow reply times. Tone: conversational, local Malaysian English, no jargon.`;
+
 const SYS_TRENDS = `You are a market intelligence analyst for Flogen AI, a Malaysian B2B WhatsApp AI Agency. Generate 6 fresh trend cards relevant to AI automation, WhatsApp marketing, and Malaysian SME content as of early 2026.
 
 Return ONLY valid JSON, no markdown fencing, no explanation. Use this exact structure:
@@ -1076,7 +1078,10 @@ function PostCard({ post, onDelete, onCopyCaption }: { post: CalPost; onDelete: 
   );
 }
 
-function CalendarSection({ onPlannerPrefill }: { onPlannerPrefill: (v: string) => void }) {
+function CalendarSection({ onPlannerPrefill, prefillPost }: {
+  onPlannerPrefill: (v: string) => void;
+  prefillPost?: { topic: string; platform: PostPlat; type: PostType } | null;
+}) {
   void onPlannerPrefill;
   const [posts, setPosts]           = useLocal<CalPost[]>("flogen_calendar", INIT_POSTS);
   const [weekOff, setWeekOff]       = useState(0);
@@ -1086,6 +1091,27 @@ function CalendarSection({ onPlannerPrefill }: { onPlannerPrefill: (v: string) =
   const [dragOverDay, setDragOverDay] = useState<string | null>(null);
   const [copyToast, setCopyToast]   = useState<string | null>(null);
   const week = getWeekDates(weekOff);
+
+  // 4B: Handle prefill from Content Planner — find next empty slot and open add form
+  useEffect(() => {
+    if (!prefillPost) return;
+    const today = new Date();
+    for (let i = 0; i < 14; i++) {
+      const d = new Date(today);
+      d.setDate(today.getDate() + i);
+      const iso = isoDate(d);
+      if (posts.filter(p => p.date === iso).length === 0) {
+        setWeekOff(Math.floor(i / 7));
+        setAddDay(iso);
+        setForm(f => ({ ...f, topic: prefillPost.topic, platform: prefillPost.platform, type: prefillPost.type }));
+        return;
+      }
+    }
+    // Fallback: tomorrow
+    const tomorrow = new Date(); tomorrow.setDate(tomorrow.getDate() + 1);
+    setAddDay(isoDate(tomorrow));
+    setForm(f => ({ ...f, topic: prefillPost.topic, platform: prefillPost.platform, type: prefillPost.type }));
+  }, [prefillPost]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // 3A: Cadence health — always counts against current real week (week 0)
   const currentWeekIsos = getWeekDates(0).map(d => isoDate(d));
@@ -1310,16 +1336,16 @@ function OutputPanel({
             <>
               <button onClick={() => { setAccepted(true); onAccept?.(text); }}
                 style={{ display: "flex", alignItems: "center", gap: 4, background: C.aBg, border: `1px solid ${C.aBd}`, color: C.accent, fontSize: 11.5, padding: "3px 10px", borderRadius: 4, cursor: "pointer", fontWeight: 500 }}>
-                ✓ Accept
+                💾 Save to Library
               </button>
               <button onClick={() => setRejected(true)}
                 style={{ display: "flex", alignItems: "center", gap: 4, background: "rgba(248,113,113,.08)", border: "1px solid rgba(248,113,113,.2)", color: C.red, fontSize: 11.5, padding: "3px 10px", borderRadius: 4, cursor: "pointer" }}>
-                ✕ Reject
+                ✕ Discard
               </button>
             </>
           )}
-          {accepted && <span style={{ fontSize: 11.5, color: C.accent, fontWeight: 500 }}>✓ Saved to Scripts Library</span>}
-          {rejected && <span style={{ fontSize: 11.5, color: C.red }}>✕ Rejected</span>}
+          {accepted && <span style={{ fontSize: 11.5, color: C.accent, fontWeight: 500 }}>💾 Saved to Scripts Library</span>}
+          {rejected && <span style={{ fontSize: 11.5, color: C.red }}>✕ Discarded</span>}
         </div>
         <CopyBtn text={text} />
       </div>
@@ -1328,7 +1354,33 @@ function OutputPanel({
   );
 }
 
-function ContentPlannerAgent({ prefill, onSave }: { prefill: string; onSave: (content: string, type: "Content Plan" | "Script" | "Pitch") => void }) {
+function parsePostIdeas(text: string): Array<{ label: string; topic: string; platform: PostPlat; type: PostType }> {
+  const result: Array<{ label: string; topic: string; platform: PostPlat; type: PostType }> = [];
+  const igRe = /## (IG Post \d+\s*[—–-]\s*(\w+))([\s\S]*?)(?=\n## |$)/g;
+  let m: RegExpExecArray | null;
+  while ((m = igRe.exec(text)) !== null) {
+    const rawType = m[2];
+    const body = m[3];
+    const topicMatch = body.match(/\*\*(?:Topic|Hook)[^:]*:\*\*\s*(.+)/);
+    if (!topicMatch) continue;
+    const type: PostType = (["Reel","Carousel","Static"].includes(rawType) ? rawType : "Reel") as PostType;
+    result.push({ label: `IG Post ${result.length + 1} (${type})`, topic: topicMatch[1].trim(), platform: "instagram", type });
+  }
+  const xhsRe = /## XHS Post([\s\S]*?)(?=\n## |$)/;
+  const xm = xhsRe.exec(text);
+  if (xm) {
+    const topicMatch = xm[1].match(/\*\*Topic[^:]*\(English\)[^:]*:\*\*\s*(.+)/) ?? xm[1].match(/\*\*Topic[^:]*:\*\*\s*(.+)/);
+    if (topicMatch) result.push({ label: "XHS Post", topic: topicMatch[1].trim(), platform: "xiaohongshu", type: "XHS Post" });
+  }
+  return result;
+}
+
+function ContentPlannerAgent({ prefill, onSave, onGoToCalendar, onUsage }: {
+  prefill: string;
+  onSave: (content: string, type: "Content Plan" | "Script" | "Pitch") => void;
+  onGoToCalendar?: (post: { topic: string; platform: PostPlat; type: PostType }) => void;
+  onUsage?: (u: { input_tokens: number; output_tokens: number }) => void;
+}) {
   const [industry, setIndustry] = useState(prefill || "Real Estate");
   const [focus, setFocus]       = useState("");
   const [out, setOut]           = useState("");
@@ -1338,13 +1390,15 @@ function ContentPlannerAgent({ prefill, onSave }: { prefill: string; onSave: (co
 
   useEffect(() => { if (prefill) setIndustry(prefill); }, [prefill]);
 
+  const ideas = out ? parsePostIdeas(out) : [];
+
   async function run() {
     setLoading(true); setErr(""); setOut("");
     try {
       const res = await fetch("/api/agent", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ systemPrompt: SYS_PLANNER, userMessage: `Industry/vertical: ${industry}\nWeek focus / theme: ${focus || "general WhatsApp AI automation"}`, maxTokens: 1200 }) });
       const data = await res.json();
       if (data.error) throw new Error(data.error);
-      if (data.usage) trackTokens(data.usage);
+      if (data.usage) onUsage?.(data.usage);
       setOut(data.content as string);
     }
     catch (e: unknown) { setErr((e as Error).message); }
@@ -1361,13 +1415,36 @@ function ContentPlannerAgent({ prefill, onSave }: { prefill: string; onSave: (co
         scriptType="Content Plan"
         scriptTitle={`Content Plan — ${industry}`}
       />
+      {/* 4B: Add to Calendar buttons per idea */}
+      {ideas.length > 0 && (
+        <div style={{ marginTop: 2 }}>
+          <p style={{ fontSize: 10.5, color: C.t3, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", margin: "0 0 5px" }}>📅 Add to Calendar</p>
+          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+            {ideas.map((idea, i) => (
+              <button key={i} onClick={() => onGoToCalendar?.({ topic: idea.topic, platform: idea.platform, type: idea.type })}
+                style={{ display: "flex", alignItems: "center", gap: 6, background: C.s2, border: `1px solid ${C.border}`, color: C.t2, fontSize: 11.5, padding: "5px 10px", borderRadius: C.r2, cursor: "pointer", textAlign: "left", transition: "all .12s", width: "100%" }}
+                onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = C.aBd; (e.currentTarget as HTMLElement).style.color = C.accent; }}
+                onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = C.border; (e.currentTarget as HTMLElement).style.color = C.t2; }}>
+                <CalendarDays size={11} style={{ flexShrink: 0 }} />
+                <span style={{ fontWeight: 500 }}>{idea.label}:</span>
+                <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{idea.topic}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
     </AgentCard>
   );
 }
 
-function ScriptWriterAgent({ onSave }: { onSave: (content: string, type: "Content Plan" | "Script" | "Pitch") => void }) {
-  const [topic, setTopic]     = useState("");
+function ScriptWriterAgent({ prefill, onSave, onUsage }: { prefill?: string; onSave: (content: string, type: "Content Plan" | "Script" | "Pitch") => void; onUsage?: (u: { input_tokens: number; output_tokens: number }) => void }) {
+  const [topic, setTopic]     = useState(prefill ?? "");
   const [platform, setPlat]   = useState<PostPlat>("instagram");
+
+  // 5B: sync prefill if parent provides it after mount (from Competitor Gap panel)
+  useEffect(() => {
+    if (prefill) setTopic(prefill);
+  }, [prefill]);
   const [type, setType]       = useState<PostType>("Reel");
   const [out, setOut]         = useState("");
   const [loading, setLoading] = useState(false);
@@ -1381,7 +1458,7 @@ function ScriptWriterAgent({ onSave }: { onSave: (content: string, type: "Conten
       const res = await fetch("/api/agent", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ systemPrompt: SYS_SCRIPT, userMessage: `Topic: ${topic}\nPlatform: ${platform}\nContent type: ${type}`, maxTokens: 1200 }) });
       const data = await res.json();
       if (data.error) throw new Error(data.error);
-      if (data.usage) trackTokens(data.usage);
+      if (data.usage) onUsage?.(data.usage);
       setOut(data.content as string);
     }
     catch (e: unknown) { setErr((e as Error).message); }
@@ -1409,7 +1486,7 @@ function ScriptWriterAgent({ onSave }: { onSave: (content: string, type: "Conten
   );
 }
 
-function ConsultingAgent({ onSave }: { onSave: (content: string, type: "Content Plan" | "Script" | "Pitch") => void }) {
+function ConsultingAgent({ onSave, onUsage }: { onSave: (content: string, type: "Content Plan" | "Script" | "Pitch") => void; onUsage?: (u: { input_tokens: number; output_tokens: number }) => void }) {
   const [client, setClient]   = useState("");
   const [problem, setProblem] = useState("");
   const [out, setOut]         = useState("");
@@ -1423,7 +1500,7 @@ function ConsultingAgent({ onSave }: { onSave: (content: string, type: "Content 
       const res = await fetch("/api/agent", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ systemPrompt: SYS_CONSULT, userMessage: `Client name: ${client}\nBusiness problem: ${problem}`, maxTokens: 1200 }) });
       const data = await res.json();
       if (data.error) throw new Error(data.error);
-      if (data.usage) trackTokens(data.usage);
+      if (data.usage) onUsage?.(data.usage);
       setOut(data.content as string);
     }
     catch (e: unknown) { setErr((e as Error).message); }
@@ -1444,17 +1521,88 @@ function ConsultingAgent({ onSave }: { onSave: (content: string, type: "Content 
   );
 }
 
-function AgentsSection({ plannerPrefill, onSave }: { plannerPrefill: string; onSave: (content: string, type: SavedScript["type"], platform?: string) => void }) {
+const BIZ_TYPES = ["Hair Salon","Restaurant","Clinic","Property Agent","Retail","Other"] as const;
+type BizType = typeof BIZ_TYPES[number];
+
+function OutreachAgent({ onSave, onUsage }: {
+  onSave: (content: string, type: "Content Plan" | "Script" | "Pitch") => void;
+  onUsage?: (u: { input_tokens: number; output_tokens: number }) => void;
+}) {
+  const [lead, setLead]       = useState("");
+  const [biz, setBiz]         = useState<BizType>("Hair Salon");
+  const [detail, setDetail]   = useState("");
+  const [out, setOut]         = useState("");
+  const [loading, setLoading] = useState(false);
+  const [err, setErr]         = useState("");
+  const inp: React.CSSProperties = { background: C.s2, border: `1px solid ${C.borderHi}`, color: C.cream, fontSize: 13, padding: "8px 12px", borderRadius: C.r2, outline: "none", width: "100%" };
+
+  async function run() {
+    setLoading(true); setErr(""); setOut("");
+    try {
+      const msg = `Lead: ${lead}\nType: ${biz}\nDetail: ${detail || "none"}`;
+      const res  = await fetch("/api/agent", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ systemPrompt: SYS_OUTREACH, userMessage: msg, maxTokens: 400 }) });
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      if (data.usage) onUsage?.(data.usage);
+      setOut(data.content as string);
+    }
+    catch (e: unknown) { setErr((e as Error).message); }
+    finally { setLoading(false); }
+  }
+
+  return (
+    <AgentCard title="Outreach Personaliser" description="Lead details → curiosity-first WhatsApp DM" icon={Send}>
+      <input value={lead} onChange={e => setLead(e.target.value)} placeholder="Lead name (e.g. Kak Aisha, Bloomy Salon KL)" style={inp} />
+      <select value={biz} onChange={e => setBiz(e.target.value as BizType)} style={{ ...inp }}>
+        {BIZ_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+      </select>
+      <input value={detail} onChange={e => setDetail(e.target.value)} placeholder="Optional detail (e.g. 3 branches, busy on weekends)" style={inp} />
+      <Btn accent full onClick={run} disabled={loading || !lead.trim()}><Send size={13} /> Generate DM</Btn>
+      <OutputPanel text={out} loading={loading} error={err}
+        onAccept={(c) => onSave(c, "Pitch")}
+        scriptType="Pitch"
+        scriptTitle={`Outreach — ${lead}`}
+      />
+    </AgentCard>
+  );
+}
+
+function AgentsSection({ plannerPrefill, scriptPrefill, onSave, onGoToCalendar }: {
+  plannerPrefill: string;
+  scriptPrefill?: string;
+  onSave: (content: string, type: SavedScript["type"], platform?: string) => void;
+  onGoToCalendar?: (post: { topic: string; platform: PostPlat; type: PostType }) => void;
+}) {
+  const [sessIn, setSessIn]   = useState(0);
+  const [sessOut, setSessOut] = useState(0);
+
+  function addUsage(u: { input_tokens: number; output_tokens: number }) {
+    trackTokens(u);
+    setSessIn(p  => p + u.input_tokens);
+    setSessOut(p => p + u.output_tokens);
+  }
+
+  const sessCost = (sessIn * 3 + sessOut * 15) / 1_000_000;
+
   return (
     <div>
-      <div style={{ background: C.s, border: `1px solid ${C.aBd}`, borderRadius: C.r, padding: "10px 16px", marginBottom: 20, display: "flex", alignItems: "center", gap: 8 }}>
+      {/* Header bar — 4D: token counter */}
+      <div style={{ background: C.s, border: `1px solid ${C.aBd}`, borderRadius: C.r, padding: "10px 16px", marginBottom: 20, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
         <Zap size={13} color={C.accent} />
-        <span style={{ fontSize: 12.5, color: C.t2 }}>Calls <strong style={{ color: C.text }}>claude-sonnet-4-5</strong> via your Anthropic API key — add it in Settings if you haven't already</span>
+        <span style={{ fontSize: 12.5, color: C.t2 }}>Calls <strong style={{ color: C.text }}>claude-sonnet-4-5</strong> via your Anthropic API key</span>
+        {(sessIn > 0 || sessOut > 0) && (
+          <span style={{ marginLeft: "auto", fontSize: 11.5, color: C.t2, whiteSpace: "nowrap" }}>
+            In: <strong style={{ color: C.text }}>{sessIn.toLocaleString()}</strong>
+            {" · "}Out: <strong style={{ color: C.text }}>{sessOut.toLocaleString()}</strong>
+            {" · "}Cost: <strong style={{ color: C.accent }}>${sessCost.toFixed(4)}</strong>
+          </span>
+        )}
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(380px,1fr))", gap: 12 }}>
-        <ContentPlannerAgent prefill={plannerPrefill} onSave={(c, t) => onSave(c, t)} />
-        <ScriptWriterAgent onSave={(c, t) => onSave(c, t)} />
-        <ConsultingAgent onSave={(c, t) => onSave(c, t)} />
+        <ContentPlannerAgent prefill={plannerPrefill} onSave={(c, t) => onSave(c, t)} onGoToCalendar={onGoToCalendar} onUsage={addUsage} />
+        <ScriptWriterAgent prefill={scriptPrefill} onSave={(c, t) => onSave(c, t)} onUsage={addUsage} />
+        <ConsultingAgent onSave={(c, t) => onSave(c, t)} onUsage={addUsage} />
+        <OutreachAgent onSave={(c, t) => onSave(c, t)} onUsage={addUsage} />
       </div>
     </div>
   );
@@ -1587,6 +1735,20 @@ export function OperationsDashboard() {
   const [plannerPrefill, setPrefill]  = useState("");
   const [saved, setSaved]             = useLocal<SavedScript[]>("flogen_saved_scripts", []);
   const [highlightDealId, setHighlightDealId] = useState<number | null>(null);
+  const [calendarPrefill, setCalendarPrefill] = useState<{ topic: string; platform: PostPlat; type: PostType } | null>(null);
+  const [scriptPrefill, setScriptPrefill] = useState("");
+
+  // 5B: Read script prefill written by Competitors → Content Gap "Create this post →"
+  useEffect(() => {
+    try {
+      const v = localStorage.getItem("flogen_script_prefill");
+      if (v) {
+        localStorage.removeItem("flogen_script_prefill");
+        setScriptPrefill(v);
+        setTab("agents");
+      }
+    } catch {}
+  }, []);
 
   function useTrend(title: string) { setPrefill(title); setTab("agents"); }
 
@@ -1594,6 +1756,12 @@ export function OperationsDashboard() {
     setTab("pipeline");
     setHighlightDealId(dealId);
     setTimeout(() => setHighlightDealId(null), 3000);
+  }
+
+  function goToCalendar(post: { topic: string; platform: PostPlat; type: PostType }) {
+    setCalendarPrefill(post);
+    setTab("calendar");
+    setTimeout(() => setCalendarPrefill(null), 800);
   }
 
   function handleSave(content: string, type: SavedScript["type"], platform?: string) {
@@ -1681,8 +1849,8 @@ export function OperationsDashboard() {
         <div className="fop-content" style={{ maxWidth: 1400, margin: "0 auto" }}>
           {tab === "kanban"   && <KanbanSection onGoToPipeline={goToPipeline} />}
           {tab === "pipeline" && <PipelineSection highlightDealId={highlightDealId} />}
-          {tab === "calendar" && <CalendarSection onPlannerPrefill={setPrefill} />}
-          {tab === "agents"   && <AgentsSection plannerPrefill={plannerPrefill} onSave={handleSave} />}
+          {tab === "calendar" && <CalendarSection onPlannerPrefill={setPrefill} prefillPost={calendarPrefill} />}
+          {tab === "agents"   && <AgentsSection plannerPrefill={plannerPrefill} scriptPrefill={scriptPrefill} onSave={handleSave} onGoToCalendar={goToCalendar} />}
           {tab === "trends"   && <TrendsSection onUseTrend={useTrend} />}
           {tab === "scripts"  && <ScriptsLibrary scripts={saved} onDelete={(id) => setSaved(prev => prev.filter(s => s.id !== id))} />}
         </div>
