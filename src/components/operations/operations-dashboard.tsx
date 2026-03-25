@@ -2394,8 +2394,8 @@ function ScriptsLibrary({
 
       {/* ── A/B Hook Tester ── */}
       <div style={{ marginTop: 24, border: `1px solid ${C.border}`, borderRadius: C.r, overflow: "hidden" }}>
-        <button onClick={() => setAbOpen(o => !o)}
-          style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 16px", background: C.s, border: "none", cursor: "pointer", color: C.text }}>
+        <div onClick={() => setAbOpen(o => !o)}
+          style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 16px", background: C.s, cursor: "pointer", color: C.text }}>
           <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
             <Zap size={12} color={C.accent} />
             <span style={{ fontSize: 12.5, fontWeight: 600, color: C.text }}>A/B Hook Tester</span>
@@ -2408,7 +2408,7 @@ function ScriptsLibrary({
             </button>
             {abOpen ? <ChevronLeft size={13} color={C.t3} style={{ transform: "rotate(-90deg)" }} /> : <ChevronRight size={13} color={C.t3} style={{ transform: "rotate(90deg)" }} />}
           </div>
-        </button>
+        </div>
         {abOpen && (
           <div style={{ padding: "0 14px 14px", background: C.bg, borderTop: `1px solid ${C.border}` }}>
             {abTests.length === 0 && (
@@ -2598,6 +2598,9 @@ export function OperationsDashboard() {
   const [highlightDealId, setHighlightDealId] = useState<number | null>(null);
   const [calendarPrefill, setCalendarPrefill] = useState<{ topic: string; platform: PostPlat; type: PostType } | null>(null);
   const [scriptPrefill, setScriptPrefill] = useState("");
+  // SSR-safe date string
+  const [dateStr, setDateStr] = useState("");
+  useEffect(() => { setDateStr(new Date().toLocaleDateString("en-MY",{weekday:"short",month:"short",day:"numeric",year:"numeric"})); }, []);
   // 9B: Nav badge alerts
   const [pipelineAlert, setPipelineAlert] = useState(false);
   const [calendarAlert, setCalendarAlert] = useState(false);
@@ -2704,7 +2707,7 @@ export function OperationsDashboard() {
             </div>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-            <span className="fop-topbar-date" style={{ fontSize: 12, color: C.t2 }}>{new Date().toLocaleDateString("en-MY",{weekday:"short",month:"short",day:"numeric",year:"numeric"})}</span>
+            <span className="fop-topbar-date" style={{ fontSize: 12, color: C.t2 }}>{dateStr}</span>
             <div style={{ display: "flex", alignItems: "center", gap: 6, background: C.aBg, border: `1px solid ${C.aBd}`, padding: "4px 10px", borderRadius: 99 }}>
               <span style={{ width: 6, height: 6, borderRadius: "50%", background: C.accent, display: "inline-block", animation: "pulse 1.8s ease-in-out infinite" }} />
               <span style={{ fontSize: 11, color: C.accent, fontWeight: 500 }}>Claude Code: Active</span>
