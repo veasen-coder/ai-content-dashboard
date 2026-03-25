@@ -8,6 +8,7 @@ import {
   ChevronLeft, ChevronRight, Instagram, BarChart3, Hash, Archive, Bell, Keyboard,
 } from "lucide-react";
 import { useRouter as useNextRouter } from "next/navigation";
+import { useLang } from "@/lib/i18n";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // TOKENS
@@ -2567,16 +2568,17 @@ function ScriptsLibrary({
 // ─────────────────────────────────────────────────────────────────────────────
 // ROOT
 // ─────────────────────────────────────────────────────────────────────────────
-const TABS: { id: Tab; label: string; Icon: React.ElementType }[] = [
-  { id: "kanban",   label: "Kanban",          Icon: Target       },
-  { id: "pipeline", label: "Pipeline",        Icon: BarChart3     },
-  { id: "calendar", label: "Calendar",        Icon: CalendarDays  },
-  { id: "agents",   label: "Agents",          Icon: Sparkles      },
-  { id: "trends",   label: "Trends",          Icon: TrendingUp    },
-  { id: "scripts",  label: "Scripts Library", Icon: Archive       },
+const TABS: { id: Tab; tKey: string; Icon: React.ElementType }[] = [
+  { id: "kanban",   tKey: "ops.kanban",   Icon: Target       },
+  { id: "pipeline", tKey: "ops.pipeline", Icon: BarChart3     },
+  { id: "calendar", tKey: "ops.calendar", Icon: CalendarDays  },
+  { id: "agents",   tKey: "ops.agents",   Icon: Sparkles      },
+  { id: "trends",   tKey: "ops.trends",   Icon: TrendingUp    },
+  { id: "scripts",  tKey: "ops.scripts",  Icon: Archive       },
 ];
 
 export function OperationsDashboard() {
+  const { t }                         = useLang();
   const router                        = useNextRouter();
   const [tab, setTab]                 = useState<Tab>("kanban");
   const [plannerPrefill, setPrefill]  = useState("");
@@ -2700,7 +2702,7 @@ export function OperationsDashboard() {
 
         {/* Tabs */}
         <div className="fop-tabs" style={{ background: C.s, borderBottom: `1px solid ${C.border}`, display: "flex", gap: 2 }}>
-          {TABS.map(({ id, label, Icon }) => {
+          {TABS.map(({ id, tKey, Icon }) => {
             const on = tab === id;
             const showRed   = id === "pipeline" && pipelineAlert;
             const showAmber = id === "calendar" && calendarAlert;
@@ -2708,7 +2710,7 @@ export function OperationsDashboard() {
               <button key={id} onClick={() => setTab(id)} className="fop-tab-btn"
                 style={{ background: "transparent", border: "none", borderBottom: `2px solid ${on ? C.accent : "transparent"}`, color: on ? C.text : C.t2, fontSize: 13, fontWeight: on ? 600 : 400, padding: "10px 16px", cursor: "pointer", display: "flex", alignItems: "center", gap: 6, transition: "all .15s", marginBottom: -1, whiteSpace: "nowrap", position: "relative" }}>
                 <Icon size={13} />
-                {label}
+                {t(tKey)}
                 {showRed   && <span style={{ width: 7, height: 7, borderRadius: "50%", background: "#ef4444", flexShrink: 0 }} />}
                 {showAmber && <span style={{ width: 7, height: 7, borderRadius: "50%", background: "#f59e0b", flexShrink: 0 }} />}
               </button>

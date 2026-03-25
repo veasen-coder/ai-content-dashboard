@@ -8,6 +8,7 @@ import {
   Copy, ExternalLink, AlertTriangle, Instagram,
   Cpu, Globe, Zap, Clock, Mail, Phone, Hash,
 } from "lucide-react";
+import { useLang } from "@/lib/i18n";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // DESIGN TOKENS
@@ -102,12 +103,12 @@ const LS_KEY = "flogen_workspace_settings";
 // ─────────────────────────────────────────────────────────────────────────────
 // NAV
 // ─────────────────────────────────────────────────────────────────────────────
-const SECTIONS: { id: Section; label: string; icon: React.ElementType; desc: string }[] = [
-  { id: "profile",       label: "Workspace Profile",  icon: Building2,  desc: "Business info & handles"     },
-  { id: "ai",            label: "AI Behaviour",        icon: Sparkles,   desc: "Voice, CTA & model"          },
-  { id: "integrations",  label: "Integrations",        icon: Link2,      desc: "APIs & connected services"   },
-  { id: "notifications", label: "Notifications",       icon: Bell,       desc: "Reminders & email alerts"    },
-  { id: "data",          label: "Data & Privacy",      icon: ShieldCheck, desc: "Export, reset & delete"    },
+const SECTIONS: { id: Section; tKey: string; icon: React.ElementType; desc: string }[] = [
+  { id: "profile",       tKey: "settings.profile",       icon: Building2,  desc: "Business info & handles"     },
+  { id: "ai",            tKey: "settings.ai",            icon: Sparkles,   desc: "Voice, CTA & model"          },
+  { id: "integrations",  tKey: "settings.integrations",  icon: Link2,      desc: "APIs & connected services"   },
+  { id: "notifications", tKey: "settings.notifications", icon: Bell,       desc: "Reminders & email alerts"    },
+  { id: "data",          tKey: "settings.data",          icon: ShieldCheck, desc: "Export, reset & delete"    },
 ];
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -204,6 +205,7 @@ function StatusDot({ ok }: { ok: boolean }) {
 // MAIN COMPONENT
 // ─────────────────────────────────────────────────────────────────────────────
 export function WorkspaceSettings() {
+  const { t } = useLang();
   const [section, setSection] = useState<Section>("profile");
   const [s, setS] = useState<WSettings>(DEFAULT);
   const [saved, setSaved] = useState(false);
@@ -312,13 +314,13 @@ export function WorkspaceSettings() {
         <div style={{ padding: "28px 32px 0" }}>
           <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
             <div>
-              <h1 style={{ fontSize: 22, fontWeight: 800, color: C.text, letterSpacing: "-0.02em", margin: 0 }}>Settings</h1>
-              <p style={{ fontSize: 13, color: C.t2, margin: "4px 0 0" }}>Workspace configuration · AI behaviour · Integrations</p>
+              <h1 style={{ fontSize: 22, fontWeight: 800, color: C.text, letterSpacing: "-0.02em", margin: 0 }}>{t("settings.title")}</h1>
+              <p style={{ fontSize: 13, color: C.t2, margin: "4px 0 0" }}>{t("settings.subtitle")}</p>
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
               {saved && (
                 <span style={{ fontSize: 12, color: C.green, display: "flex", alignItems: "center", gap: 4, animation: "ws-fade-in .2s ease" }}>
-                  <CheckCheck size={13} /> Auto-saved
+                  <CheckCheck size={13} /> {t("settings.autoSaved")}
                 </span>
               )}
               <button onClick={save}
@@ -344,7 +346,7 @@ export function WorkspaceSettings() {
                   onMouseLeave={e => { if (!on) { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = C.t2; } }}>
                   <Icon size={14} style={{ flexShrink: 0 }} />
                   <div style={{ minWidth: 0 }}>
-                    <p style={{ fontSize: 13, fontWeight: on ? 600 : 400, margin: 0, color: "inherit" }}>{sec.label}</p>
+                    <p style={{ fontSize: 13, fontWeight: on ? 600 : 400, margin: 0, color: "inherit" }}>{t(sec.tKey)}</p>
                     <p style={{ fontSize: 10.5, color: C.t3, margin: 0 }}>{sec.desc}</p>
                   </div>
                   {on && <ChevronRight size={12} style={{ marginLeft: "auto", flexShrink: 0 }} />}
@@ -360,7 +362,7 @@ export function WorkspaceSettings() {
               return (
                 <button key={sec.id} onClick={() => setSection(sec.id)}
                   style={{ fontSize: 11.5, fontWeight: on ? 600 : 400, padding: "5px 12px", borderRadius: 99, border: `1px solid ${on ? C.aBd : C.border}`, background: on ? C.aBg : "transparent", color: on ? C.accent : C.t2, cursor: "pointer", whiteSpace: "nowrap" }}>
-                  {sec.label}
+                  {t(sec.tKey)}
                 </button>
               );
             })}

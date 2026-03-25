@@ -6,6 +6,7 @@ import {
   CheckCircle2, GitBranch, MessageSquare, TrendingUp, BarChart3,
   Settings2, Activity, Zap, RefreshCw, Sparkles,
 } from "lucide-react";
+import { useLang } from "@/lib/i18n";
 import React from "react";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -795,6 +796,7 @@ function AgentCard({ def, cfg, runs, running, onToggle, onRunNow, onConfigChange
 // MAIN
 // ─────────────────────────────────────────────────────────────────────────────
 export function AutomationsDashboard() {
+  const { t } = useLang();
   const [configs, setConfigs] = useLocal<AgentConfigs>("flogen_agent_config", DEFAULT_CONFIGS);
   const [runs, setRuns]       = useLocal<AgentRun[]>("flogen_agent_runs", []);
   const [runningAgent, setRunningAgent] = useState<AgentId | null>(null);
@@ -853,10 +855,10 @@ export function AutomationsDashboard() {
             </div>
             <div>
               <h1 style={{ fontSize: 17, fontWeight: 700, margin: 0, color: C.text, letterSpacing: "-0.01em" }}>
-                Automations
+                {t("agents.title")}
               </h1>
               <p style={{ fontSize: 12, color: C.t2, margin: 0 }}>
-                Intelligent agents that run your content & pipeline on autopilot
+                {t("agents.subtitle")}
               </p>
             </div>
           </div>
@@ -864,9 +866,9 @@ export function AutomationsDashboard() {
           {/* Stats strip */}
           <div style={{ display: "flex", gap: 10, marginTop: 14, flexWrap: "wrap" }}>
             {[
-              { label: "Agents active", value: `${activeCount} / ${AGENTS.length}`, color: C.accent },
-              { label: "Total runs",    value: totalRuns,  color: C.blue },
-              { label: "Items created", value: itemsCreated, color: C.purple },
+              { label: t("agents.active"), value: `${activeCount} / ${AGENTS.length}`, color: C.accent },
+              { label: t("agents.totalRuns"),    value: totalRuns,  color: C.blue },
+              { label: t("agents.itemsCreated"), value: itemsCreated, color: C.purple },
             ].map(stat => (
               <div key={stat.label} style={{
                 padding: "7px 14px", borderRadius: C.r2,

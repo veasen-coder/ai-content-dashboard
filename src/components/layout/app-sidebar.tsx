@@ -13,23 +13,24 @@ import {
   SidebarMenuItem, SidebarFooter,
 } from "@/components/ui/sidebar";
 import { Badge } from "@/components/ui/badge";
+import { useLang } from "@/lib/i18n";
 
-const navItems = [
-  { title: "Flogen AI",         href: "/projects",    icon: Layers,       badge: "PM" },
-  { title: "AI Assistant",      href: "/agent",       icon: Bot,          badge: "AI" },
-  { title: "Content Studio",    href: "/instagram",   icon: Instagram,    badge: null },
-  { title: "Analytics",         href: "/analytics",   icon: BarChart2,    badge: null },
-  { title: "Content Calendar",  href: "/calendar",    icon: CalendarDays, badge: null },
-  { title: "Competitor Intel",  href: "/competitors", icon: Users,        badge: null },
-  { title: "News & Inspiration",href: "/news",        icon: Newspaper,    badge: null },
+const NAV_KEYS: { tKey: string; href: string; icon: typeof Layers; badge: string | null }[] = [
+  { tKey: "nav.projects",    href: "/projects",    icon: Layers,       badge: "PM" },
+  { tKey: "nav.assistant",   href: "/agent",       icon: Bot,          badge: "AI" },
+  { tKey: "nav.studio",      href: "/instagram",   icon: Instagram,    badge: null },
+  { tKey: "nav.analytics",   href: "/analytics",   icon: BarChart2,    badge: null },
+  { tKey: "nav.calendar",    href: "/calendar",    icon: CalendarDays, badge: null },
+  { tKey: "nav.competitors", href: "/competitors", icon: Users,        badge: null },
+  { tKey: "nav.news",        href: "/news",        icon: Newspaper,    badge: null },
 ];
 
 export function AppSidebar() {
   const pathname = usePathname();
+  const { lang, t } = useLang();
   const [businessName, setBusinessName] = useState("Flogen AI");
-  const [tagline, setTagline] = useState("Content OS");
+  const [tagline, setTagline] = useState("");
   const [logoDataUrl, setLogoDataUrl] = useState("");
-  const [lang, setLang] = useState("en");
 
   // Read workspace settings from localStorage (updated via Settings page)
   useEffect(() => {
@@ -40,7 +41,6 @@ export function AppSidebar() {
         if (ws.businessName) setBusinessName(ws.businessName);
         if (ws.tagline) setTagline(ws.tagline);
         if (ws.logoDataUrl) setLogoDataUrl(ws.logoDataUrl);
-        if (ws.language) setLang(ws.language);
       }
     } catch { /* ignore */ }
   }, [pathname]); // re-read whenever the user navigates (picks up Settings changes)
@@ -61,7 +61,7 @@ export function AppSidebar() {
               <span className="text-sm font-bold tracking-tight text-sidebar-foreground">
                 {businessName}
               </span>
-              <span className="text-[11px] text-sidebar-foreground/60">{tagline || "Content OS"}</span>
+              <span className="text-[11px] text-sidebar-foreground/60">{tagline || t("nav.subtitle")}</span>
             </div>
             {lang !== "en" && (
               <span className="ml-auto text-[10px] font-semibold uppercase px-1.5 py-0.5 rounded bg-[#bbf088]/15 text-[#bbf088] group-data-[collapsible=icon]:hidden">
@@ -76,18 +76,19 @@ export function AppSidebar() {
             <SidebarGroupLabel className="text-sidebar-foreground/50">Workspace</SidebarGroupLabel>
             <SidebarGroupContent>
               <SidebarMenu>
-                {navItems.map((item) => {
+                {NAV_KEYS.map((item) => {
                   const isActive = pathname === item.href;
+                  const label = t(item.tKey);
                   return (
                     <SidebarMenuItem key={item.href}>
                       <SidebarMenuButton
                         render={<Link href={item.href} />}
                         isActive={isActive}
-                        tooltip={item.title}
+                        tooltip={label}
                         className="flex items-center gap-2"
                       >
                         <item.icon className="h-4 w-4 shrink-0" />
-                        <span className="flex-1">{item.title}</span>
+                        <span className="flex-1">{label}</span>
                         {item.badge && (
                           <Badge
                             variant="secondary"
@@ -112,11 +113,11 @@ export function AppSidebar() {
               <SidebarMenuButton
                 render={<Link href="/settings" />}
                 isActive={pathname === "/settings"}
-                tooltip="Settings"
+                tooltip={t("nav.settings")}
                 className="flex items-center gap-2"
               >
                 <Settings className="h-4 w-4 shrink-0" />
-                <span className="flex-1">Settings</span>
+                <span className="flex-1">{t("nav.settings")}</span>
               </SidebarMenuButton>
             </SidebarMenuItem>
           </SidebarMenu>
