@@ -574,6 +574,7 @@ function AgentCard({ def, cfg, runs, running, onToggle, onRunNow, onConfigChange
   const [showLog, setShowLog]     = useState(false);
   const [showCfg, setShowCfg]     = useState(false);
   const [justRan, setJustRan]     = useState(false);
+  const [draftCfg, setDraftCfg]   = useState<AgentCfg | null>(null);
 
   const Icon = def.icon;
   const lastRun = runs[0];
@@ -722,7 +723,11 @@ function AgentCard({ def, cfg, runs, running, onToggle, onRunNow, onConfigChange
         </button>
 
         <button
-          onClick={() => setShowCfg(o => !o)}
+          onClick={() => {
+            if (!showCfg) setDraftCfg({ ...cfg });
+            else setDraftCfg(null);
+            setShowCfg(o => !o);
+          }}
           style={{
             display: "flex", alignItems: "center", justifyContent: "center",
             width: 34, height: 34, borderRadius: C.r2,
@@ -739,7 +744,7 @@ function AgentCard({ def, cfg, runs, running, onToggle, onRunNow, onConfigChange
       </div>
 
       {/* ── Config panel ── */}
-      {showCfg && (
+      {showCfg && draftCfg && (
         <div style={{
           padding: 12, borderRadius: C.r2,
           background: "rgba(255,255,255,0.02)", border: `1px solid ${C.border}`,
@@ -747,7 +752,39 @@ function AgentCard({ def, cfg, runs, running, onToggle, onRunNow, onConfigChange
           <p style={{ fontSize: 11.5, fontWeight: 600, color: C.t2, margin: "0 0 10px", textTransform: "uppercase", letterSpacing: "0.06em" }}>
             Configuration
           </p>
-          <ConfigPanel id={def.id} cfg={cfg} onChange={onConfigChange} />
+          <ConfigPanel id={def.id} cfg={draftCfg} onChange={(k, v) => setDraftCfg(prev => prev ? { ...prev, [k]: v } : prev)} />
+          <div style={{ display: "flex", gap: 8, marginTop: 12, justifyContent: "flex-end" }}>
+            <button
+              onClick={() => { setDraftCfg(null); setShowCfg(false); }}
+              style={{
+                padding: "5px 14px", borderRadius: C.r2, fontSize: 12, fontWeight: 500,
+                cursor: "pointer", background: "transparent",
+                border: `1px solid ${C.borderHi}`, color: C.t2, transition: "all 0.12s",
+              }}
+              onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = C.text; }}
+              onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = C.t2; }}
+            >
+              Cancel
+            </button>
+            <button
+              onClick={() => {
+                Object.entries(draftCfg).forEach(([k, v]) => {
+                  if (k !== "enabled") onConfigChange(k, v);
+                });
+                setDraftCfg(null);
+                setShowCfg(false);
+              }}
+              style={{
+                padding: "5px 14px", borderRadius: C.r2, fontSize: 12, fontWeight: 600,
+                cursor: "pointer", background: C.aBg,
+                border: `1px solid ${C.aBd}`, color: C.accent, transition: "all 0.12s",
+              }}
+              onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = "rgba(187,240,136,0.14)"; }}
+              onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = C.aBg; }}
+            >
+              Save
+            </button>
+          </div>
         </div>
       )}
 
@@ -797,7 +834,7 @@ function AgentCard({ def, cfg, runs, running, onToggle, onRunNow, onConfigChange
 // ─────────────────────────────────────────────────────────────────────────────
 export function AutomationsDashboard() {
   const { t } = useLang();
-  const [configs, setConfigs] = useLocal<AgentConfigs>("flogen_agent_config", DEFAULT_CONFIGS);
+  const [configs, setConfigs] = useLocal<AgentConfigs>("flogen_automation_configs", DEFAULT_CONFIGS);
   const [runs, setRuns]       = useLocal<AgentRun[]>("flogen_agent_runs", []);
   const [runningAgent, setRunningAgent] = useState<AgentId | null>(null);
 

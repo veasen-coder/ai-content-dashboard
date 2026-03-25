@@ -52,6 +52,7 @@ interface WSettings {
   instagramHandle:   string;
   xhsHandle:         string;
   primaryLanguage:   Lang;
+  businessContext:   string;
   // Section 2 — AI Behaviour
   brandVoice:        Voice;
   defaultCta:        string;
@@ -81,6 +82,7 @@ const DEFAULT: WSettings = {
   instagramHandle:   "@flogenai",
   xhsHandle:         "",
   primaryLanguage:   "EN",
+  businessContext:   "",
   brandVoice:        "direct",
   defaultCta:        "DM us or visit buyflogen.com",
   postingRules:      "Min 2 days between posts · Rotate industries every 3 posts · Every post ends with CTA to flogen.com or DM",
@@ -428,6 +430,11 @@ export function WorkspaceSettings() {
                       })}
                     </div>
                     <p style={{ fontSize: 11, color: C.t3, margin: "5px 0 0" }}>Drives caption tone in AI-generated content</p>
+                  </div>
+                  <div>
+                    <Label>Business Context</Label>
+                    <textarea value={s.businessContext} onChange={e => upd("businessContext", e.target.value)} placeholder="Brief description of your business, target market, and goals..." rows={4} style={{ ...inp, resize: "vertical", lineHeight: 1.5 }} />
+                    <p style={{ fontSize: 11, color: C.t3, margin: "5px 0 0" }}>Shared with all AI agents to personalise generated content</p>
                   </div>
                 </Group>
 

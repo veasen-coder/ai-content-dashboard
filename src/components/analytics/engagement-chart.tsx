@@ -71,6 +71,12 @@ export function EngagementChart({ data }: EngagementChartProps) {
 
   return (
     <div>
+      <div className="relative">
+        <div className="pointer-events-none absolute inset-0 flex items-center justify-center z-10">
+          <span className="text-[11px] font-bold tracking-[0.18em] uppercase text-white/[0.06] select-none" style={{ transform: "rotate(-18deg)", whiteSpace: "nowrap" }}>
+            Demo Data
+          </span>
+        </div>
       <ResponsiveContainer width="100%" height={240}>
         <AreaChart data={data} margin={{ top: 4, right: 4, left: -10, bottom: 0 }}>
           <defs>
@@ -109,6 +115,7 @@ export function EngagementChart({ data }: EngagementChartProps) {
           ))}
         </AreaChart>
       </ResponsiveContainer>
+      </div>
       <CustomLegend />
     </div>
   );

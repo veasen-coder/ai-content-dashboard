@@ -42,6 +42,17 @@ const STATUSES = Object.keys(STATUS_META) as ContentStatus[];
 const WEEK_DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 // ─── Chip ──────────────────────────────────────────────────────────────────────
+// Map Tailwind chip class → hex color for inline styles
+const CHIP_HEX: Record<string, string> = {
+  "bg-pink-500": "#ec4899",
+  "bg-red-500": "#ef4444",
+  "bg-cyan-400": "#22d3ee",
+  "bg-sky-400": "#38bdf8",
+  "bg-blue-500": "#3b82f6",
+  "bg-indigo-500": "#6366f1",
+  "bg-rose-500": "#f43f5e",
+};
+
 function PostChip({
   post,
   onEdit,
@@ -54,6 +65,7 @@ function PostChip({
   const pm = PLATFORM_META[post.platform];
   const isDraft = post.status === "draft";
   const isFailed = post.status === "failed";
+  const chipColor = CHIP_HEX[pm.chip] ?? "#a78bfa";
 
   return (
     <Popover>
@@ -65,16 +77,15 @@ function PostChip({
               ${isFailed ? "opacity-60" : ""}
             `}
             style={{
-              background: `${pm.chip}22`,
-              borderLeft: `2.5px solid`,
-              borderLeftColor: `hsl(var(--tw-${pm.chip}) / 1)`,
+              background: `${chipColor}22`,
+              borderLeft: `2.5px solid ${chipColor}`,
             }}
           />
         }
       >
         <span
           className="h-1.5 w-1.5 shrink-0 rounded-full"
-          style={{ backgroundColor: `color-mix(in srgb, ${pm.chip.replace("bg-", "")} 80%, white)` }}
+          style={{ backgroundColor: chipColor }}
         />
         <span className="truncate text-zinc-200">{post.title}</span>
         {post.type === "story" && (
@@ -648,7 +659,7 @@ export function ContentCalendar() {
               <div
                 className="h-2 w-2 rounded-full"
                 style={{
-                  backgroundColor: `color-mix(in srgb, var(--color-${PLATFORM_META[p].chip.replace("bg-", "")}) 100%, transparent)`,
+                  backgroundColor: CHIP_HEX[PLATFORM_META[p].chip] ?? "#a78bfa",
                 }}
               />
               <span className="text-[11px] text-zinc-500">{PLATFORM_META[p].label}</span>

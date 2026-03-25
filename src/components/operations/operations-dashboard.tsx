@@ -539,6 +539,7 @@ function KanbanCard({ card, onDelete, onEdit, col, priority, dueDate, onSetPrior
   const [edit, setEdit] = useState(false);
   const [draft, setDraft] = useState(card.title);
   const [showDatePick, setShowDatePick] = useState(false);
+  const [confirmDel, setConfirmDel] = useState(false);
   const clickTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const t = TAG_S[card.tag];
   const pm = PRIORITY_META[priority];
@@ -562,7 +563,7 @@ function KanbanCard({ card, onDelete, onEdit, col, priority, dueDate, onSetPrior
       onClick={handleClick} onDoubleClick={handleDblClick}
       title={edit ? undefined : "Double-click to edit"}
       className="fop-kcard"
-      style={{ background: hov ? C.s3 : C.s2, borderTop: `1px solid ${hov ? C.borderHi : C.border}`, borderRight: `1px solid ${hov ? C.borderHi : C.border}`, borderBottom: `1px solid ${hov ? C.borderHi : C.border}`, borderLeft: priority === "high" ? `3px solid ${C.red}` : `1px solid ${hov ? C.borderHi : C.border}`, borderRadius: C.r, padding: "10px 12px", cursor: "pointer", transition: "all .12s", position: "relative" }}>
+      style={{ background: hov ? C.s3 : C.s2, borderTop: `1px solid ${hov ? C.borderHi : C.border}`, borderRight: `1px solid ${hov ? C.borderHi : C.border}`, borderBottom: `1px solid ${hov ? C.borderHi : C.border}`, borderLeft: priority === "high" ? `3px solid ${C.red}` : `1px solid ${hov ? C.borderHi : C.border}`, borderRadius: C.r, padding: "10px 12px", cursor: "pointer", transition: "all .12s", position: "relative", opacity: col === "done" ? 0.6 : 1 }}>
       <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
         <div style={{ flex: 1, minWidth: 0 }}>
           {edit ? (
@@ -606,10 +607,19 @@ function KanbanCard({ card, onDelete, onEdit, col, priority, dueDate, onSetPrior
             </div>
           )}
         </div>
-        <button onClick={e => { e.stopPropagation(); onDelete(); }} style={{ opacity: hov ? 1 : 0, transition: "opacity .12s", background: "none", border: "none", color: C.t3, cursor: "pointer", padding: "2px 3px", display: "flex", flexShrink: 0 }}
-          onMouseEnter={e => (e.currentTarget.style.color = C.red)} onMouseLeave={e => (e.currentTarget.style.color = C.t3)}>
-          <X size={13} />
-        </button>
+        <div style={{ position: "relative", flexShrink: 0 }}>
+          <button onClick={e => { e.stopPropagation(); setConfirmDel(true); }} style={{ opacity: hov ? 1 : 0, transition: "opacity .12s", background: "none", border: "none", color: C.t3, cursor: "pointer", padding: "2px 3px", display: "flex" }}
+            onMouseEnter={e => (e.currentTarget.style.color = C.red)} onMouseLeave={e => (e.currentTarget.style.color = C.t3)}>
+            <X size={13} />
+          </button>
+          {confirmDel && (
+            <div onClick={e => e.stopPropagation()} style={{ position: "absolute", right: 0, top: 20, background: C.s3, border: `1px solid ${C.borderHi}`, borderRadius: C.r2, padding: "6px 8px", display: "flex", alignItems: "center", gap: 6, zIndex: 10, whiteSpace: "nowrap" }}>
+              <span style={{ fontSize: 11, color: C.red }}>Delete?</span>
+              <button onClick={() => onDelete()} style={{ fontSize: 10.5, background: C.red, color: "#fff", border: "none", borderRadius: 3, padding: "2px 7px", cursor: "pointer" }}>Yes</button>
+              <button onClick={() => setConfirmDel(false)} style={{ fontSize: 10.5, background: "transparent", color: C.t2, border: `1px solid ${C.border}`, borderRadius: 3, padding: "2px 7px", cursor: "pointer" }}>No</button>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -619,6 +629,7 @@ function AddKCard({ onAdd }: { onAdd: (t: string, tag: KTag) => void }) {
   const [open, setOpen] = useState(false);
   const [text, setText] = useState("");
   const [tag, setTag]   = useState<KTag>("Flogen AI");
+  const [error, setError] = useState("");
   if (!open) return (
     <button onClick={() => setOpen(true)}
       style={{ display: "flex", alignItems: "center", gap: 5, color: C.t3, background: "transparent", border: `1px dashed ${C.border}`, fontSize: 12.5, padding: "7px 10px", cursor: "pointer", borderRadius: C.r, width: "100%", transition: "all .12s" }}
@@ -628,9 +639,10 @@ function AddKCard({ onAdd }: { onAdd: (t: string, tag: KTag) => void }) {
     </button>
   );
   return (
-    <form onSubmit={e => { e.preventDefault(); if (!text.trim()) return; onAdd(text.trim(), tag); setText(""); setOpen(false); }}
+    <form onSubmit={e => { e.preventDefault(); if (!text.trim()) { setError("Title is required"); return; } onAdd(text.trim(), tag); setText(""); setError(""); setOpen(false); }}
       style={{ background: C.s2, border: `1px solid ${C.aBd}`, borderRadius: C.r, padding: "10px 12px", display: "flex", flexDirection: "column", gap: 8 }}>
-      <input autoFocus value={text} onChange={e => setText(e.target.value)} placeholder="Task title…" style={{ background: "transparent", border: "none", outline: "none", color: C.text, fontSize: 13, padding: 0 }} />
+      <input autoFocus value={text} onChange={e => { setText(e.target.value); if (error) setError(""); }} placeholder="Task title…" style={{ background: "transparent", border: "none", outline: "none", color: C.text, fontSize: 13, padding: 0 }} />
+      {error && <span style={{ fontSize: 11, color: C.red }}>{error}</span>}
       <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
         <select value={tag} onChange={e => setTag(e.target.value as KTag)} style={{ background: C.s3, border: `1px solid ${C.borderHi}`, color: C.t2, fontSize: 12, padding: "4px 8px", borderRadius: C.r2, outline: "none", flex: 1 }}>
           {(["Flogen AI","JCI","Personal"] as KTag[]).map(tg => <option key={tg} value={tg}>{tg}</option>)}
@@ -783,7 +795,7 @@ function KanbanSection({ onGoToPipeline }: { onGoToPipeline: (dealId: number) =>
             <span style={{ color: C.accent, fontWeight: 600 }}>Good {greet}.</span>{" "}
             Today is {new Date().toLocaleDateString("en-MY", { weekday: "long", month: "long", day: "numeric" })}.{" "}
             You have <strong style={{ color: C.accent }}>{board.today.length}</strong> task{board.today.length !== 1 ? "s" : ""} in Today.{" "}
-            {briefingData.stalledDeal && <>
+            {briefingData.stalledDeal && briefingData.stalledDays >= 2 && <>
               <strong>{briefingData.stalledDeal.name.length > 22 ? briefingData.stalledDeal.name.slice(0, 22) + "…" : briefingData.stalledDeal.name}</strong>{" "}
               has been in {STAGE_LABEL[briefingData.stalledDeal.stage]} for{" "}
               <strong style={{ color: C.yellow }}>{briefingData.stalledDays}d</strong> — follow up today.{" "}
@@ -1882,7 +1894,7 @@ function ContentPlannerAgent({ prefill, onSave, onGoToCalendar, onUsage }: {
   const [err, setErr]           = useState("");
   const inp: React.CSSProperties = { background: C.s2, border: `1px solid ${C.borderHi}`, color: C.cream, fontSize: 13, padding: "8px 12px", borderRadius: C.r2, outline: "none", width: "100%" };
 
-  useEffect(() => { if (prefill) setIndustry(prefill); }, [prefill]);
+  useEffect(() => { if (prefill) setFocus(prefill); }, [prefill]);
 
   const ideas = out ? parsePostIdeas(out) : [];
 
@@ -2619,7 +2631,7 @@ export function OperationsDashboard() {
     } catch {}
   }, []);
 
-  function useTrend(title: string) { setPrefill(title); setTab("agents"); }
+  function useTrend(title: string) { setPrefill(title); setTab("agents"); setTimeout(() => document.querySelector('.fop-content')?.scrollTo({ top: 0, behavior: 'smooth' }), 100); }
 
   function goToPipeline(dealId: number) {
     setTab("pipeline");
@@ -2707,7 +2719,7 @@ export function OperationsDashboard() {
             const showRed   = id === "pipeline" && pipelineAlert;
             const showAmber = id === "calendar" && calendarAlert;
             return (
-              <button key={id} onClick={() => setTab(id)} className="fop-tab-btn"
+              <button key={id} onClick={() => setTab(id)} className="fop-tab-btn" aria-selected={on}
                 style={{ background: "transparent", border: "none", borderBottom: `2px solid ${on ? C.accent : "transparent"}`, color: on ? C.text : C.t2, fontSize: 13, fontWeight: on ? 600 : 400, padding: "10px 16px", cursor: "pointer", display: "flex", alignItems: "center", gap: 6, transition: "all .15s", marginBottom: -1, whiteSpace: "nowrap", position: "relative" }}>
                 <Icon size={13} />
                 {t(tKey)}

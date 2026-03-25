@@ -46,6 +46,109 @@ interface LocalArticle extends Omit<NewsArticle, "id" | "created_at" | "feed_id"
   category: string;
 }
 
+// ─── Mock / demo articles ─────────────────────────────────────────────────────
+const MOCK_ARTICLES: LocalArticle[] = [
+  {
+    id: "mock-1",
+    feed_id: "default-1",
+    feed_name: "TechCrunch AI",
+    title: "How AI Chatbots Are Transforming Customer Support for Southeast Asian SMEs",
+    summary: "Small and medium enterprises across Malaysia, Indonesia, and Thailand are adopting AI-powered chatbots to handle customer inquiries 24/7, slashing response times and boosting satisfaction scores by up to 40%.",
+    url: "https://techcrunch.com/2026/03/20/ai-chatbots-sea-sme",
+    image_url: null,
+    published_at: "2026-03-20T08:00:00Z",
+    is_saved: false,
+    is_read: false,
+    post_idea: null,
+    created_at: new Date().toISOString(),
+    category: "Technology",
+  },
+  {
+    id: "mock-2",
+    feed_id: "default-2",
+    feed_name: "Marketing In Asia",
+    title: "WhatsApp Business API: The Secret Weapon for Malaysian E-Commerce Growth",
+    summary: "Malaysian online retailers using WhatsApp Business API report 3x higher conversion rates compared to email marketing, with automated flows handling cart recovery and order updates.",
+    url: "https://www.marketinginasia.com/whatsapp-business-api-malaysia-ecommerce",
+    image_url: null,
+    published_at: "2026-03-19T10:30:00Z",
+    is_saved: false,
+    is_read: false,
+    post_idea: null,
+    created_at: new Date().toISOString(),
+    category: "Marketing",
+  },
+  {
+    id: "mock-3",
+    feed_id: "default-3",
+    feed_name: "The Rakyat Post Business",
+    title: "MDEC Launches RM50M Grant Programme to Accelerate AI Adoption Among Local SMEs",
+    summary: "The Malaysia Digital Economy Corporation announces a new funding initiative to help small businesses integrate AI tools into their operations, targeting 5,000 companies by year-end.",
+    url: "https://www.therakyatpost.com/business/2026/03/18/mdec-ai-grant-sme",
+    image_url: null,
+    published_at: "2026-03-18T06:00:00Z",
+    is_saved: false,
+    is_read: false,
+    post_idea: null,
+    created_at: new Date().toISOString(),
+    category: "Business",
+  },
+  {
+    id: "mock-4",
+    feed_id: "default-1",
+    feed_name: "TechCrunch AI",
+    title: "OpenAI and Google Race to Build Multilingual AI Agents for Emerging Markets",
+    summary: "Both tech giants are investing heavily in Malay, Bahasa Indonesia, and Thai language models, signalling a major push to serve the 700 million-strong ASEAN digital population.",
+    url: "https://techcrunch.com/2026/03/17/multilingual-ai-agents-asean",
+    image_url: null,
+    published_at: "2026-03-17T14:00:00Z",
+    is_saved: false,
+    is_read: false,
+    post_idea: null,
+    created_at: new Date().toISOString(),
+    category: "Technology",
+  },
+  {
+    id: "mock-5",
+    feed_id: "default-2",
+    feed_name: "Marketing In Asia",
+    title: "5 Content Automation Strategies That Doubled Engagement for APAC Brands",
+    summary: "From AI-generated captions to smart scheduling tools, brands in APAC are leveraging automation to maintain a consistent social media presence while cutting production costs.",
+    url: "https://www.marketinginasia.com/content-automation-apac-brands",
+    image_url: null,
+    published_at: "2026-03-16T09:00:00Z",
+    is_saved: false,
+    is_read: false,
+    post_idea: null,
+    created_at: new Date().toISOString(),
+    category: "Marketing",
+  },
+  {
+    id: "mock-6",
+    feed_id: "default-3",
+    feed_name: "The Rakyat Post Business",
+    title: "Malaysian SMEs Report 60% Time Savings After Implementing AI Workflow Tools",
+    summary: "A recent survey of 1,200 Malaysian small businesses finds that AI-powered workflow automation tools are freeing up hours each week, allowing owners to focus on growth and strategy.",
+    url: "https://www.therakyatpost.com/business/2026/03/15/sme-ai-workflow-savings",
+    image_url: null,
+    published_at: "2026-03-15T07:30:00Z",
+    is_saved: false,
+    is_read: false,
+    post_idea: null,
+    created_at: new Date().toISOString(),
+    category: "Business",
+  },
+];
+
+function shuffleArray<T>(arr: T[]): T[] {
+  const shuffled = [...arr];
+  for (let i = shuffled.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+  }
+  return shuffled;
+}
+
 // ─── Component ────────────────────────────────────────────────────────────────
 export function NewsDashboard() {
   const [articles, setArticles] = useState<LocalArticle[]>([]);
@@ -56,9 +159,10 @@ export function NewsDashboard() {
   const [savingToDraft, setSavingToDraft] = useState<string | null>(null);
   const [draftSaved, setDraftSaved] = useState<Set<string>>(new Set());
 
-  const fetchArticles = useCallback(async () => {
+  const fetchArticles = useCallback(async (shuffle = false) => {
     setIsFetching(true);
     try {
+      // Try the real API first; fall back to mock data if unavailable
       const res = await fetch("/api/news/fetch", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -66,7 +170,7 @@ export function NewsDashboard() {
       });
       const data = await res.json();
 
-      if (data.articles) {
+      if (data.articles && data.articles.length > 0) {
         const mapped: LocalArticle[] = data.articles.map(
           (a: {
             feed_id: string;
@@ -95,10 +199,19 @@ export function NewsDashboard() {
           }
         );
         setArticles(mapped);
-        setLastFetched(new Date().toLocaleTimeString("en-MY", { hour: "2-digit", minute: "2-digit" }));
+      } else {
+        // No articles from API — load mock data
+        const items = shuffle ? shuffleArray(MOCK_ARTICLES) : MOCK_ARTICLES;
+        setArticles(items.map((a, idx) => ({ ...a, id: `mock-${idx}-${Date.now()}`, is_saved: false, is_read: false, post_idea: null })));
       }
-    } catch (err) {
-      console.error("Failed to fetch articles:", err);
+      setLastFetched(new Date().toLocaleTimeString("en-MY", { hour: "2-digit", minute: "2-digit" }));
+    } catch {
+      // API not available — load mock data
+      // Simulate a brief network delay
+      await new Promise((r) => setTimeout(r, 600));
+      const items = shuffle ? shuffleArray(MOCK_ARTICLES) : MOCK_ARTICLES;
+      setArticles(items.map((a, idx) => ({ ...a, id: `mock-${idx}-${Date.now()}`, is_saved: false, is_read: false, post_idea: null })));
+      setLastFetched(new Date().toLocaleTimeString("en-MY", { hour: "2-digit", minute: "2-digit" }));
     } finally {
       setIsFetching(false);
     }
@@ -195,7 +308,7 @@ export function NewsDashboard() {
           </div>
         </div>
         <Button
-          onClick={fetchArticles}
+          onClick={() => fetchArticles(true)}
           disabled={isFetching}
           className="bg-primary text-primary-foreground hover:bg-primary/90"
         >
@@ -283,7 +396,7 @@ export function NewsDashboard() {
                   the latest articles from TechCrunch AI, Marketing In Asia, and The Rakyat Post.
                 </p>
               </div>
-              <Button size="sm" onClick={fetchArticles} disabled={isFetching}>
+              <Button size="sm" onClick={() => fetchArticles(false)} disabled={isFetching}>
                 {isFetching ? (
                   <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
                 ) : (
