@@ -57,6 +57,17 @@ const CONTENT_TYPES: Record<Platform, ContentType[]> = {
   xiaohongshu:  ["post", "carousel"],
 };
 
+const TYPE_LABELS: Record<ContentType, string> = {
+  post: "Post",
+  reel: "Reel",
+  story: "Story",
+  short: "Short",
+  video: "Video",
+  tweet: "Tweet",
+  article: "Article",
+  carousel: "Carousel",
+};
+
 export function PostFormDialog({
   open,
   onOpenChange,
@@ -150,8 +161,8 @@ export function PostFormDialog({
                 </SelectTrigger>
                 <SelectContent>
                   {availableTypes.map((t) => (
-                    <SelectItem key={t} value={t} className="capitalize">
-                      {t}
+                    <SelectItem key={t} value={t}>
+                      {TYPE_LABELS[t] ?? t}
                     </SelectItem>
                   ))}
                 </SelectContent>

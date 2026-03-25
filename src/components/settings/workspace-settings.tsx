@@ -211,6 +211,7 @@ export function WorkspaceSettings() {
   const [section, setSection] = useState<Section>("profile");
   const [s, setS] = useState<WSettings>(DEFAULT);
   const [saved, setSaved] = useState(false);
+  const [toastVisible, setToastVisible] = useState(false);
   const [clearConfirm, setClearConfirm] = useState(false);
   const logoRef = useRef<HTMLInputElement>(null);
 
@@ -222,6 +223,11 @@ export function WorkspaceSettings() {
     } catch { /* ignore */ }
   }, []);
 
+  const showToast = useCallback(() => {
+    setToastVisible(true);
+    setTimeout(() => setToastVisible(false), 2500);
+  }, []);
+
   const upd = useCallback(<K extends keyof WSettings>(key: K, val: WSettings[K]) => {
     setS(prev => {
       const next = { ...prev, [key]: val };
@@ -230,12 +236,14 @@ export function WorkspaceSettings() {
     });
     setSaved(true);
     setTimeout(() => setSaved(false), 1500);
-  }, []);
+    showToast();
+  }, [showToast]);
 
   function save() {
     try { localStorage.setItem(LS_KEY, JSON.stringify(s)); } catch { /* ignore */ }
     setSaved(true);
     setTimeout(() => setSaved(false), 2500);
+    showToast();
   }
 
   function handleLogoUpload(e: React.ChangeEvent<HTMLInputElement>) {
@@ -823,6 +831,19 @@ export function WorkspaceSettings() {
           </div>
         </div>
       </div>
+
+      {/* ── Toast notification ── */}
+      {toastVisible && (
+        <div style={{
+          position: "fixed", bottom: 24, left: "50%", transform: "translateX(-50%)",
+          background: C.accent, color: "#0a0a0a", fontSize: 13, fontWeight: 600,
+          padding: "10px 20px", borderRadius: C.r, display: "flex", alignItems: "center", gap: 6,
+          boxShadow: "0 4px 20px rgba(0,0,0,0.4)", zIndex: 9999,
+          animation: "ws-fade-in .2s ease",
+        }}>
+          <CheckCheck size={14} /> Settings saved
+        </div>
+      )}
     </>
   );
 }

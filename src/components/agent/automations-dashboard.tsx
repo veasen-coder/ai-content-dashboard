@@ -673,6 +673,9 @@ function AgentCard({ def, cfg, runs, running, onToggle, onRunNow, onConfigChange
           fontSize: 12.5, color: C.t3,
         }}>
           No runs yet — click Run Now to trigger manually.
+          <div style={{ fontSize: 11, color: C.t3, marginTop: 4 }}>
+            Agents will run on their next scheduled trigger.
+          </div>
         </div>
       )}
 

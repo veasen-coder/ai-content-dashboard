@@ -563,7 +563,7 @@ function KanbanCard({ card, onDelete, onEdit, col, priority, dueDate, onSetPrior
       onClick={handleClick} onDoubleClick={handleDblClick}
       title={edit ? undefined : "Double-click to edit"}
       className="fop-kcard"
-      style={{ background: hov ? C.s3 : C.s2, borderTop: `1px solid ${hov ? C.borderHi : C.border}`, borderRight: `1px solid ${hov ? C.borderHi : C.border}`, borderBottom: `1px solid ${hov ? C.borderHi : C.border}`, borderLeft: priority === "high" ? `3px solid ${C.red}` : `1px solid ${hov ? C.borderHi : C.border}`, borderRadius: C.r, padding: "10px 12px", cursor: "pointer", transition: "all .12s", position: "relative", opacity: col === "done" ? 0.6 : 1 }}>
+      style={{ background: hov ? C.s3 : C.s2, borderTop: `1px solid ${hov ? C.borderHi : C.border}`, borderRight: `1px solid ${hov ? C.borderHi : C.border}`, borderBottom: `1px solid ${hov ? C.borderHi : C.border}`, borderLeft: priority === "high" ? `3px solid ${C.red}` : `1px solid ${hov ? C.borderHi : C.border}`, borderRadius: C.r, padding: "10px 12px", cursor: "pointer", transition: "all .12s", position: "relative", opacity: col === "done" ? 0.7 : 1 }}>
       <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
         <div style={{ flex: 1, minWidth: 0 }}>
           {edit ? (
@@ -572,7 +572,7 @@ function KanbanCard({ card, onDelete, onEdit, col, priority, dueDate, onSetPrior
               onBlur={commit} onKeyDown={e => { if (e.key === "Enter") commit(); if (e.key === "Escape") { setDraft(card.title); setEdit(false); } }}
               style={{ background: "transparent", border: "none", outline: `2px solid ${C.aBd}`, borderRadius: 4, color: C.text, fontSize: 13, width: "100%", padding: "1px 4px" }} />
           ) : (
-            <p className="fop-kcard-title" style={{ fontSize: 13, color: col === "done" ? C.t3 : C.text, textDecoration: col === "done" ? "line-through" : "none", margin: 0, lineHeight: 1.5 }}>{card.title}</p>
+            <p className="fop-kcard-title" style={{ fontSize: 13, color: col === "done" ? C.t2 : C.text, textDecoration: col === "done" ? "line-through" : "none", margin: 0, lineHeight: 1.5 }}>{card.title}</p>
           )}
           {/* Meta: tag + priority */}
           <div style={{ marginTop: 6, display: "flex", gap: 5, flexWrap: "wrap", alignItems: "center" }}>
@@ -630,6 +630,7 @@ function AddKCard({ onAdd }: { onAdd: (t: string, tag: KTag) => void }) {
   const [text, setText] = useState("");
   const [tag, setTag]   = useState<KTag>("Flogen AI");
   const [error, setError] = useState("");
+  const [toast, setToast] = useState("");
   if (!open) return (
     <button onClick={() => setOpen(true)}
       style={{ display: "flex", alignItems: "center", gap: 5, color: C.t3, background: "transparent", border: `1px dashed ${C.border}`, fontSize: 12.5, padding: "7px 10px", cursor: "pointer", borderRadius: C.r, width: "100%", transition: "all .12s" }}
@@ -639,18 +640,25 @@ function AddKCard({ onAdd }: { onAdd: (t: string, tag: KTag) => void }) {
     </button>
   );
   return (
-    <form onSubmit={e => { e.preventDefault(); if (!text.trim()) { setError("Title is required"); return; } onAdd(text.trim(), tag); setText(""); setError(""); setOpen(false); }}
-      style={{ background: C.s2, border: `1px solid ${C.aBd}`, borderRadius: C.r, padding: "10px 12px", display: "flex", flexDirection: "column", gap: 8 }}>
-      <input autoFocus value={text} onChange={e => { setText(e.target.value); if (error) setError(""); }} placeholder="Task title…" style={{ background: "transparent", border: "none", outline: "none", color: C.text, fontSize: 13, padding: 0 }} />
-      {error && <span style={{ fontSize: 11, color: C.red }}>{error}</span>}
-      <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-        <select value={tag} onChange={e => setTag(e.target.value as KTag)} style={{ background: C.s3, border: `1px solid ${C.borderHi}`, color: C.t2, fontSize: 12, padding: "4px 8px", borderRadius: C.r2, outline: "none", flex: 1 }}>
-          {(["Flogen AI","JCI","Personal"] as KTag[]).map(tg => <option key={tg} value={tg}>{tg}</option>)}
-        </select>
-        <Btn accent small onClick={() => {}}>Add</Btn>
-        <Btn small onClick={() => setOpen(false)}>Cancel</Btn>
-      </div>
-    </form>
+    <>
+      <form onSubmit={e => { e.preventDefault(); if (!text.trim()) { setError("Title is required"); return; } onAdd(text.trim(), tag); setText(""); setError(""); setOpen(false); setToast("Card added ✓"); setTimeout(() => setToast(""), 2000); }}
+        style={{ background: C.s2, border: `1px solid ${C.aBd}`, borderRadius: C.r, padding: "10px 12px", display: "flex", flexDirection: "column", gap: 8 }}>
+        <input autoFocus value={text} onChange={e => { setText(e.target.value); if (error) setError(""); }} placeholder="Task title…" style={{ background: "transparent", border: "none", outline: "none", color: C.text, fontSize: 13, padding: 0 }} />
+        {error && <span style={{ fontSize: 11, color: C.red }}>{error}</span>}
+        <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+          <select value={tag} onChange={e => setTag(e.target.value as KTag)} style={{ background: C.s3, border: `1px solid ${C.borderHi}`, color: C.t2, fontSize: 12, padding: "4px 8px", borderRadius: C.r2, outline: "none", flex: 1 }}>
+            {(["Flogen AI","JCI","Personal"] as KTag[]).map(tg => <option key={tg} value={tg}>{tg}</option>)}
+          </select>
+          <Btn accent small onClick={() => {}}>Add</Btn>
+          <Btn small onClick={() => setOpen(false)}>Cancel</Btn>
+        </div>
+      </form>
+      {toast && (
+        <div style={{ position: "fixed", bottom: 24, left: "50%", transform: "translateX(-50%)", background: C.s2, border: `1px solid ${C.aBd}`, borderRadius: C.r, padding: "10px 20px", color: C.accent, fontSize: 13, fontWeight: 500, zIndex: 100, display: "flex", alignItems: "center", gap: 8, boxShadow: "0 4px 20px rgba(0,0,0,.4)", whiteSpace: "nowrap" }}>
+          <CheckCheck size={14} /> {toast}
+        </div>
+      )}
+    </>
   );
 }
 
@@ -1102,6 +1110,7 @@ function DealSlideOver({ deal, onClose, onEdit }: { deal: Deal; onClose: () => v
     const entry: OutreachEntry = { id: Date.now(), date: isoDate(new Date()), note: newEntry.trim() };
     setOutreach(prev => ({ ...prev, [deal.id]: [entry, ...(prev[deal.id] ?? [])] }));
     setNewEntry("");
+    onEdit({ lastContact: isoDate(new Date()) });
   }
 
   return (
@@ -1186,7 +1195,7 @@ function DealSlideOver({ deal, onClose, onEdit }: { deal: Deal; onClose: () => v
               )}
               {dealLog.map((entry, i) => (
                 <div key={entry.id} style={{ display: "flex", gap: 8, padding: "7px 0", borderBottom: i < dealLog.length - 1 ? `1px solid ${C.border}` : "none" }}>
-                  <span style={{ fontSize: 10.5, color: C.t3, flexShrink: 0, whiteSpace: "nowrap", marginTop: 1 }}>{entry.date}</span>
+                  <span style={{ fontSize: 10.5, color: C.t3, flexShrink: 0, whiteSpace: "nowrap", marginTop: 1 }}>{new Date(entry.date).toLocaleDateString("en-MY", { day: "numeric", month: "short" })}</span>
                   <span style={{ fontSize: 12, color: C.t2, lineHeight: 1.5 }}>{entry.note}</span>
                 </div>
               ))}
@@ -1622,7 +1631,7 @@ function CalendarSection({ onPlannerPrefill, prefillPost }: {
       <div style={{ background: onTrack ? "rgba(187,240,136,.07)" : "rgba(251,191,36,.07)", border: `1px solid ${onTrack ? C.aBd : "rgba(251,191,36,.3)"}`, borderRadius: C.r, padding: "10px 16px", marginBottom: 14, display: "flex", alignItems: "center", gap: 8 }}>
         <span style={{ fontSize: 14, flexShrink: 0 }}>{onTrack ? "✅" : "⚠"}</span>
         {onTrack
-          ? <span style={{ fontSize: 12.5, color: C.accent, fontWeight: 500 }}>On track — {thisWeekCount}/{TARGET_POSTS} posts this week</span>
+          ? <span style={{ fontSize: 12.5, color: C.accent, fontWeight: 500 }}>{`On track — ${thisWeekCount} posts this week (goal: ${TARGET_POSTS}) ✅`}</span>
           : <span style={{ fontSize: 12.5, color: C.yellow, fontWeight: 500 }}>Behind — post today to stay on cadence ({thisWeekCount}/{TARGET_POSTS} this week)</span>
         }
       </div>
@@ -2081,6 +2090,8 @@ function AgentsSection({ plannerPrefill, scriptPrefill, onSave, onGoToCalendar }
 }) {
   const [sessIn, setSessIn]   = useState(0);
   const [sessOut, setSessOut] = useState(0);
+  const [wsModel, setWsModel] = useState("claude-sonnet-4-5");
+  useEffect(() => { try { const ws = JSON.parse(localStorage.getItem("flogen_workspace_settings") || "{}"); if (ws.claudeModel) setWsModel(ws.claudeModel); } catch {} }, []);
 
   function addUsage(u: { input_tokens: number; output_tokens: number }) {
     trackTokens(u);
@@ -2095,7 +2106,7 @@ function AgentsSection({ plannerPrefill, scriptPrefill, onSave, onGoToCalendar }
       {/* Header bar — 4D: token counter */}
       <div style={{ background: C.s, border: `1px solid ${C.aBd}`, borderRadius: C.r, padding: "10px 16px", marginBottom: 20, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
         <Zap size={13} color={C.accent} />
-        <span style={{ fontSize: 12.5, color: C.t2 }}>Calls <strong style={{ color: C.text }}>claude-sonnet-4-5</strong> via your Anthropic API key</span>
+        <span style={{ fontSize: 12.5, color: C.t2 }}>Calls <strong style={{ color: C.text }}>{wsModel}</strong> via your Anthropic API key</span>
         {(sessIn > 0 || sessOut > 0) && (
           <span style={{ marginLeft: "auto", fontSize: 11.5, color: C.t2, whiteSpace: "nowrap" }}>
             In: <strong style={{ color: C.text }}>{sessIn.toLocaleString()}</strong>
@@ -2589,10 +2600,10 @@ const TABS: { id: Tab; tKey: string; Icon: React.ElementType }[] = [
   { id: "scripts",  tKey: "ops.scripts",  Icon: Archive       },
 ];
 
-export function OperationsDashboard() {
+export function OperationsDashboard({ initialTab }: { initialTab?: Tab }) {
   const { t }                         = useLang();
   const router                        = useNextRouter();
-  const [tab, setTab]                 = useState<Tab>("kanban");
+  const [tab, setTab]                 = useState<Tab>(initialTab ?? "kanban");
   const [plannerPrefill, setPrefill]  = useState("");
   const [saved, setSaved]             = useLocal<SavedScript[]>("flogen_saved_scripts", SCRIPT_SEEDS);
   const [highlightDealId, setHighlightDealId] = useState<number | null>(null);

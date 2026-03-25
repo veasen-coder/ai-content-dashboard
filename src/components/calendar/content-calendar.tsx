@@ -440,7 +440,16 @@ export function ContentCalendar() {
 
             <Button
               size="sm"
-              onClick={() => handleAddClick(format(new Date(), "yyyy-MM-dd"))}
+              onClick={() => {
+                const now = new Date();
+                const viewingCurrentMonth =
+                  currentDate.getFullYear() === now.getFullYear() &&
+                  currentDate.getMonth() === now.getMonth();
+                const defaultDate = viewingCurrentMonth
+                  ? format(now, "yyyy-MM-dd")
+                  : format(startOfMonth(currentDate), "yyyy-MM-dd");
+                handleAddClick(defaultDate);
+              }}
               className="bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white border-0 h-9"
             >
               <Plus className="h-4 w-4 mr-1.5" />
@@ -637,7 +646,16 @@ export function ContentCalendar() {
                   size="sm"
                   variant="outline"
                   className="border-zinc-700 text-zinc-400"
-                  onClick={() => handleAddClick(format(new Date(), "yyyy-MM-dd"))}
+                  onClick={() => {
+                    const now = new Date();
+                    const viewingCurrentMonth =
+                      currentDate.getFullYear() === now.getFullYear() &&
+                      currentDate.getMonth() === now.getMonth();
+                    const defaultDate = viewingCurrentMonth
+                      ? format(now, "yyyy-MM-dd")
+                      : format(startOfMonth(currentDate), "yyyy-MM-dd");
+                    handleAddClick(defaultDate);
+                  }}
                 >
                   <Plus className="h-4 w-4 mr-1.5" />
                   Add Content

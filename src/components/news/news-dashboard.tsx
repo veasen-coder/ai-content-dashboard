@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import {
   Newspaper,
   RefreshCw,
@@ -216,6 +216,11 @@ export function NewsDashboard() {
       setIsFetching(false);
     }
   }, []);
+
+  // Auto-fetch articles on mount
+  useEffect(() => {
+    fetchArticles();
+  }, [fetchArticles]);
 
   function toggleSave(id: string) {
     setArticles((prev) =>

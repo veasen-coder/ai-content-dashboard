@@ -203,6 +203,11 @@ export function AnalyticsDashboard() {
 
   // ── 6D: Export CSV ──────────────────────────────────────────────────────────
   function exportCsv() {
+    if (!kpi && !igLive && topPosts.length === 0) {
+      alert("No data to export yet. Please wait for analytics to load.");
+      return;
+    }
+
     const today = new Date().toISOString().slice(0, 10);
     const dateFrom = range.from.toISOString().slice(0, 10);
     const dateTo   = range.to.toISOString().slice(0, 10);
@@ -239,10 +244,13 @@ export function AnalyticsDashboard() {
     const a    = document.createElement("a");
     a.href     = url;
     a.download = `flogen-ai-report-${today}.csv`;
+    a.style.display = "none";
     document.body.appendChild(a);
     a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+    setTimeout(() => {
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }, 100);
   }
 
   const load = useCallback(async (r: DateRange) => {
