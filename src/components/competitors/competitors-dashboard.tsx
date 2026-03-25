@@ -136,9 +136,8 @@ export function CompetitorsDashboard() {
   const [sortDir, setSortDir] = useState<SortDir>("desc");
   const [refreshing, setRefreshing] = useState<string | null>(null);
   const [gapOpen, setGapOpen] = useState(false);
-  const [lastRefreshed, setLastRefreshed] = useState(() =>
-    new Date().toLocaleTimeString("en-MY", { hour: "2-digit", minute: "2-digit" })
-  );
+  const [lastRefreshed, setLastRefreshed] = useState("--:--");
+  useEffect(() => { setLastRefreshed(new Date().toLocaleTimeString("en-MY", { hour: "2-digit", minute: "2-digit" })); }, []);
 
   const selectedCompetitor = competitors.find((c) => c.id === selectedId) ?? null;
 

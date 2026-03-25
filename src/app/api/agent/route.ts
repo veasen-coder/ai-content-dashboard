@@ -1,22 +1,24 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { NextRequest } from "next/server";
 
-const client = new Anthropic();
-
 export async function POST(req: NextRequest) {
-  const key = process.env.ANTHROPIC_API_KEY;
+  const { systemPrompt, userMessage, maxTokens = 1200, apiKey: clientKey, model } = await req.json();
+
+  // Use client-provided key (from Settings page) or fall back to env var
+  const key = clientKey || process.env.ANTHROPIC_API_KEY;
   if (!key) {
     return Response.json(
-      { error: "ANTHROPIC_API_KEY is not configured. Go to Settings → API Keys and add it, then redeploy on Vercel." },
+      { error: "No API key configured. Go to Settings → AI Behaviour and add your Anthropic API key." },
       { status: 400 }
     );
   }
 
-  const { systemPrompt, userMessage, maxTokens = 1200 } = await req.json();
+  const client = new Anthropic({ apiKey: key });
+  const selectedModel = model || "claude-sonnet-4-5";
 
   try {
     const msg = await client.messages.create({
-      model: "claude-sonnet-4-5",
+      model: selectedModel,
       max_tokens: maxTokens,
       system: systemPrompt,
       messages: [{ role: "user", content: userMessage }],

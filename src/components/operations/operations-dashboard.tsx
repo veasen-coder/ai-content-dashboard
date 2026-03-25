@@ -181,8 +181,17 @@ function getWeekDates(offset = 0): Date[] {
 
 function isoDate(d: Date) { return d.toISOString().slice(0, 10); }
 
+function getWsSettings(): { apiKey?: string; model?: string } {
+  try {
+    const raw = localStorage.getItem("flogen_workspace_settings");
+    if (raw) { const ws = JSON.parse(raw); return { apiKey: ws.anthropicApiKey || undefined, model: ws.claudeModel || undefined }; }
+  } catch { /* ignore */ }
+  return {};
+}
+
 async function callAgent(sys: string, msg: string, max = 1200): Promise<string> {
-  const res  = await fetch("/api/agent", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ systemPrompt: sys, userMessage: msg, maxTokens: max }) });
+  const ws = getWsSettings();
+  const res  = await fetch("/api/agent", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ systemPrompt: sys, userMessage: msg, maxTokens: max, apiKey: ws.apiKey, model: ws.model }) });
   const data = await res.json();
   if (data.error) throw new Error(data.error);
   return data.content as string;
@@ -703,13 +712,17 @@ function KanbanSection({ onGoToPipeline }: { onGoToPipeline: (dealId: number) =>
   const [kanbanNotes, setKanbanNotes] = useLocal<Record<number, string>>("flogen_kanban_notes", {});
   const [dragOver, setDragOver]   = useState<KCol | null>(null);
   const [selected, setSelected]   = useState<{ card: KCard; col: KCol } | null>(null);
-  // 9A: Daily briefing
-  const [briefingOpen, setBriefingOpen] = useState(() => {
-    if (typeof window === "undefined") return true;
-    try { return localStorage.getItem("flogen_kanban_briefing_dismissed") !== new Date().toISOString().slice(0, 10); }
-    catch { return true; }
-  });
-  const [briefingData] = useState(() => {
+  // 9A: Daily briefing (SSR-safe — computed in useEffect)
+  const [briefingOpen, setBriefingOpen] = useState(true);
+  const [briefingData, setBriefingData] = useState<{
+    stalledDeal: Deal | null; stalledDays: number; scheduledThisWeek: number;
+  }>({ stalledDeal: null, stalledDays: 0, scheduledThisWeek: 0 });
+  const [greet, setGreet] = useState("morning");
+  useEffect(() => {
+    try {
+      const dismissed = localStorage.getItem("flogen_kanban_briefing_dismissed") === new Date().toISOString().slice(0, 10);
+      setBriefingOpen(!dismissed);
+    } catch { /* ignore */ }
     try {
       const deals: Deal[] = JSON.parse(localStorage.getItem("flogen_pipeline") || "null") ?? INIT_DEALS;
       const posts: CalPost[] = JSON.parse(localStorage.getItem("flogen_calendar") || "null") ?? INIT_POSTS;
@@ -723,10 +736,11 @@ function KanbanSection({ onGoToPipeline }: { onGoToPipeline: (dealId: number) =>
       }
       const weekDates = new Set(getWeekDates(0).map(isoDate));
       const scheduledThisWeek = posts.filter(p => weekDates.has(p.date)).length;
-      return { stalledDeal, stalledDays: maxDays, scheduledThisWeek };
-    } catch { return { stalledDeal: null as Deal | null, stalledDays: 0, scheduledThisWeek: 0 }; }
-  });
-  const greet = (() => { const h = new Date().getHours(); return h < 12 ? "morning" : h < 17 ? "afternoon" : "evening"; })();
+      setBriefingData({ stalledDeal, stalledDays: maxDays, scheduledThisWeek });
+    } catch { /* ignore */ }
+    const h = new Date().getHours();
+    setGreet(h < 12 ? "morning" : h < 17 ? "afternoon" : "evening");
+  }, []);
   // 9D: Shortcuts overlay
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   useEffect(() => {
@@ -1874,7 +1888,7 @@ function ContentPlannerAgent({ prefill, onSave, onGoToCalendar, onUsage }: {
   async function run() {
     setLoading(true); setErr(""); setOut("");
     try {
-      const res = await fetch("/api/agent", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ systemPrompt: SYS_PLANNER, userMessage: `Industry/vertical: ${industry}\nWeek focus / theme: ${focus || "general WhatsApp AI automation"}`, maxTokens: 1200 }) });
+      const res = await fetch("/api/agent", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ systemPrompt: SYS_PLANNER, userMessage: `Industry/vertical: ${industry}\nWeek focus / theme: ${focus || "general WhatsApp AI automation"}`, maxTokens: 1200, ...getWsSettings() }) });
       const data = await res.json();
       if (data.error) throw new Error(data.error);
       if (data.usage) onUsage?.(data.usage);
@@ -1934,7 +1948,7 @@ function ScriptWriterAgent({ prefill, onSave, onUsage }: { prefill?: string; onS
   async function run() {
     setLoading(true); setErr(""); setOut("");
     try {
-      const res = await fetch("/api/agent", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ systemPrompt: SYS_SCRIPT, userMessage: `Topic: ${topic}\nPlatform: ${platform}\nContent type: ${type}`, maxTokens: 1200 }) });
+      const res = await fetch("/api/agent", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ systemPrompt: SYS_SCRIPT, userMessage: `Topic: ${topic}\nPlatform: ${platform}\nContent type: ${type}`, maxTokens: 1200, ...getWsSettings() }) });
       const data = await res.json();
       if (data.error) throw new Error(data.error);
       if (data.usage) onUsage?.(data.usage);
@@ -1976,7 +1990,7 @@ function ConsultingAgent({ onSave, onUsage }: { onSave: (content: string, type: 
   async function run() {
     setLoading(true); setErr(""); setOut("");
     try {
-      const res = await fetch("/api/agent", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ systemPrompt: SYS_CONSULT, userMessage: `Client name: ${client}\nBusiness problem: ${problem}`, maxTokens: 1200 }) });
+      const res = await fetch("/api/agent", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ systemPrompt: SYS_CONSULT, userMessage: `Client name: ${client}\nBusiness problem: ${problem}`, maxTokens: 1200, ...getWsSettings() }) });
       const data = await res.json();
       if (data.error) throw new Error(data.error);
       if (data.usage) onUsage?.(data.usage);
@@ -2019,7 +2033,7 @@ function OutreachAgent({ onSave, onUsage }: {
     setLoading(true); setErr(""); setOut("");
     try {
       const msg = `Lead: ${lead}\nType: ${biz}\nDetail: ${detail || "none"}`;
-      const res  = await fetch("/api/agent", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ systemPrompt: SYS_OUTREACH, userMessage: msg, maxTokens: 400 }) });
+      const res  = await fetch("/api/agent", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ systemPrompt: SYS_OUTREACH, userMessage: msg, maxTokens: 400, ...getWsSettings() }) });
       const data = await res.json();
       if (data.error) throw new Error(data.error);
       if (data.usage) onUsage?.(data.usage);
