@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 import { useRouter as useNextRouter } from "next/navigation";
 import { useLang } from "@/lib/i18n";
+import { TabErrorBoundary } from "./error-boundary";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // TOKENS
@@ -443,12 +444,13 @@ function dueDateColor(iso: string | undefined): string | null {
 }
 
 // ── Task Detail Slide-Over ──
-function TaskSlideOver({ card, col, priority, dueDate, notes, pipelineLink, onClose, onEdit, onSetPriority, onSetDueDate, onSetNotes, onGoToPipeline }: {
+function TaskSlideOver({ card, col, priority, dueDate, notes, pipelineLink, onClose, onEdit, onSetPriority, onSetDueDate, onSetNotes, onGoToPipeline, onMove }: {
   card: KCard; col: KCol; priority: KPriority; dueDate?: string; notes: string;
   pipelineLink?: { dealId: number; label: string };
   onClose: () => void; onEdit: (f: Partial<KCard>) => void;
   onSetPriority: (p: KPriority) => void; onSetDueDate: (d: string | null) => void;
   onSetNotes: (n: string) => void; onGoToPipeline?: (dealId: number) => void;
+  onMove: (to: KCol) => void;
 }) {
   const t = TAG_S[card.tag];
   const pm = PRIORITY_META[priority];
@@ -498,6 +500,17 @@ function TaskSlideOver({ card, col, priority, dueDate, notes, pipelineLink, onCl
             <label style={{ fontSize: 11, color: C.t2, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", display: "block", marginBottom: 5 }}>Due Date</label>
             <input type="date" value={dueDate ?? ""} onChange={e => onSetDueDate(e.target.value || null)}
               style={{ background: C.s2, border: `1px solid ${C.border}`, color: ddColor ?? C.text, fontSize: 12.5, padding: "6px 10px", borderRadius: C.r2, outline: "none", width: "100%", colorScheme: "dark", boxSizing: "border-box" }} />
+          </div>
+          <div>
+            <label style={{ fontSize: 11, color: C.t2, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", display: "block", marginBottom: 5 }}>Move to</label>
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+              {(["today","week","backlog","done"] as KCol[]).filter(c => c !== col).map(c => (
+                <button key={c} onClick={() => { onMove(c); onClose(); }}
+                  style={{ flex: 1, background: C.s2, border: `1px solid ${C.border}`, color: C.t2, fontSize: 11.5, padding: "5px 0", borderRadius: C.r2, cursor: "pointer", fontFamily: "inherit" }}>
+                  {KCOL_META[c].label}
+                </button>
+              ))}
+            </div>
           </div>
           {pipelineLink && (
             <div>
@@ -733,6 +746,7 @@ function KanbanSection({ onGoToPipeline }: { onGoToPipeline: (dealId: number) =>
   const [kanbanNotes, setKanbanNotes] = useLocal<Record<number, string>>("flogen_kanban_notes", {});
   const [dragOver, setDragOver]   = useState<KCol | null>(null);
   const [selected, setSelected]   = useState<{ card: KCard; col: KCol } | null>(null);
+  const [deleteConfirm, setDeleteConfirm] = useState<{col: KCol; id: number} | null>(null);
   // 9A: Daily briefing (SSR-safe — computed in useEffect)
   const [briefingOpen, setBriefingOpen] = useState(true);
   const [briefingData, setBriefingData] = useState<{
@@ -886,7 +900,7 @@ function KanbanSection({ onGoToPipeline }: { onGoToPipeline: (dealId: number) =>
                     priority={priorities[card.id] ?? "medium"}
                     dueDate={duedates[card.id]}
                     pipelineLink={PIPELINE_LINKS[card.id]}
-                    onDelete={() => delCard(col, card.id)}
+                    onDelete={() => setDeleteConfirm({ col, id: card.id })}
                     onEdit={f => editCard(col, card.id, f)}
                     onSetPriority={p => setPriorities(prev => ({ ...prev, [card.id]: p }))}
                     onSetDueDate={d => setDuedates(prev => { if (!d) { const n = { ...prev }; delete n[card.id]; return n; } return { ...prev, [card.id]: d }; })}
@@ -946,7 +960,23 @@ function KanbanSection({ onGoToPipeline }: { onGoToPipeline: (dealId: number) =>
           onSetPriority={p => setPriorities(prev => ({ ...prev, [syncedSelected.card.id]: p }))}
           onSetDueDate={d => setDuedates(prev => { if (!d) { const n = { ...prev }; delete n[syncedSelected.card.id]; return n; } return { ...prev, [syncedSelected.card.id]: d }; })}
           onSetNotes={n => setKanbanNotes(prev => ({ ...prev, [syncedSelected.card.id]: n }))}
-          onGoToPipeline={onGoToPipeline} />
+          onGoToPipeline={onGoToPipeline}
+          onMove={(to) => moveCard(syncedSelected.card.id, syncedSelected.col, to)} />
+      )}
+
+      {/* Delete card confirmation */}
+      {deleteConfirm && (
+        <>
+          <div onClick={() => setDeleteConfirm(null)} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.55)", backdropFilter: "blur(3px)", zIndex: 50 }} />
+          <div style={{ position: "fixed", top: "50%", left: "50%", transform: "translate(-50%,-50%)", background: C.s, border: `1px solid ${C.borderHi}`, borderRadius: C.r, width: 340, padding: "20px 24px", zIndex: 60, textAlign: "center" }}>
+            <div style={{ fontSize: 14, fontWeight: 600, color: C.text, marginBottom: 8 }}>Delete this card?</div>
+            <p style={{ fontSize: 12.5, color: C.t2, marginBottom: 18 }}>This action cannot be undone.</p>
+            <div style={{ display: "flex", gap: 8, justifyContent: "center" }}>
+              <Btn small onClick={() => setDeleteConfirm(null)}>Cancel</Btn>
+              <Btn small accent onClick={() => { delCard(deleteConfirm.col, deleteConfirm.id); setDeleteConfirm(null); }}>Delete</Btn>
+            </div>
+          </div>
+        </>
       )}
 
       {/* Week in Review */}
@@ -1896,8 +1926,8 @@ function ContentPlannerAgent({ prefill, onSave, onGoToCalendar, onUsage }: {
   onGoToCalendar?: (post: { topic: string; platform: PostPlat; type: PostType }) => void;
   onUsage?: (u: { input_tokens: number; output_tokens: number }) => void;
 }) {
-  const [industry, setIndustry] = useState(prefill || "Real Estate");
-  const [focus, setFocus]       = useState("");
+  const [industry, setIndustry] = useState("Real Estate");
+  const [focus, setFocus]       = useState(prefill || "");
   const [out, setOut]           = useState("");
   const [loading, setLoading]   = useState(false);
   const [err, setErr]           = useState("");
@@ -2082,15 +2112,19 @@ function OutreachAgent({ onSave, onUsage }: {
   );
 }
 
-function AgentsSection({ plannerPrefill, scriptPrefill, onSave, onGoToCalendar }: {
+function AgentsSection({ plannerPrefill, scriptPrefill, onSave, onGoToCalendar, onSetPlannerPrefill }: {
   plannerPrefill: string;
   scriptPrefill?: string;
   onSave: (content: string, type: SavedScript["type"], platform?: string) => void;
   onGoToCalendar?: (post: { topic: string; platform: PostPlat; type: PostType }) => void;
+  onSetPlannerPrefill?: (v: string) => void;
 }) {
   const [sessIn, setSessIn]   = useState(0);
   const [sessOut, setSessOut] = useState(0);
   const [wsModel, setWsModel] = useState("claude-sonnet-4-5");
+  const [quickPromptsOpen, setQuickPromptsOpen] = useState(false);
+  const [configuring, setConfiguring] = useState<number | null>(null);
+  const [autoConfigs, setAutoConfigs] = useLocal<Record<number, { enabled: boolean; schedule: string }>>("flogen_auto_configs", {});
   useEffect(() => { try { const ws = JSON.parse(localStorage.getItem("flogen_workspace_settings") || "{}"); if (ws.claudeModel) setWsModel(ws.claudeModel); } catch {} }, []);
 
   function addUsage(u: { input_tokens: number; output_tokens: number }) {
@@ -2107,6 +2141,29 @@ function AgentsSection({ plannerPrefill, scriptPrefill, onSave, onGoToCalendar }
       <div style={{ background: C.s, border: `1px solid ${C.aBd}`, borderRadius: C.r, padding: "10px 16px", marginBottom: 20, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
         <Zap size={13} color={C.accent} />
         <span style={{ fontSize: 12.5, color: C.t2 }}>Calls <strong style={{ color: C.text }}>{wsModel}</strong> via your Anthropic API key</span>
+        {/* Quick Prompts */}
+        <div style={{ position: "relative" }}>
+          <Btn small onClick={() => setQuickPromptsOpen(o => !o)}>
+            <Sparkles size={12} /> Quick prompts
+          </Btn>
+          {quickPromptsOpen && (
+            <div style={{ position: "absolute", top: "100%", left: 0, marginTop: 4, background: C.s, border: `1px solid ${C.borderHi}`, borderRadius: C.r, padding: "6px 0", zIndex: 20, width: 320, boxShadow: "0 8px 24px rgba(0,0,0,.4)" }}>
+              {[
+                "Write a pain-point Reel about salon owners",
+                "Draft a cold DM for a property agent",
+                "Create a carousel about WhatsApp automation",
+                "Pitch for a clinic using Starter package",
+              ].map((prompt) => (
+                <button key={prompt} onClick={() => { onSetPlannerPrefill?.(prompt); setQuickPromptsOpen(false); }}
+                  style={{ display: "block", width: "100%", textAlign: "left", background: "transparent", border: "none", color: C.t2, fontSize: 12, padding: "7px 14px", cursor: "pointer", fontFamily: "inherit", transition: "all .1s" }}
+                  onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = C.s3; (e.currentTarget as HTMLElement).style.color = C.text; }}
+                  onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = C.t2; }}>
+                  {prompt}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
         {(sessIn > 0 || sessOut > 0) && (
           <span style={{ marginLeft: "auto", fontSize: 11.5, color: C.t2, whiteSpace: "nowrap" }}>
             In: <strong style={{ color: C.text }}>{sessIn.toLocaleString()}</strong>
@@ -2120,6 +2177,56 @@ function AgentsSection({ plannerPrefill, scriptPrefill, onSave, onGoToCalendar }
         <ScriptWriterAgent prefill={scriptPrefill} onSave={(c, t) => onSave(c, t)} onUsage={addUsage} />
         <ConsultingAgent onSave={(c, t) => onSave(c, t)} onUsage={addUsage} />
         <OutreachAgent onSave={(c, t) => onSave(c, t)} onUsage={addUsage} />
+      </div>
+
+      {/* Automation Agents */}
+      <div style={{ marginTop: 24 }}>
+        <p style={{ fontSize: 11, fontWeight: 600, color: C.t3, letterSpacing: "0.07em", textTransform: "uppercase", margin: "0 0 12px" }}>Automation Agents</p>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(280px,1fr))", gap: 10 }}>
+          {[
+            { name: "Weekly Content Planner", desc: "Auto-generates 3 post ideas every Monday", icon: CalendarDays, schedule: "Every Monday at 9am" },
+            { name: "Trend Scanner", desc: "Refreshes trend cards daily from industry sources", icon: TrendingUp, schedule: "Every day at 8am" },
+            { name: "Stale Lead Nudger", desc: "Alerts when a pipeline deal goes stale (7+ days)", icon: Bell, schedule: "Every day at 10am" },
+            { name: "Caption Recycler", desc: "Resurfaces top-performing captions for repurposing", icon: RefreshCw, schedule: "Every Friday at 2pm" },
+            { name: "Competitor Watcher", desc: "Checks competitor accounts for new content patterns", icon: Users, schedule: "Every Wednesday at 9am" },
+            { name: "Outreach Drafter", desc: "Pre-drafts cold DMs for new leads in pipeline", icon: Send, schedule: "Every Tuesday at 9am" },
+          ].map((agent, i) => {
+            const Icon = agent.icon;
+            const cfg = autoConfigs[i] ?? { enabled: false, schedule: agent.schedule };
+            const isConfiguring = configuring === i;
+            return (
+              <div key={i} style={{ background: C.s, border: `1px solid ${C.border}`, borderRadius: C.r, overflow: "hidden" }}>
+                <div style={{ padding: "12px 14px", display: "flex", alignItems: "center", gap: 10 }}>
+                  <div style={{ width: 28, height: 28, background: cfg.enabled ? C.aBg : C.s2, border: `1px solid ${cfg.enabled ? C.aBd : C.border}`, borderRadius: C.r2, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                    <Icon size={13} color={cfg.enabled ? C.accent : C.t3} />
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <p style={{ fontSize: 12.5, fontWeight: 600, color: C.text, margin: 0 }}>{agent.name}</p>
+                    <p style={{ fontSize: 11, color: C.t2, margin: "2px 0 0" }}>{agent.desc}</p>
+                  </div>
+                  <Btn small onClick={() => setConfiguring(isConfiguring ? null : i)}>Configure</Btn>
+                </div>
+                {isConfiguring && (
+                  <div style={{ padding: "10px 14px", borderTop: `1px solid ${C.border}`, background: C.s2, display: "flex", flexDirection: "column", gap: 10 }}>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                      <span style={{ fontSize: 12, color: C.t2 }}>Status</span>
+                      <button onClick={() => setAutoConfigs(prev => ({ ...prev, [i]: { ...cfg, enabled: !cfg.enabled } }))}
+                        style={{ fontSize: 11.5, fontWeight: 600, padding: "3px 12px", borderRadius: 99, cursor: "pointer", border: `1px solid ${cfg.enabled ? C.aBd : C.border}`, background: cfg.enabled ? C.aBg : C.s3, color: cfg.enabled ? C.accent : C.t3, transition: "all .12s" }}>
+                        {cfg.enabled ? "Enabled" : "Disabled"}
+                      </button>
+                    </div>
+                    <div>
+                      <span style={{ fontSize: 11, color: C.t3, display: "block", marginBottom: 4 }}>Schedule</span>
+                      <input value={cfg.schedule} onChange={e => setAutoConfigs(prev => ({ ...prev, [i]: { ...cfg, schedule: e.target.value } }))}
+                        style={{ background: C.s3, border: `1px solid ${C.border}`, color: C.text, fontSize: 12, padding: "5px 8px", borderRadius: C.r2, outline: "none", width: "100%", fontFamily: "inherit" }} />
+                    </div>
+                    <Btn small accent onClick={() => setConfiguring(null)}>Save</Btn>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
       </div>
     </div>
   );
@@ -2746,17 +2853,17 @@ export function OperationsDashboard({ initialTab }: { initialTab?: Tab }) {
 
         {/* Content */}
         <div className="fop-content" style={{ maxWidth: 1400, margin: "0 auto" }}>
-          {tab === "kanban"   && <KanbanSection onGoToPipeline={goToPipeline} />}
-          {tab === "pipeline" && <PipelineSection highlightDealId={highlightDealId} />}
-          {tab === "calendar" && <CalendarSection onPlannerPrefill={setPrefill} prefillPost={calendarPrefill} />}
-          {tab === "agents"   && <AgentsSection plannerPrefill={plannerPrefill} scriptPrefill={scriptPrefill} onSave={handleSave} onGoToCalendar={goToCalendar} />}
-          {tab === "trends"   && <TrendsSection onUseTrend={useTrend} />}
-          {tab === "scripts"  && <ScriptsLibrary
+          {tab === "kanban"   && <TabErrorBoundary name="Kanban"><KanbanSection onGoToPipeline={goToPipeline} /></TabErrorBoundary>}
+          {tab === "pipeline" && <TabErrorBoundary name="Pipeline"><PipelineSection highlightDealId={highlightDealId} /></TabErrorBoundary>}
+          {tab === "calendar" && <TabErrorBoundary name="Calendar"><CalendarSection onPlannerPrefill={setPrefill} prefillPost={calendarPrefill} /></TabErrorBoundary>}
+          {tab === "agents"   && <TabErrorBoundary name="AI Agents"><AgentsSection plannerPrefill={plannerPrefill} scriptPrefill={scriptPrefill} onSave={handleSave} onGoToCalendar={goToCalendar} onSetPlannerPrefill={setPrefill} /></TabErrorBoundary>}
+          {tab === "trends"   && <TabErrorBoundary name="Trends"><TrendsSection onUseTrend={useTrend} /></TabErrorBoundary>}
+          {tab === "scripts"  && <TabErrorBoundary name="Scripts Library"><ScriptsLibrary
             scripts={saved}
             onAdd={(s) => setSaved(prev => [{ ...s, id: uid() }, ...prev])}
             onUpdate={(s) => setSaved(prev => prev.map(x => x.id === s.id ? s : x))}
             onDelete={(id) => setSaved(prev => prev.filter(s => s.id !== id))}
-          />}
+          /></TabErrorBoundary>}
         </div>
       </div>
     </>
