@@ -428,10 +428,17 @@ export function AnalyticsDashboard() {
       {/* ── Bottom charts ── */}
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
         {/* Engagement chart */}
-        <Card className="border-border bg-card">
+        <Card className="border-border bg-card relative">
           <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium">Engagement Breakdown</CardTitle>
-            <CardDescription className="text-xs">Likes, comments, shares, and saves over time</CardDescription>
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle className="text-sm font-medium">Engagement Breakdown</CardTitle>
+                <CardDescription className="text-xs">Likes, comments, shares, and saves over time</CardDescription>
+              </div>
+              <span className="rounded bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 text-[10px] font-semibold text-amber-400 uppercase tracking-wider">
+                Demo Data
+              </span>
+            </div>
           </CardHeader>
           <CardContent>
             {loading ? <ChartSkeleton height={320} /> : <EngagementChart data={daily} />}

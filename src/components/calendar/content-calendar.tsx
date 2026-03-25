@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect, useCallback } from "react";
 import {
   addMonths,
   subMonths,
@@ -222,10 +222,69 @@ function ListRow({
   );
 }
 
+// ─── Ops CalPost → CalendarPost converter (syncs ops Calendar tab data) ───────
+interface OpsCalPost {
+  id: number; date: string; platform: string; type: string;
+  topic: string; caption: string; status: string; pillar?: string;
+}
+
+const STATUS_MAP: Record<string, ContentStatus> = {
+  Draft: "draft", Approved: "scheduled", Scheduled: "scheduled", Posted: "published",
+};
+
+function opsToCalendarPost(op: OpsCalPost): CalendarPost {
+  return {
+    id: `ops-${op.id}`,
+    title: op.topic || op.caption?.slice(0, 40) || "Untitled",
+    caption: op.caption || "",
+    platform: (op.platform === "xiaohongshu" ? "xiaohongshu" : "instagram") as Platform,
+    type: (["reel", "carousel", "story", "post"].includes(op.type) ? op.type : "post") as CalendarPost["type"],
+    status: STATUS_MAP[op.status] ?? "draft",
+    date: op.date,
+    time: "09:00",
+    coverHue: Math.abs(op.id * 37) % 360,
+  };
+}
+
+const LS_CC_KEY = "flogen_content_calendar";
+const LS_OPS_KEY = "flogen_calendar";
+
 // ─── Main calendar ─────────────────────────────────────────────────────────────
 export function ContentCalendar() {
-  const [posts, setPosts] = useState<CalendarPost[]>(SEED_POSTS);
-  const [currentDate, setCurrentDate] = useState(new Date("2026-03-22"));
+  const [ownPosts, setOwnPosts] = useState<CalendarPost[]>(SEED_POSTS);
+  const [opsPosts, setOpsPosts] = useState<CalendarPost[]>([]);
+
+  // Load own posts + ops posts from localStorage
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(LS_CC_KEY);
+      if (raw) setOwnPosts(JSON.parse(raw));
+    } catch { /* ignore */ }
+    try {
+      const raw = localStorage.getItem(LS_OPS_KEY);
+      if (raw) {
+        const ops: OpsCalPost[] = JSON.parse(raw);
+        setOpsPosts(ops.map(opsToCalendarPost));
+      }
+    } catch { /* ignore */ }
+  }, []);
+
+  // Persist own posts whenever they change
+  const setPosts = useCallback((fn: CalendarPost[] | ((prev: CalendarPost[]) => CalendarPost[])) => {
+    setOwnPosts(prev => {
+      const next = typeof fn === "function" ? fn(prev) : fn;
+      try { localStorage.setItem(LS_CC_KEY, JSON.stringify(next)); } catch { /* ignore */ }
+      return next;
+    });
+  }, []);
+
+  // Merged view: own posts + ops posts (ops posts have id starting with "ops-")
+  const posts = useMemo(() => {
+    const ownIds = new Set(ownPosts.map(p => p.id));
+    const deduped = opsPosts.filter(op => !ownIds.has(op.id));
+    return [...ownPosts, ...deduped];
+  }, [ownPosts, opsPosts]);
+  const [currentDate, setCurrentDate] = useState(() => new Date());
   const [selectedPlatforms, setSelectedPlatforms] = useState<Set<Platform>>(new Set());
   const [selectedStatuses, setSelectedStatuses] = useState<Set<ContentStatus>>(new Set());
   const [view, setView] = useState<"month" | "list">("month");
@@ -370,7 +429,7 @@ export function ContentCalendar() {
 
             <Button
               size="sm"
-              onClick={() => handleAddClick(format(currentDate, "yyyy-MM-dd"))}
+              onClick={() => handleAddClick(format(new Date(), "yyyy-MM-dd"))}
               className="bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white border-0 h-9"
             >
               <Plus className="h-4 w-4 mr-1.5" />
@@ -443,19 +502,23 @@ export function ContentCalendar() {
             {STATUSES.map((s) => {
               const sm = STATUS_META[s];
               const active = selectedStatuses.has(s);
+              const count = monthAll.filter((p) => p.status === s).length;
+              const isEmpty = count === 0;
               return (
                 <button
                   key={s}
-                  onClick={() => toggleStatus(s)}
+                  onClick={() => !isEmpty && toggleStatus(s)}
+                  disabled={isEmpty}
                   className={`flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-medium border transition-all
-                    ${
-                      active
+                    ${isEmpty
+                      ? "border-zinc-800/50 text-zinc-600 bg-transparent cursor-default opacity-40"
+                      : active
                         ? "bg-zinc-700 border-zinc-600 text-zinc-200"
                         : "border-zinc-800 text-zinc-500 hover:border-zinc-700 hover:text-zinc-300 bg-transparent"
                     }`}
                 >
-                  <span className={`h-1.5 w-1.5 rounded-full ${sm.dot}`} />
-                  {sm.label}
+                  <span className={`h-1.5 w-1.5 rounded-full ${isEmpty ? "bg-zinc-700" : sm.dot}`} />
+                  {sm.label}{isEmpty ? " · 0" : ""}
                 </button>
               );
             })}
@@ -563,7 +626,7 @@ export function ContentCalendar() {
                   size="sm"
                   variant="outline"
                   className="border-zinc-700 text-zinc-400"
-                  onClick={() => handleAddClick(format(currentDate, "yyyy-MM-dd"))}
+                  onClick={() => handleAddClick(format(new Date(), "yyyy-MM-dd"))}
                 >
                   <Plus className="h-4 w-4 mr-1.5" />
                   Add Content
