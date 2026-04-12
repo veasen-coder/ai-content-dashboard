@@ -1,22 +1,22 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import localFont from "next/font/local";
+import { Providers } from "@/components/providers";
 import "./globals.css";
-import { TooltipProvider } from "@/components/ui/tooltip";
-import { PasswordGate } from "@/components/auth/password-gate";
 
-const geistSans = Geist({
+const geistSans = localFont({
+  src: "./fonts/GeistVF.woff",
   variable: "--font-geist-sans",
-  subsets: ["latin"],
+  weight: "100 900",
 });
-
-const geistMono = Geist_Mono({
+const geistMono = localFont({
+  src: "./fonts/GeistMonoVF.woff",
   variable: "--font-geist-mono",
-  subsets: ["latin"],
+  weight: "100 900",
 });
 
 export const metadata: Metadata = {
-  title: "Flogen AI — Content OS",
-  description: "AI-powered content management for Flogen AI. Manage Instagram, analytics, content calendar, competitor intelligence, and news in one place.",
+  title: "Flogen AI — Operations Dashboard",
+  description: "Internal business operations dashboard for Flogen AI",
 };
 
 export default function RootLayout({
@@ -25,16 +25,11 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html
-      lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} dark h-full antialiased`}
-    >
-      <body className="min-h-full bg-background text-foreground">
-        <TooltipProvider>
-          <PasswordGate>
-            {children}
-          </PasswordGate>
-        </TooltipProvider>
+    <html lang="en" className="dark">
+      <body
+        className={`${geistSans.variable} ${geistMono.variable} font-sans antialiased`}
+      >
+        <Providers>{children}</Providers>
       </body>
     </html>
   );

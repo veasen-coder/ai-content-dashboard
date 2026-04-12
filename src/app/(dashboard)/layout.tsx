@@ -1,28 +1,27 @@
-import { AppSidebar } from "@/components/layout/app-sidebar";
-import {
-  SidebarInset,
-  SidebarProvider,
-  SidebarTrigger,
-} from "@/components/ui/sidebar";
-import { Separator } from "@/components/ui/separator";
+"use client";
+
+import { Sidebar } from "@/components/layout/sidebar";
+import { useSidebarStore } from "@/store/sidebar-store";
+import { cn } from "@/lib/utils";
 
 export default function DashboardLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
+  const { isCollapsed } = useSidebarStore();
+
   return (
-    <SidebarProvider>
-      <AppSidebar />
-      <SidebarInset>
-        <header className="flex h-14 items-center gap-2 border-b border-border px-4 sticky top-0 z-10 bg-background/95 backdrop-blur">
-          <SidebarTrigger className="-ml-1" />
-          <Separator orientation="vertical" className="h-4" />
-          <span className="text-sm font-medium text-foreground">Flogen AI</span>
-          <span className="text-sm text-muted-foreground">— Content OS</span>
-        </header>
-        <main className="flex-1 p-6">{children}</main>
-      </SidebarInset>
-    </SidebarProvider>
+    <div className="flex min-h-screen">
+      <Sidebar />
+      <div
+        className={cn(
+          "flex flex-1 flex-col transition-all duration-300",
+          isCollapsed ? "ml-16" : "ml-60"
+        )}
+      >
+        {children}
+      </div>
+    </div>
   );
 }

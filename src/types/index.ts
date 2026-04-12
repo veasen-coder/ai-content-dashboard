@@ -1,186 +1,129 @@
-// ─── Shared Enums / Unions ────────────────────────────────────────────────────
+// Client types
+export type ClientStage =
+  | "lead"
+  | "book_call"
+  | "call"
+  | "thank_you"
+  | "meeting_minutes"
+  | "demo"
+  | "follow_up"
+  | "closing"
+  | "onboarding"
+  | "active"
+  | "churned";
 
-export type Platform =
-  | "instagram"
-  | "xiaohongshu"
-  | "youtube"
-  | "tiktok"
-  | "linkedin"
-  | "twitter"
-  | "facebook";
-
-export type PostStatus =
-  | "published"
-  | "scheduled"
-  | "draft"
-  | "backlog"
-  | "archived";
-
-export type ContentPillar =
-  | "education"
-  | "inspiration"
-  | "promotion"
-  | "behind-the-scenes"
-  | "engagement"
-  | "case-study";
-
-export type PostType =
-  | "single"
-  | "carousel"
-  | "reel"
-  | "story"
-  | "video"
-  | "article";
-
-// ─── Post ─────────────────────────────────────────────────────────────────────
-
-export interface Post {
+export interface Client {
   id: string;
-  platform: Platform;
-  status: PostStatus;
-  type: PostType;
-  pillar: ContentPillar | null;
-  caption: string;
-  hashtags: string[];
-  scheduled_at: string | null; // ISO 8601
-  published_at: string | null;
-  media_url: string | null;
-  thumbnail_url: string | null;
-  /** For XHS cross-posts, reference the IG parent */
-  parent_post_id: string | null;
-  /** AI-generated caption variants (A/B) */
-  caption_variants: string[] | null;
+  name: string;
+  business: string | null;
+  email: string | null;
+  phone: string | null;
+  stage: ClientStage;
+  notes: string | null;
+  onboarding_checklist: OnboardingChecklist | null;
   created_at: string;
   updated_at: string;
 }
 
-// ─── Analytics ────────────────────────────────────────────────────────────────
-
-export interface DailyMetric {
-  date: string; // YYYY-MM-DD
-  impressions: number;
-  reach: number;
-  engagement: number;
-  engagement_rate: number;
-  saves: number;
-  shares: number;
+export interface OnboardingChecklist {
+  contract_sent: boolean;
+  contract_signed: boolean;
+  onboarding_call: boolean;
+  access_granted: boolean;
+  first_deliverable: boolean;
 }
 
-export interface FollowerMetric {
+// Finance types
+export type FinanceType = "income" | "expense" | "transfer";
+export type FinanceCategory =
+  | "client_payment"
+  | "tools_subscriptions"
+  | "marketing"
+  | "operations"
+  | "other";
+export type AccountName = "ocbc" | "paypal" | "stripe";
+
+export interface FinanceEntry {
+  id: string;
+  type: FinanceType;
+  category: string | null;
+  description: string | null;
+  amount: number;
+  currency: string;
+  account: AccountName | null;
   date: string;
-  followers: number;
-  net_change: number;
-}
-
-export interface KpiSummary {
-  total_impressions: number;
-  avg_engagement_rate: number;
-  new_followers: number;
-  total_posts: number;
-  best_day: string;
-}
-
-export interface TopPost {
-  id: string;
-  thumbnail_url: string | null;
-  caption: string;
-  impressions: number;
-  engagement_rate: number;
-  platform: Platform;
-  published_at: string;
-}
-
-// ─── Competitor ────────────────────────────────────────────────────────────────
-
-export interface Competitor {
-  id: string;
-  name: string;
-  handle: string;
-  platform: Platform;
-  profile_url: string | null;
-  avatar_url: string | null;
-  followers: number;
-  following: number;
-  posts_count: number;
-  avg_engagement_rate: number;
-  posting_frequency: number; // posts per week
-  growth_7d: number; // % change
-  growth_30d: number; // % change
-  recent_posts: CompetitorPost[];
-  last_refreshed_at: string | null;
   created_at: string;
 }
 
-export interface CompetitorPost {
+export interface AccountBalance {
   id: string;
-  competitor_id: string;
-  caption: string;
-  media_url: string | null;
-  likes: number;
-  comments: number;
-  engagement_rate: number;
-  published_at: string;
+  account: AccountName;
+  balance: number;
+  updated_at: string;
 }
 
-// ─── News ─────────────────────────────────────────────────────────────────────
-
-export interface NewsFeed {
-  id: string;
-  name: string;
-  url: string;
-  category: string;
-  is_active: boolean;
-  last_fetched_at: string | null;
-  created_at: string;
+// AI Conversation types
+export interface AIMessage {
+  role: "user" | "assistant";
+  content: string;
+  timestamp: string;
 }
 
-export interface NewsArticle {
+export interface AIConversation {
   id: string;
-  feed_id: string;
-  feed_name: string;
-  title: string;
+  title: string | null;
+  messages: AIMessage[];
   summary: string | null;
-  url: string;
-  image_url: string | null;
-  published_at: string | null;
-  is_saved: boolean;
-  is_read: boolean;
-  /** AI-generated post idea derived from this article */
-  post_idea: PostIdea | null;
+  tags: string[] | null;
+  created_at: string;
+  updated_at: string;
+}
+
+// Resource types
+export type ResourceCategory =
+  | "scripts"
+  | "meeting_minutes"
+  | "demos"
+  | "templates"
+  | "other";
+export type ResourceType =
+  | "google_doc"
+  | "google_sheet"
+  | "google_drive"
+  | "link"
+  | "html";
+
+export interface Resource {
+  id: string;
+  title: string;
+  category: ResourceCategory | null;
+  type: ResourceType | null;
+  url: string | null;
+  description: string | null;
+  html_content: string | null;
+  is_pinned: boolean;
   created_at: string;
 }
 
-export interface PostIdea {
-  hook: string;
-  body: string[];
-  cta: string;
-  hashtags: string[];
-}
-
-// ─── Calendar ─────────────────────────────────────────────────────────────────
-
-export interface CalendarPost {
+// Social Media types
+export interface SocialMetric {
   id: string;
-  date: string; // YYYY-MM-DD
-  title: string;
-  platform: Platform;
-  status: PostStatus;
-  pillar: ContentPillar | null;
-  color: string; // hex
+  platform: "instagram" | "facebook";
+  metric_type: string;
+  value: number;
+  metadata: Record<string, unknown> | null;
+  fetched_at: string;
 }
 
-// ─── AI Caption Generation ────────────────────────────────────────────────────
-
-export interface CaptionRequest {
-  topic: string;
-  pillar: ContentPillar;
-  platform: Platform;
-  tone?: string;
-  context?: string;
-}
-
-export interface CaptionResponse {
-  variant_a: string;
-  variant_b: string;
-  hashtags: string[];
+// ClickUp types
+export interface ClickUpTask {
+  id: string;
+  name: string;
+  description: string | null;
+  status: { status: string; color: string };
+  priority: { id: string; priority: string; color: string } | null;
+  due_date: string | null;
+  assignees: { id: number; username: string; profilePicture: string | null }[];
+  tags: { name: string; tag_bg: string; tag_fg: string }[];
+  url: string;
 }
