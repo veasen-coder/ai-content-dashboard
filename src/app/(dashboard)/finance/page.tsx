@@ -802,7 +802,7 @@ export default function FinancePage() {
                           borderRadius: 8,
                           fontSize: 12,
                         }}
-                        formatter={(value: number) => [formatMYR(value)]}
+                        formatter={(value) => [formatMYR(Number(value))]}
                       />
                       <Bar
                         dataKey="income"
@@ -857,7 +857,7 @@ export default function FinancePage() {
                             borderRadius: 8,
                             fontSize: 12,
                           }}
-                          formatter={(value: number) => [formatMYR(value)]}
+                          formatter={(value) => [formatMYR(Number(value))]}
                         />
                       </PieChart>
                     </ResponsiveContainer>
