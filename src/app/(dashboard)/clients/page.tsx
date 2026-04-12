@@ -12,9 +12,12 @@ import {
   Phone,
   StickyNote,
   Trash2,
-  ChevronRight,
   AlertCircle,
   Users,
+  ChevronRight,
+  AlertTriangle,
+  CheckCircle2,
+  ArrowRight,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -28,6 +31,11 @@ interface Client {
   phone: string | null;
   stage: string;
   notes: string | null;
+  industry: string | null;
+  source: string | null;
+  deal_value: string | null;
+  close_probability: number | null;
+  status: string | null;
   onboarding_checklist: Record<string, boolean> | null;
   created_at: string;
   updated_at: string | null;
@@ -37,29 +45,77 @@ interface Client {
 
 const STAGES = [
   { key: "lead", label: "Lead", color: "#6B7280" },
-  { key: "book_call", label: "Book Call", color: "#F59E0B" },
-  { key: "call", label: "Call", color: "#3B82F6" },
-  { key: "thank_you", label: "Thank You", color: "#8B5CF6" },
-  { key: "meeting_minutes", label: "Meeting Minutes", color: "#EC4899" },
-  { key: "demo", label: "Demo", color: "#14B8A6" },
-  { key: "follow_up", label: "Follow Up", color: "#F97316" },
-  { key: "closing", label: "Closing", color: "#EF4444" },
-  { key: "onboarding", label: "Onboarding", color: "#6366F1" },
-  { key: "active", label: "Active", color: "#10B981" },
-  { key: "churned", label: "Churned", color: "#374151" },
+  { key: "contacted", label: "Contacted", color: "#3B82F6" },
+  { key: "demo_sent", label: "Demo Sent", color: "#8B5CF6" },
+  { key: "negotiation", label: "Negotiation", color: "#F59E0B" },
+  { key: "closed", label: "Closed", color: "#10B981" },
 ] as const;
 
 const STAGE_MAP = Object.fromEntries(
   STAGES.map((s) => [s.key, s])
 ) as Record<string, (typeof STAGES)[number]>;
 
-function formatDate(dateStr: string): string {
-  const d = new Date(dateStr);
-  return d.toLocaleDateString("en-GB", {
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-  });
+const INDUSTRIES = [
+  "F&B",
+  "Real Estate",
+  "Hair & Beauty",
+  "Healthcare",
+  "Education",
+  "E-commerce",
+  "Finance",
+  "Tech",
+  "Retail",
+  "Hospitality",
+  "Other",
+];
+
+const SOURCES = [
+  "Cold List",
+  "IG DM",
+  "WhatsApp",
+  "Referral",
+  "LinkedIn",
+  "Website",
+  "Event",
+  "Other",
+];
+
+const INDUSTRY_COLORS: Record<string, string> = {
+  "F&B": "#EF4444",
+  "Real Estate": "#3B82F6",
+  "Hair & Beauty": "#EC4899",
+  Healthcare: "#10B981",
+  Education: "#8B5CF6",
+  "E-commerce": "#F59E0B",
+  Finance: "#6366F1",
+  Tech: "#06B6D4",
+  Retail: "#F97316",
+  Hospitality: "#14B8A6",
+  Other: "#6B7280",
+};
+
+// --------------- Helpers ---------------
+
+function timeAgo(dateStr: string): string {
+  const now = new Date();
+  const date = new Date(dateStr);
+  const diffMs = now.getTime() - date.getTime();
+  const diffMins = Math.floor(diffMs / 60000);
+  const diffHours = Math.floor(diffMins / 60);
+  const diffDays = Math.floor(diffHours / 24);
+
+  if (diffDays > 0) return `${diffDays}d ago`;
+  if (diffHours > 0) return `${diffHours}h ago`;
+  if (diffMins > 0) return `${diffMins}m ago`;
+  return "today";
+}
+
+function getNextStage(
+  currentStage: string
+): (typeof STAGES)[number] | undefined {
+  const idx = STAGES.findIndex((s) => s.key === currentStage);
+  if (idx >= 0 && idx < STAGES.length - 1) return STAGES[idx + 1];
+  return undefined;
 }
 
 // --------------- Client Card ---------------
@@ -67,46 +123,182 @@ function formatDate(dateStr: string): string {
 function ClientCard({
   client,
   onClick,
+  onMove,
+  onProbChange,
 }: {
   client: Client;
   onClick: () => void;
+  onMove: (newStage: string) => void;
+  onProbChange: (prob: number) => void;
 }) {
-  const stage = STAGE_MAP[client.stage] || STAGES[0];
+  const isClosed = client.stage === "closed";
+  const nextStage = getNextStage(client.stage);
+  const isStalled = client.status === "stalled";
+  const isActive = client.status === "active";
 
   return (
-    <div
-      onClick={onClick}
-      className="group cursor-pointer rounded-lg border border-[#1E1E1E] bg-[#0A0A0A] p-3 transition-all hover:border-[#333] hover:bg-[#141414]"
-    >
+    <div className="rounded-xl border border-[#1E1E1E] bg-[#0A0A0A] p-4 transition-all hover:border-[#333]">
+      {/* Header — Name + alert */}
       <div className="mb-2 flex items-start justify-between gap-2">
-        <h4 className="text-sm font-medium text-foreground leading-tight truncate">
+        <h4
+          onClick={onClick}
+          className="cursor-pointer text-sm font-semibold text-foreground leading-tight hover:text-primary transition-colors"
+        >
           {client.name}
         </h4>
-        <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground/40 transition-colors group-hover:text-muted-foreground" />
+        {isStalled && (
+          <AlertTriangle className="h-4 w-4 shrink-0 text-[#F59E0B]" />
+        )}
       </div>
-      {client.business && (
-        <p className="mb-1.5 flex items-center gap-1.5 text-xs text-muted-foreground truncate">
-          <Building2 className="h-3 w-3 shrink-0" />
-          {client.business}
+
+      {/* Tags — Industry + Source */}
+      <div className="mb-2 flex flex-wrap gap-1.5">
+        {client.industry && (
+          <span
+            className="rounded-md px-2 py-0.5 text-[10px] font-semibold text-white"
+            style={{
+              backgroundColor: INDUSTRY_COLORS[client.industry] || "#6B7280",
+            }}
+          >
+            {client.industry}
+          </span>
+        )}
+        {client.source && (
+          <span className="rounded-md border border-[#333] px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
+            via {client.source}
+          </span>
+        )}
+      </div>
+
+      {/* Time + Status */}
+      <div className="mb-3 flex items-center gap-2">
+        <span className="text-[10px] text-muted-foreground/60">
+          {timeAgo(client.created_at)}
+        </span>
+        {isStalled && (
+          <span className="rounded-md bg-[#F59E0B]/10 px-1.5 py-0.5 text-[10px] font-semibold text-[#F59E0B]">
+            Stalled ⚠
+          </span>
+        )}
+        {isActive && client.stage !== "lead" && !isClosed && (
+          <span className="rounded-md bg-[#10B981]/10 px-1.5 py-0.5 text-[10px] font-semibold text-[#10B981]">
+            Active
+          </span>
+        )}
+      </div>
+
+      {/* Deal Value */}
+      {!isClosed && (
+        <p className="mb-2 text-sm font-semibold text-primary font-mono">
+          {client.deal_value || "—"}
         </p>
       )}
-      {client.email && (
-        <p className="mb-1.5 flex items-center gap-1.5 text-xs text-muted-foreground truncate">
-          <Mail className="h-3 w-3 shrink-0" />
-          {client.email}
+
+      {/* Close Probability */}
+      {!isClosed && (
+        <div className="mb-3 flex items-center gap-2">
+          <span className="text-xs text-muted-foreground">Close prob:</span>
+          <input
+            type="number"
+            min={0}
+            max={100}
+            value={client.close_probability ?? 0}
+            onChange={(e) => {
+              const v = Math.max(0, Math.min(100, Number(e.target.value)));
+              onProbChange(v);
+            }}
+            className="w-14 rounded-md border border-[#1E1E1E] bg-[#111111] px-2 py-1 text-xs font-mono text-foreground outline-none focus:border-primary text-center"
+          />
+          <span className="text-xs text-muted-foreground">%</span>
+        </div>
+      )}
+
+      {/* Notes */}
+      {client.notes && (
+        <p className="mb-3 text-xs text-muted-foreground leading-relaxed">
+          {client.notes}
         </p>
       )}
-      <div className="mt-2 flex items-center justify-between">
-        <span
-          className="inline-block rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-white"
-          style={{ backgroundColor: stage.color }}
+
+      {/* Closed state */}
+      {isClosed && (
+        <div className="mb-2 space-y-2">
+          <div className="flex items-center gap-1.5 text-[#10B981]">
+            <CheckCircle2 className="h-4 w-4" />
+            <span className="text-xs font-semibold">
+              Closed — paid client
+            </span>
+          </div>
+          <button
+            onClick={onClick}
+            className="flex w-full items-center justify-center gap-1.5 rounded-lg bg-[#10B981]/10 py-2 text-xs font-semibold text-[#10B981] transition-colors hover:bg-[#10B981]/20"
+          >
+            <CheckCircle2 className="h-3.5 w-3.5" />
+            Onboarding Checklist
+            <ArrowRight className="h-3 w-3" />
+          </button>
+        </div>
+      )}
+
+      {/* Move button */}
+      {!isClosed && nextStage && (
+        <button
+          onClick={() => onMove(nextStage.key)}
+          className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-[#1E1E1E] py-2 text-xs font-medium text-muted-foreground transition-colors hover:border-primary/30 hover:text-foreground"
         >
-          {stage.label}
-        </span>
-        <span className="text-[10px] font-mono text-muted-foreground/60">
-          {formatDate(client.created_at)}
-        </span>
-      </div>
+          Move to {nextStage.label}
+          <ArrowRight className="h-3 w-3" />
+        </button>
+      )}
+    </div>
+  );
+}
+
+// --------------- Pipeline Progress Bar ---------------
+
+function PipelineProgress({
+  stageGroups,
+}: {
+  stageGroups: Map<string, Client[]>;
+}) {
+  const counts = STAGES.map((s) => ({
+    ...s,
+    count: stageGroups.get(s.key)?.length || 0,
+  }));
+
+  // Calculate conversion rates between stages
+  const rates: (string | null)[] = [];
+  for (let i = 0; i < counts.length - 1; i++) {
+    if (counts[i].count > 0 && counts[i + 1].count > 0) {
+      const rate = Math.round((counts[i + 1].count / counts[i].count) * 100);
+      rates.push(`${rate}%`);
+    } else {
+      rates.push("—");
+    }
+  }
+
+  return (
+    <div className="flex items-center gap-1 rounded-xl border border-[#1E1E1E] bg-[#111111] px-5 py-3 overflow-x-auto">
+      {counts.map((s, i) => (
+        <div key={s.key} className="flex items-center gap-1">
+          <div className="flex flex-col items-center min-w-[60px]">
+            <span className="text-xl font-bold font-mono text-foreground">
+              {s.count}
+            </span>
+            <span className="text-[10px] text-muted-foreground whitespace-nowrap">
+              {s.label}
+            </span>
+          </div>
+          {i < counts.length - 1 && (
+            <div className="flex flex-col items-center mx-2">
+              <span className="text-[10px] font-mono text-muted-foreground/60 mb-0.5">
+                {rates[i]}
+              </span>
+              <ChevronRight className="h-4 w-4 text-muted-foreground/30" />
+            </div>
+          )}
+        </div>
+      ))}
     </div>
   );
 }
@@ -129,10 +321,14 @@ function ClientModal({ isOpen, onClose, onSaved, client }: ClientModalProps) {
   const [phone, setPhone] = useState("");
   const [stage, setStage] = useState("lead");
   const [notes, setNotes] = useState("");
+  const [industry, setIndustry] = useState("");
+  const [source, setSource] = useState("");
+  const [dealValue, setDealValue] = useState("");
+  const [closeProb, setCloseProb] = useState(0);
+  const [status, setStatus] = useState("active");
   const [submitting, setSubmitting] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
 
-  // Populate form when editing
   useEffect(() => {
     if (client) {
       setName(client.name);
@@ -141,6 +337,11 @@ function ClientModal({ isOpen, onClose, onSaved, client }: ClientModalProps) {
       setPhone(client.phone || "");
       setStage(client.stage);
       setNotes(client.notes || "");
+      setIndustry(client.industry || "");
+      setSource(client.source || "");
+      setDealValue(client.deal_value || "");
+      setCloseProb(client.close_probability ?? 0);
+      setStatus(client.status || "active");
     } else {
       resetForm();
     }
@@ -154,6 +355,11 @@ function ClientModal({ isOpen, onClose, onSaved, client }: ClientModalProps) {
     setPhone("");
     setStage("lead");
     setNotes("");
+    setIndustry("");
+    setSource("");
+    setDealValue("");
+    setCloseProb(0);
+    setStatus("active");
     setConfirmDelete(false);
   }
 
@@ -170,6 +376,11 @@ function ClientModal({ isOpen, onClose, onSaved, client }: ClientModalProps) {
         phone: phone.trim() || null,
         stage,
         notes: notes.trim() || null,
+        industry: industry || null,
+        source: source || null,
+        deal_value: dealValue.trim() || null,
+        close_probability: closeProb,
+        status,
       };
 
       if (isEdit) {
@@ -244,18 +455,15 @@ function ClientModal({ isOpen, onClose, onSaved, client }: ClientModalProps) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
-      {/* Backdrop */}
       <div
         className="absolute inset-0 bg-black/60 backdrop-blur-sm"
         onClick={onClose}
       />
-
-      {/* Modal */}
       <div className="relative z-10 w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-xl border border-[#1E1E1E] bg-[#111111] shadow-2xl">
         {/* Header */}
         <div className="flex items-center justify-between border-b border-[#1E1E1E] px-5 py-4">
           <h2 className="text-base font-semibold">
-            {isEdit ? "Edit Client" : "Add Client"}
+            {isEdit ? "Edit Client" : "Add Lead"}
           </h2>
           <button
             onClick={onClose}
@@ -265,7 +473,6 @@ function ClientModal({ isOpen, onClose, onSaved, client }: ClientModalProps) {
           </button>
         </div>
 
-        {/* Form */}
         <form onSubmit={handleSubmit} className="p-5 space-y-4">
           {/* Name */}
           <div>
@@ -276,17 +483,91 @@ function ClientModal({ isOpen, onClose, onSaved, client }: ClientModalProps) {
               type="text"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="Client name..."
+              placeholder="Client or business name..."
               autoFocus
               required
               className="w-full rounded-lg border border-[#1E1E1E] bg-[#0A0A0A] px-3 py-2.5 text-sm outline-none transition-colors focus:border-primary"
             />
           </div>
 
+          {/* Industry + Source */}
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="mb-1.5 block text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                Industry
+              </label>
+              <select
+                value={industry}
+                onChange={(e) => setIndustry(e.target.value)}
+                className="w-full rounded-lg border border-[#1E1E1E] bg-[#0A0A0A] px-3 py-2.5 text-sm outline-none transition-colors focus:border-primary"
+              >
+                <option value="">Select...</option>
+                {INDUSTRIES.map((i) => (
+                  <option key={i} value={i}>
+                    {i}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="mb-1.5 block text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                Source
+              </label>
+              <select
+                value={source}
+                onChange={(e) => setSource(e.target.value)}
+                className="w-full rounded-lg border border-[#1E1E1E] bg-[#0A0A0A] px-3 py-2.5 text-sm outline-none transition-colors focus:border-primary"
+              >
+                <option value="">Select...</option>
+                {SOURCES.map((s) => (
+                  <option key={s} value={s}>
+                    {s}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          {/* Deal Value + Close Probability */}
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="mb-1.5 block text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                Deal Value
+              </label>
+              <input
+                type="text"
+                value={dealValue}
+                onChange={(e) => setDealValue(e.target.value)}
+                placeholder="RM 399/mo"
+                className="w-full rounded-lg border border-[#1E1E1E] bg-[#0A0A0A] px-3 py-2.5 text-sm outline-none transition-colors focus:border-primary font-mono"
+              />
+            </div>
+            <div>
+              <label className="mb-1.5 block text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                Close Probability
+              </label>
+              <div className="flex items-center gap-2">
+                <input
+                  type="number"
+                  min={0}
+                  max={100}
+                  value={closeProb}
+                  onChange={(e) =>
+                    setCloseProb(
+                      Math.max(0, Math.min(100, Number(e.target.value)))
+                    )
+                  }
+                  className="w-full rounded-lg border border-[#1E1E1E] bg-[#0A0A0A] px-3 py-2.5 text-sm outline-none transition-colors focus:border-primary font-mono"
+                />
+                <span className="text-sm text-muted-foreground">%</span>
+              </div>
+            </div>
+          </div>
+
           {/* Business */}
           <div>
             <label className="mb-1.5 block text-xs font-medium uppercase tracking-wider text-muted-foreground">
-              Business
+              Contact / Business
             </label>
             <div className="relative">
               <Building2 className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
@@ -300,7 +581,7 @@ function ClientModal({ isOpen, onClose, onSaved, client }: ClientModalProps) {
             </div>
           </div>
 
-          {/* Email + Phone Row */}
+          {/* Email + Phone */}
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="mb-1.5 block text-xs font-medium uppercase tracking-wider text-muted-foreground">
@@ -334,44 +615,74 @@ function ClientModal({ isOpen, onClose, onSaved, client }: ClientModalProps) {
             </div>
           </div>
 
-          {/* Stage */}
-          <div>
-            <label className="mb-1.5 block text-xs font-medium uppercase tracking-wider text-muted-foreground">
-              Stage
-            </label>
-            <div className="flex flex-wrap gap-1.5">
-              {STAGES.map((s) => (
-                <button
-                  key={s.key}
-                  type="button"
-                  onClick={() => setStage(s.key)}
-                  className={`rounded-md px-2.5 py-1.5 text-xs font-medium transition-all ${
-                    stage === s.key
-                      ? "text-white ring-1 ring-white/20"
-                      : "text-muted-foreground hover:text-foreground"
-                  }`}
-                  style={{
-                    backgroundColor:
-                      stage === s.key ? s.color : "#1E1E1E",
-                  }}
-                >
-                  {s.label}
-                </button>
-              ))}
+          {/* Stage + Status */}
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="mb-1.5 block text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                Stage
+              </label>
+              <div className="flex flex-wrap gap-1.5">
+                {STAGES.map((s) => (
+                  <button
+                    key={s.key}
+                    type="button"
+                    onClick={() => setStage(s.key)}
+                    className={`rounded-md px-2.5 py-1.5 text-xs font-medium transition-all ${
+                      stage === s.key
+                        ? "text-white ring-1 ring-white/20"
+                        : "text-muted-foreground hover:text-foreground"
+                    }`}
+                    style={{
+                      backgroundColor:
+                        stage === s.key ? s.color : "#1E1E1E",
+                    }}
+                  >
+                    {s.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div>
+              <label className="mb-1.5 block text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                Status
+              </label>
+              <div className="flex gap-1.5">
+                {[
+                  { key: "active", label: "Active", color: "#10B981" },
+                  { key: "stalled", label: "Stalled", color: "#F59E0B" },
+                ].map((s) => (
+                  <button
+                    key={s.key}
+                    type="button"
+                    onClick={() => setStatus(s.key)}
+                    className={`rounded-md px-2.5 py-1.5 text-xs font-medium transition-all ${
+                      status === s.key
+                        ? "text-white ring-1 ring-white/20"
+                        : "text-muted-foreground hover:text-foreground"
+                    }`}
+                    style={{
+                      backgroundColor:
+                        status === s.key ? s.color : "#1E1E1E",
+                    }}
+                  >
+                    {s.label}
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
 
           {/* Notes */}
           <div>
             <label className="mb-1.5 block text-xs font-medium uppercase tracking-wider text-muted-foreground">
-              Notes
+              Notes / Next Action
             </label>
             <div className="relative">
               <StickyNote className="absolute left-3 top-3 h-3.5 w-3.5 text-muted-foreground" />
               <textarea
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
-                placeholder="Add notes..."
+                placeholder="Next steps, context, or strategy..."
                 rows={3}
                 className="w-full resize-none rounded-lg border border-[#1E1E1E] bg-[#0A0A0A] pl-9 pr-3 py-2.5 text-sm outline-none transition-colors focus:border-primary"
               />
@@ -397,7 +708,7 @@ function ClientModal({ isOpen, onClose, onSaved, client }: ClientModalProps) {
             ) : (
               <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
                 <AlertCircle className="h-3 w-3" />
-                Client will be added to pipeline
+                Client will be added as Lead
               </p>
             )}
             <div className="flex gap-2">
@@ -422,7 +733,7 @@ function ClientModal({ isOpen, onClose, onSaved, client }: ClientModalProps) {
                     : "Adding..."
                   : isEdit
                   ? "Save Changes"
-                  : "Add Client"}
+                  : "Add Lead"}
               </button>
             </div>
           </div>
@@ -467,13 +778,37 @@ export default function ClientsPage() {
     return () => clearInterval(interval);
   }, [fetchClients]);
 
-  // Filter clients by search
+  // Inline update helper
+  async function updateClient(id: string, fields: Record<string, unknown>) {
+    try {
+      const res = await fetch("/api/supabase/clients", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id, ...fields }),
+      });
+      if (!res.ok) throw new Error("Update failed");
+
+      // Update local state immediately
+      setClients((prev) =>
+        prev.map((c) => (c.id === id ? { ...c, ...fields } as Client : c))
+      );
+    } catch {
+      toast.error("Failed to update client");
+    }
+  }
+
+  async function moveClient(client: Client, newStage: string) {
+    await updateClient(client.id, { stage: newStage });
+    toast.success(`Moved ${client.name} to ${STAGE_MAP[newStage]?.label}`);
+  }
+
+  // Filter
   const filtered = search
     ? clients.filter(
         (c) =>
           c.name.toLowerCase().includes(search.toLowerCase()) ||
           c.business?.toLowerCase().includes(search.toLowerCase()) ||
-          c.email?.toLowerCase().includes(search.toLowerCase())
+          c.industry?.toLowerCase().includes(search.toLowerCase())
       )
     : clients;
 
@@ -487,31 +822,20 @@ export default function ClientsPage() {
     if (group) {
       group.push(client);
     } else {
-      // Unknown stage, put in lead
       stageGroups.get("lead")!.push(client);
     }
   }
 
   const totalClients = filtered.length;
 
-  function openAdd() {
-    setSelectedClient(null);
-    setShowModal(true);
-  }
-
-  function openEdit(client: Client) {
-    setSelectedClient(client);
-    setShowModal(true);
-  }
-
-  function closeModal() {
-    setShowModal(false);
-    setSelectedClient(null);
-  }
-
   return (
-    <PageWrapper title="Clients" lastSynced={lastFetched}>
+    <PageWrapper title="Client Pipeline" lastSynced={lastFetched}>
       <div className="space-y-4">
+        {/* Pipeline Progress */}
+        {!loading && !error && (
+          <PipelineProgress stageGroups={stageGroups} />
+        )}
+
         {/* Toolbar */}
         <div className="flex items-center gap-3">
           <div className="relative max-w-xs flex-1">
@@ -540,26 +864,19 @@ export default function ClientsPage() {
             />
             Refresh
           </button>
-          <button
-            onClick={openAdd}
-            className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
-          >
-            <Plus className="h-4 w-4" />
-            Add Client
-          </button>
         </div>
 
         {/* Loading */}
         {loading && (
           <div className="flex gap-3 overflow-x-auto pb-4">
-            {[1, 2, 3, 4, 5].map((i) => (
-              <div key={i} className="min-w-[240px] flex-shrink-0 space-y-2">
+            {STAGES.map((s) => (
+              <div key={s.key} className="min-w-[260px] flex-shrink-0 space-y-2">
                 <div className="h-6 w-24 animate-pulse rounded bg-[#1E1E1E]" />
                 <div className="space-y-2 rounded-xl border border-[#1E1E1E] bg-[#111111] p-2">
                   {[1, 2].map((j) => (
                     <div
                       key={j}
-                      className="h-24 animate-pulse rounded-lg bg-[#1E1E1E]"
+                      className="h-32 animate-pulse rounded-lg bg-[#1E1E1E]"
                     />
                   ))}
                 </div>
@@ -581,7 +898,7 @@ export default function ClientsPage() {
           </div>
         )}
 
-        {/* Pipeline Kanban */}
+        {/* Kanban Columns */}
         {!loading && !error && (
           <div className="flex gap-3 overflow-x-auto pb-4">
             {STAGES.map((s) => {
@@ -589,7 +906,7 @@ export default function ClientsPage() {
               return (
                 <div
                   key={s.key}
-                  className="min-w-[250px] max-w-[280px] flex-shrink-0"
+                  className="min-w-[270px] max-w-[300px] flex-shrink-0"
                 >
                   {/* Stage Header */}
                   <div className="mb-2 flex items-center gap-2 px-1">
@@ -597,21 +914,18 @@ export default function ClientsPage() {
                       className="h-2.5 w-2.5 rounded-full"
                       style={{ backgroundColor: s.color }}
                     />
-                    <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                    <h3 className="text-sm font-semibold text-foreground">
                       {s.label}
                     </h3>
-                    <span
-                      className="ml-auto rounded-md px-1.5 py-0.5 text-xs font-mono text-white"
-                      style={{ backgroundColor: s.color + "40" }}
-                    >
+                    <span className="text-xs font-mono text-muted-foreground">
                       {stageClients.length}
                     </span>
                   </div>
 
                   {/* Column */}
-                  <div className="space-y-2 rounded-xl border border-[#1E1E1E] bg-[#111111] p-2 min-h-[200px]">
+                  <div className="space-y-3 min-h-[200px]">
                     {stageClients.length === 0 ? (
-                      <div className="flex items-center justify-center py-12">
+                      <div className="flex items-center justify-center rounded-xl border border-dashed border-[#1E1E1E] py-16">
                         <p className="text-xs text-muted-foreground/50">
                           No clients
                         </p>
@@ -621,9 +935,32 @@ export default function ClientsPage() {
                         <ClientCard
                           key={client.id}
                           client={client}
-                          onClick={() => openEdit(client)}
+                          onClick={() => {
+                            setSelectedClient(client);
+                            setShowModal(true);
+                          }}
+                          onMove={(newStage) => moveClient(client, newStage)}
+                          onProbChange={(prob) =>
+                            updateClient(client.id, {
+                              close_probability: prob,
+                            })
+                          }
                         />
                       ))
+                    )}
+
+                    {/* Add lead button — only on Lead column */}
+                    {s.key === "lead" && (
+                      <button
+                        onClick={() => {
+                          setSelectedClient(null);
+                          setShowModal(true);
+                        }}
+                        className="flex w-full items-center justify-center gap-1.5 rounded-xl border border-dashed border-[#1E1E1E] py-3 text-xs text-muted-foreground transition-colors hover:border-primary/30 hover:text-foreground"
+                      >
+                        <Plus className="h-3.5 w-3.5" />
+                        Add lead
+                      </button>
                     )}
                   </div>
                 </div>
@@ -636,7 +973,10 @@ export default function ClientsPage() {
       {/* Add / Edit Client Modal */}
       <ClientModal
         isOpen={showModal}
-        onClose={closeModal}
+        onClose={() => {
+          setShowModal(false);
+          setSelectedClient(null);
+        }}
         onSaved={fetchClients}
         client={selectedClient}
       />

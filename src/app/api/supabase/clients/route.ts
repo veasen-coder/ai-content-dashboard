@@ -43,6 +43,11 @@ export async function POST(request: NextRequest) {
     if (body.email) insert.email = body.email.trim();
     if (body.phone) insert.phone = body.phone.trim();
     if (body.notes) insert.notes = body.notes.trim();
+    if (body.industry) insert.industry = body.industry;
+    if (body.source) insert.source = body.source;
+    if (body.deal_value) insert.deal_value = body.deal_value.trim();
+    if (body.close_probability !== undefined) insert.close_probability = body.close_probability;
+    if (body.status) insert.status = body.status;
     if (body.onboarding_checklist) insert.onboarding_checklist = body.onboarding_checklist;
 
     const { data, error } = await supabase

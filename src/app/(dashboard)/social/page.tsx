@@ -6,10 +6,11 @@ import {
   Camera,
   RefreshCw,
   MessageCircle,
+  Heart,
   ThumbsUp,
   Share2,
-  AlertCircle,
   ExternalLink,
+  Image,
 } from "lucide-react";
 
 // --------------- Types ---------------
@@ -19,7 +20,6 @@ interface FacebookProfile {
   fan_count: number;
   followers_count: number;
   talking_about_count: number;
-  picture?: { data?: { url?: string } };
 }
 
 interface FacebookPost {
@@ -31,12 +31,25 @@ interface FacebookPost {
   shares?: { count: number };
 }
 
-interface SocialData {
-  facebook: {
-    profile: FacebookProfile | null;
-    posts: FacebookPost[];
-    error: string | null;
-  };
+interface IGProfile {
+  id: string;
+  username: string;
+  followers_count: number;
+  media_count: number;
+  profile_picture_url?: string;
+  biography?: string;
+}
+
+interface IGMedia {
+  id: string;
+  caption?: string;
+  like_count?: number;
+  comments_count?: number;
+  timestamp: string;
+  media_type: string;
+  media_url?: string;
+  permalink: string;
+  thumbnail_url?: string;
 }
 
 // --------------- Helpers ---------------
@@ -48,17 +61,6 @@ function formatNumber(n: number | undefined | null): string {
   return n.toLocaleString();
 }
 
-function formatPostDate(dateStr: string): string {
-  const date = new Date(dateStr);
-  return new Intl.DateTimeFormat("en-GB", {
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  }).format(date);
-}
-
 function timeAgo(dateStr: string): string {
   const now = new Date();
   const date = new Date(dateStr);
@@ -67,7 +69,12 @@ function timeAgo(dateStr: string): string {
   const diffHours = Math.floor(diffMins / 60);
   const diffDays = Math.floor(diffHours / 24);
 
-  if (diffDays > 30) return formatPostDate(dateStr);
+  if (diffDays > 30) {
+    return new Intl.DateTimeFormat("en-GB", {
+      day: "2-digit",
+      month: "short",
+    }).format(date);
+  }
   if (diffDays > 0) return `${diffDays}d ago`;
   if (diffHours > 0) return `${diffHours}h ago`;
   if (diffMins > 0) return `${diffMins}m ago`;
@@ -76,13 +83,7 @@ function timeAgo(dateStr: string): string {
 
 // --------------- Sub-components ---------------
 
-function MetricItem({
-  label,
-  value,
-}: {
-  label: string;
-  value: string;
-}) {
+function MetricItem({ label, value }: { label: string; value: string }) {
   return (
     <div>
       <p className="text-xs text-muted-foreground">{label}</p>
@@ -91,26 +92,67 @@ function MetricItem({
   );
 }
 
-function PostRow({ post }: { post: FacebookPost }) {
+function IGPostCard({ post }: { post: IGMedia }) {
+  return (
+    <a
+      href={post.permalink}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="group rounded-xl border border-[#1E1E1E] bg-[#0A0A0A] overflow-hidden transition-colors hover:border-primary/30"
+    >
+      {/* Thumbnail */}
+      <div className="relative aspect-square bg-[#1A1A1A]">
+        {post.media_url || post.thumbnail_url ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={post.thumbnail_url || post.media_url}
+            alt={post.caption?.slice(0, 50) || "Instagram post"}
+            className="h-full w-full object-cover"
+          />
+        ) : (
+          <div className="flex h-full w-full items-center justify-center">
+            <Image className="h-8 w-8 text-muted-foreground/30" />
+          </div>
+        )}
+        <div className="absolute inset-0 flex items-center justify-center gap-4 bg-black/60 opacity-0 transition-opacity group-hover:opacity-100">
+          <span className="flex items-center gap-1 text-sm font-medium text-white">
+            <Heart className="h-4 w-4" />
+            {post.like_count ?? 0}
+          </span>
+          <span className="flex items-center gap-1 text-sm font-medium text-white">
+            <MessageCircle className="h-4 w-4" />
+            {post.comments_count ?? 0}
+          </span>
+        </div>
+      </div>
+      {/* Caption */}
+      <div className="p-3">
+        <p className="line-clamp-2 text-xs text-muted-foreground">
+          {post.caption || "No caption"}
+        </p>
+        <p className="mt-1 text-[10px] text-muted-foreground/60">
+          {timeAgo(post.timestamp)}
+        </p>
+      </div>
+    </a>
+  );
+}
+
+function FBPostRow({ post }: { post: FacebookPost }) {
   const likes = post.likes?.summary?.total_count ?? 0;
   const comments = post.comments?.summary?.total_count ?? 0;
   const shares = post.shares?.count ?? 0;
-  const message = post.message || "(No text)";
-  const postUrl = `https://facebook.com/${post.id}`;
 
   return (
     <div className="group flex items-start gap-4 border-b border-[#1E1E1E] px-4 py-4 transition-colors hover:bg-[#1A1A1A]">
-      {/* Post content */}
       <div className="flex min-w-0 flex-1 flex-col gap-1">
         <p className="line-clamp-2 text-sm text-foreground">
-          {message}
+          {post.message || "(No text)"}
         </p>
         <p className="text-xs text-muted-foreground">
           {timeAgo(post.created_time)}
         </p>
       </div>
-
-      {/* Engagement metrics */}
       <div className="flex shrink-0 items-center gap-4">
         <span className="flex items-center gap-1 text-xs text-muted-foreground">
           <ThumbsUp className="h-3.5 w-3.5" />
@@ -125,7 +167,7 @@ function PostRow({ post }: { post: FacebookPost }) {
           <span className="font-mono">{shares}</span>
         </span>
         <a
-          href={postUrl}
+          href={`https://facebook.com/${post.id}`}
           target="_blank"
           rel="noopener noreferrer"
           className="shrink-0 opacity-0 transition-opacity group-hover:opacity-100"
@@ -140,9 +182,10 @@ function PostRow({ post }: { post: FacebookPost }) {
 // --------------- Main Page ---------------
 
 export default function SocialPage() {
-  const [data, setData] = useState<SocialData>({
-    facebook: { profile: null, posts: [], error: null },
-  });
+  const [fbProfile, setFbProfile] = useState<FacebookProfile | null>(null);
+  const [fbPosts, setFbPosts] = useState<FacebookPost[]>([]);
+  const [igProfile, setIgProfile] = useState<IGProfile | null>(null);
+  const [igMedia, setIgMedia] = useState<IGMedia[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [lastFetched, setLastFetched] = useState<string | null>(null);
@@ -150,28 +193,25 @@ export default function SocialPage() {
   const fetchData = useCallback(async () => {
     setRefreshing(true);
 
-    // Fetch Facebook
-    let fbProfile: FacebookProfile | null = null;
-    let fbPosts: FacebookPost[] = [];
-    let fbError: string | null = null;
+    const [fbRes, igRes] = await Promise.allSettled([
+      fetch("/api/facebook/metrics"),
+      fetch("/api/instagram/metrics"),
+    ]);
 
-    try {
-      const res = await fetch("/api/facebook/metrics");
-      if (res.ok) {
-        const json = await res.json();
-        fbProfile = json.profile || null;
-        fbPosts = json.posts || [];
-      } else {
-        const json = await res.json().catch(() => ({}));
-        fbError = json.error || `Failed to fetch (${res.status})`;
-      }
-    } catch {
-      fbError = "Network error";
+    // Facebook
+    if (fbRes.status === "fulfilled" && fbRes.value.ok) {
+      const json = await fbRes.value.json();
+      setFbProfile(json.profile || null);
+      setFbPosts(json.posts || []);
     }
 
-    setData({
-      facebook: { profile: fbProfile, posts: fbPosts, error: fbError },
-    });
+    // Instagram
+    if (igRes.status === "fulfilled" && igRes.value.ok) {
+      const json = await igRes.value.json();
+      setIgProfile(json.profile || null);
+      setIgMedia(json.media || []);
+    }
+
     setLastFetched(new Date().toISOString());
     setLoading(false);
     setRefreshing(false);
@@ -183,18 +223,15 @@ export default function SocialPage() {
     return () => clearInterval(interval);
   }, [fetchData]);
 
-  const fb = data.facebook;
-  const fbConnected = fb.profile !== null;
+  const igConnected = igProfile !== null;
+  const fbConnected = fbProfile !== null;
 
-  const totalPosts = fb.posts.length;
-  const totalEngagement = fb.posts.reduce((sum, p) => {
-    return (
-      sum +
-      (p.likes?.summary?.total_count ?? 0) +
-      (p.comments?.summary?.total_count ?? 0) +
-      (p.shares?.count ?? 0)
-    );
-  }, 0);
+  // IG engagement totals
+  const igTotalLikes = igMedia.reduce((sum, m) => sum + (m.like_count ?? 0), 0);
+  const igTotalComments = igMedia.reduce(
+    (sum, m) => sum + (m.comments_count ?? 0),
+    0
+  );
 
   return (
     <PageWrapper title="Social Media" lastSynced={lastFetched}>
@@ -223,7 +260,6 @@ export default function SocialPage() {
                 />
               ))}
             </div>
-            <div className="h-64 animate-pulse rounded-xl border border-[#1E1E1E] bg-[#111111]" />
           </div>
         ) : (
           <>
@@ -237,31 +273,54 @@ export default function SocialPage() {
                       <Camera className="h-5 w-5 text-white" />
                     </div>
                     <div>
-                      <h3 className="font-semibold">Instagram</h3>
+                      <h3 className="font-semibold">
+                        {igConnected
+                          ? `@${igProfile.username}`
+                          : "Instagram"}
+                      </h3>
                       <p className="text-xs text-muted-foreground">
-                        Not connected
+                        {igConnected ? "Connected" : "Not connected"}
                       </p>
                     </div>
                   </div>
-                  <span className="rounded-md bg-[#1E1E1E] px-2 py-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
-                    Inactive
+                  <span
+                    className={`rounded-md px-2 py-1 text-[10px] font-medium uppercase tracking-wider ${
+                      igConnected
+                        ? "bg-[#10B981]/10 text-[#10B981]"
+                        : "bg-[#1E1E1E] text-muted-foreground"
+                    }`}
+                  >
+                    {igConnected ? "Live" : "Inactive"}
                   </span>
                 </div>
 
                 <div className="mt-6 grid grid-cols-2 gap-4">
-                  <MetricItem label="Followers" value={"\u2014"} />
-                  <MetricItem label="Posts" value={"\u2014"} />
-                  <MetricItem label="Reach (7d)" value={"\u2014"} />
-                  <MetricItem label="Engagement" value={"\u2014"} />
-                </div>
-
-                <div className="mt-5 flex items-start gap-2 rounded-lg border border-[#1E1E1E] bg-[#0A0A0A] p-3">
-                  <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
-                  <p className="text-xs leading-relaxed text-muted-foreground">
-                    Instagram API access is currently deactivated. Complete
-                    the developer registration and App Review for Instagram
-                    Basic Display or Instagram Graph API to enable metrics.
-                  </p>
+                  <MetricItem
+                    label="Followers"
+                    value={
+                      igConnected
+                        ? formatNumber(igProfile.followers_count)
+                        : "\u2014"
+                    }
+                  />
+                  <MetricItem
+                    label="Posts"
+                    value={
+                      igConnected
+                        ? formatNumber(igProfile.media_count)
+                        : "\u2014"
+                    }
+                  />
+                  <MetricItem
+                    label="Likes (Recent)"
+                    value={igConnected ? formatNumber(igTotalLikes) : "\u2014"}
+                  />
+                  <MetricItem
+                    label="Comments (Recent)"
+                    value={
+                      igConnected ? formatNumber(igTotalComments) : "\u2014"
+                    }
+                  />
                 </div>
               </div>
 
@@ -274,12 +333,10 @@ export default function SocialPage() {
                     </div>
                     <div>
                       <h3 className="font-semibold">
-                        {fb.profile?.name || "Facebook"}
+                        {fbProfile?.name || "Facebook"}
                       </h3>
                       <p className="text-xs text-muted-foreground">
-                        {fbConnected
-                          ? "Connected"
-                          : fb.error || "Not connected"}
+                        {fbConnected ? "Connected" : "Not connected"}
                       </p>
                     </div>
                   </div>
@@ -299,7 +356,7 @@ export default function SocialPage() {
                     label="Page Likes"
                     value={
                       fbConnected
-                        ? formatNumber(fb.profile?.fan_count)
+                        ? formatNumber(fbProfile?.fan_count)
                         : "\u2014"
                     }
                   />
@@ -307,7 +364,7 @@ export default function SocialPage() {
                     label="Followers"
                     value={
                       fbConnected
-                        ? formatNumber(fb.profile?.followers_count)
+                        ? formatNumber(fbProfile?.followers_count)
                         : "\u2014"
                     }
                   />
@@ -315,57 +372,69 @@ export default function SocialPage() {
                     label="Talking About"
                     value={
                       fbConnected
-                        ? formatNumber(fb.profile?.talking_about_count)
+                        ? formatNumber(fbProfile?.talking_about_count)
                         : "\u2014"
                     }
                   />
                   <MetricItem
-                    label="Engagement"
+                    label="Recent Posts"
                     value={
-                      fbConnected && totalPosts > 0
-                        ? formatNumber(totalEngagement)
-                        : "\u2014"
+                      fbConnected ? formatNumber(fbPosts.length) : "\u2014"
                     }
                   />
                 </div>
-
-                {fb.error && (
-                  <div className="mt-5 flex items-start gap-2 rounded-lg border border-[#1E1E1E] bg-[#0A0A0A] p-3">
-                    <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-[#EF4444]" />
-                    <p className="text-xs leading-relaxed text-muted-foreground">
-                      {fb.error}
-                    </p>
-                  </div>
-                )}
               </div>
             </div>
 
-            {/* Recent Posts */}
-            <div className="rounded-xl border border-[#1E1E1E] bg-[#111111]">
-              <div className="flex items-center justify-between border-b border-[#1E1E1E] px-4 py-3">
-                <h3 className="text-sm font-semibold">Recent Posts</h3>
-                <span className="text-xs font-mono text-muted-foreground">
-                  {totalPosts} {totalPosts === 1 ? "post" : "posts"}
-                </span>
-              </div>
-
-              {totalPosts > 0 ? (
-                <div className="max-h-[400px] overflow-y-auto">
-                  {fb.posts.map((post) => (
-                    <PostRow key={post.id} post={post} />
+            {/* Instagram Posts Grid */}
+            {igConnected && igMedia.length > 0 && (
+              <div className="rounded-xl border border-[#1E1E1E] bg-[#111111] p-5">
+                <div className="mb-4 flex items-center justify-between">
+                  <h3 className="text-sm font-semibold">
+                    Instagram — Recent Posts
+                  </h3>
+                  <span className="text-xs font-mono text-muted-foreground">
+                    {igMedia.length} posts
+                  </span>
+                </div>
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6">
+                  {igMedia.map((post) => (
+                    <IGPostCard key={post.id} post={post} />
                   ))}
                 </div>
-              ) : (
+              </div>
+            )}
+
+            {/* Facebook Posts List */}
+            {fbPosts.length > 0 && (
+              <div className="rounded-xl border border-[#1E1E1E] bg-[#111111]">
+                <div className="flex items-center justify-between border-b border-[#1E1E1E] px-4 py-3">
+                  <h3 className="text-sm font-semibold">
+                    Facebook — Recent Posts
+                  </h3>
+                  <span className="text-xs font-mono text-muted-foreground">
+                    {fbPosts.length} posts
+                  </span>
+                </div>
+                <div className="max-h-[400px] overflow-y-auto">
+                  {fbPosts.map((post) => (
+                    <FBPostRow key={post.id} post={post} />
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Empty state if no posts at all */}
+            {fbPosts.length === 0 && igMedia.length === 0 && (
+              <div className="rounded-xl border border-[#1E1E1E] bg-[#111111]">
                 <div className="flex flex-col items-center justify-center py-16">
                   <MessageCircle className="mb-2 h-8 w-8 text-muted-foreground/30" />
                   <p className="text-sm text-muted-foreground">
-                    {fbConnected
-                      ? "No posts available yet. The pages_read_engagement permission may be required to fetch posts."
-                      : "Connect a platform to see recent posts"}
+                    No recent posts to display
                   </p>
                 </div>
-              )}
-            </div>
+              </div>
+            )}
           </>
         )}
       </div>

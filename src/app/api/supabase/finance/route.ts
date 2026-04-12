@@ -87,6 +87,30 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // Sync to Google Sheets (fire-and-forget — don't block the response)
+    try {
+      const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+      fetch(`${baseUrl}/api/google/sheets/append`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          values: [[
+            date,
+            description || "",
+            type,
+            category || "",
+            String(parseFloat(amount)),
+            "MYR",
+            account || "",
+          ]],
+        }),
+      }).catch(() => {
+        // Silently fail — Supabase is the source of truth
+      });
+    } catch {
+      // Google Sheets sync is optional
+    }
+
     return NextResponse.json(data);
   } catch {
     return NextResponse.json(

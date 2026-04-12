@@ -1,11 +1,12 @@
 import { NextResponse } from "next/server";
 
-const PAGE_ID = "897824556757957";
+export const dynamic = "force-dynamic";
 
 export async function GET() {
   const userToken = process.env.FACEBOOK_ACCESS_TOKEN;
+  const pageId = process.env.FACEBOOK_PAGE_ID;
 
-  if (!userToken) {
+  if (!userToken || !pageId) {
     return NextResponse.json(
       { error: "Facebook not configured" },
       { status: 503 }
@@ -15,7 +16,7 @@ export async function GET() {
   try {
     // Step 1: Exchange user token for page token via /me/accounts
     const accountsRes = await fetch(
-      `https://graph.facebook.com/v18.0/me/accounts?access_token=${userToken}`
+      `https://graph.facebook.com/v21.0/me/accounts?access_token=${userToken}`
     );
 
     if (!accountsRes.ok) {
@@ -28,12 +29,12 @@ export async function GET() {
 
     const accountsData = await accountsRes.json();
     const page = (accountsData.data || []).find(
-      (p: { id: string }) => p.id === PAGE_ID
+      (p: { id: string }) => p.id === pageId
     );
 
     if (!page) {
       return NextResponse.json(
-        { error: `Page ${PAGE_ID} not found in user accounts` },
+        { error: `Page ${pageId} not found in user accounts` },
         { status: 404 }
       );
     }
@@ -42,7 +43,7 @@ export async function GET() {
 
     // Step 2: Fetch page profile info
     const profileRes = await fetch(
-      `https://graph.facebook.com/v18.0/${PAGE_ID}?fields=name,fan_count,followers_count,talking_about_count,picture&access_token=${pageToken}`
+      `https://graph.facebook.com/v21.0/${pageId}?fields=name,fan_count,followers_count,talking_about_count,picture&access_token=${pageToken}`
     );
 
     if (!profileRes.ok) {
@@ -55,18 +56,25 @@ export async function GET() {
 
     const profile = await profileRes.json();
 
-    // Step 3: Try to fetch recent posts (requires pages_read_engagement)
+    // Step 3: Fetch recent posts — try enriched fields first, fall back to basic
     let posts: unknown[] = [];
     try {
-      const postsRes = await fetch(
-        `https://graph.facebook.com/v18.0/${PAGE_ID}/posts?fields=id,message,created_time,likes.summary(true),comments.summary(true),shares&limit=10&access_token=${pageToken}`
+      // Try with engagement metrics (needs pages_read_engagement)
+      let postsRes = await fetch(
+        `https://graph.facebook.com/v21.0/${pageId}/posts?fields=id,message,created_time,likes.summary(true),comments.summary(true),shares&limit=6&access_token=${pageToken}`
       );
+
+      if (!postsRes.ok) {
+        // Fall back to basic fields only
+        postsRes = await fetch(
+          `https://graph.facebook.com/v21.0/${pageId}/posts?fields=id,message,created_time&limit=6&access_token=${pageToken}`
+        );
+      }
 
       if (postsRes.ok) {
         const postsData = await postsRes.json();
         posts = postsData.data || [];
       }
-      // If posts fetch fails (permission error), we silently return empty posts
     } catch {
       // Graceful fallback — posts endpoint not available
     }
