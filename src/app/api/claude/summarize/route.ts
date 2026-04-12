@@ -21,7 +21,7 @@ export async function POST(request: NextRequest) {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "claude-sonnet-4-5-20250514",
+        model: "claude-sonnet-4-20250514",
         max_tokens: 1024,
         system:
           "Generate a concise executive summary of this conversation. Focus on key decisions, action items, and important insights. Keep it under 200 words.",

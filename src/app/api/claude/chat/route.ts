@@ -11,7 +11,7 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const { messages, model = "claude-sonnet-4-5-20250514", system } =
+    const { messages, model = "claude-sonnet-4-20250514", system } =
       await request.json();
 
     const res = await fetch("https://api.anthropic.com/v1/messages", {
