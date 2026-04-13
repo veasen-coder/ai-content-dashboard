@@ -1,45 +1,64 @@
 import { NextResponse } from "next/server";
+import {
+  getPageToken,
+  exchangeForLongLivedToken,
+  isTokenExpiredError,
+} from "@/lib/facebook/token";
 
 export const dynamic = "force-dynamic";
 
 export async function GET() {
-  const userToken = process.env.FACEBOOK_ACCESS_TOKEN;
+  let userToken = process.env.FACEBOOK_ACCESS_TOKEN;
   const pageId = process.env.FACEBOOK_PAGE_ID;
+  const appId = process.env.FACEBOOK_APP_ID;
+  const appSecret = process.env.FACEBOOK_APP_SECRET;
 
   if (!userToken || !pageId) {
     return NextResponse.json(
-      { error: "Facebook not configured" },
+      { error: "Facebook not configured. Set FACEBOOK_ACCESS_TOKEN and FACEBOOK_PAGE_ID." },
       { status: 503 }
     );
   }
 
   try {
-    // Step 1: Exchange user token for page token via /me/accounts
-    const accountsRes = await fetch(
-      `https://graph.facebook.com/v21.0/me/accounts?access_token=${userToken}`
-    );
-
-    if (!accountsRes.ok) {
-      const err = await accountsRes.json();
-      return NextResponse.json(
-        { error: err.error?.message || "Failed to fetch page accounts" },
-        { status: accountsRes.status }
-      );
+    // Step 1: Get page token
+    let pageResult: Awaited<ReturnType<typeof getPageToken>> = null;
+    try {
+      pageResult = await getPageToken(userToken, pageId);
+    } catch (err) {
+      // Check if token expired and try auto-exchange
+      const errMsg = String(err);
+      if (errMsg.includes("expired") || errMsg.includes("Session has expired") || errMsg.includes("Invalid OAuth")) {
+        if (appId && appSecret) {
+          console.log("[Facebook] Token expired, attempting auto-exchange...");
+          try {
+            const exchanged = await exchangeForLongLivedToken(userToken, appId, appSecret);
+            userToken = exchanged.access_token;
+            console.log("[Facebook] Token exchanged. Update FACEBOOK_ACCESS_TOKEN in .env.local.");
+            pageResult = await getPageToken(userToken, pageId);
+          } catch {
+            console.error("[Facebook] Auto-exchange failed — token is fully expired.");
+          }
+        }
+        if (!pageResult) {
+          return NextResponse.json(
+            { error: "Facebook access token has expired. Visit /api/instagram/debug for details." },
+            { status: 401 }
+          );
+        }
+      } else {
+        throw err;
+      }
     }
 
-    const accountsData = await accountsRes.json();
-    const page = (accountsData.data || []).find(
-      (p: { id: string }) => p.id === pageId
-    );
-
-    if (!page) {
+    if (!pageResult) {
       return NextResponse.json(
         { error: `Page ${pageId} not found in user accounts` },
         { status: 404 }
       );
     }
 
-    const pageToken = page.access_token;
+    const pageToken = pageResult.pageToken;
 
     // Step 2: Fetch page profile info
     const profileRes = await fetch(
@@ -48,6 +67,12 @@ export async function GET() {
 
     if (!profileRes.ok) {
       const err = await profileRes.json();
+      if (err.error && isTokenExpiredError(err.error)) {
+        return NextResponse.json(
+          { error: "Facebook access token has expired. Visit /api/instagram/debug for details." },
+          { status: 401 }
+        );
+      }
       return NextResponse.json(
         { error: err.error?.message || "Failed to fetch page profile" },
         { status: profileRes.status }

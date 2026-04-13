@@ -10,6 +10,7 @@ import {
   Smartphone,
   FolderOpen,
   Bot,
+  Cpu,
   Settings,
   ChevronLeft,
   ChevronRight,
@@ -24,6 +25,7 @@ const navItems = [
   { href: "/finance", label: "Finance", icon: DollarSign },
   { href: "/social", label: "Social Media", icon: Smartphone },
   { href: "/resources", label: "Resources", icon: FolderOpen },
+  { href: "/agents", label: "Agents", icon: Cpu },
   { href: "/assistant", label: "Assistant", icon: Bot },
 ];
 
