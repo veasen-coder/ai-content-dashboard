@@ -1,5 +1,86 @@
+"use client";
+
+import { useState, useEffect, useCallback } from "react";
 import { PageWrapper } from "@/components/layout/page-wrapper";
-import { DollarSign, TrendingUp, BarChart3, Users } from "lucide-react";
+import {
+  TrendingUp,
+  TrendingDown,
+  Users,
+  CheckSquare,
+  ArrowRight,
+  Wallet,
+  RefreshCw,
+  Clock,
+  AlertTriangle,
+  CheckCircle2,
+  Camera,
+} from "lucide-react";
+import Link from "next/link";
+
+// --------------- Types ---------------
+
+interface AccountBalance {
+  account: string;
+  balance: number;
+  updated_at: string;
+}
+
+interface FinanceEntry {
+  id: string;
+  type: "income" | "expense";
+  category: string | null;
+  description: string | null;
+  amount: number;
+  date: string;
+}
+
+interface Client {
+  id: string;
+  name: string;
+  stage: string;
+  industry: string | null;
+  deal_value: string | null;
+  close_probability: number | null;
+  status: string | null;
+  updated_at: string | null;
+  created_at: string;
+}
+
+interface ClickUpTask {
+  id: string;
+  name: string;
+  status: { status: string; color: string };
+  priority?: { priority: string };
+  due_date?: string;
+}
+
+interface IGProfile {
+  username: string;
+  followers_count: number;
+  media_count: number;
+}
+
+interface FBProfile {
+  name: string;
+  fan_count: number;
+  followers_count: number;
+}
+
+// --------------- Helpers ---------------
+
+function formatMYR(amount: number): string {
+  return `RM ${amount.toLocaleString("en-MY", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+const PIPELINE_STAGES = [
+  { key: "lead", label: "Lead", color: "#6B7280" },
+  { key: "contacted", label: "Contacted", color: "#3B82F6" },
+  { key: "demo_sent", label: "Demo Sent", color: "#8B5CF6" },
+  { key: "negotiation", label: "Negotiation", color: "#F59E0B" },
+  { key: "closed", label: "Closed", color: "#10B981" },
+];
+
+// --------------- Metric Card ---------------
 
 function MetricCard({
   title,
@@ -7,24 +88,34 @@ function MetricCard({
   icon: Icon,
   subtitle,
   trend,
+  trendDown,
 }: {
   title: string;
   value: string;
   icon: React.ElementType;
   subtitle?: string;
   trend?: string;
+  trendDown?: boolean;
 }) {
   return (
     <div className="rounded-xl border border-[#1E1E1E] bg-[#111111] p-5">
       <div className="flex items-center justify-between">
-        <p className="text-sm font-medium text-muted-foreground">{title}</p>
+        <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+          {title}
+        </p>
         <Icon className="h-4 w-4 text-muted-foreground" />
       </div>
       <p className="mt-2 text-2xl font-bold font-mono">{value}</p>
       {(subtitle || trend) && (
         <div className="mt-1 flex items-center gap-2">
           {trend && (
-            <span className="text-xs font-medium text-[#10B981]">{trend}</span>
+            <span
+              className={`text-xs font-medium ${
+                trendDown ? "text-[#EF4444]" : "text-[#10B981]"
+              }`}
+            >
+              {trend}
+            </span>
           )}
           {subtitle && (
             <span className="text-xs text-muted-foreground">{subtitle}</span>
@@ -35,77 +126,482 @@ function MetricCard({
   );
 }
 
-export default function DashboardPage() {
+// --------------- Section Card ---------------
+
+function SectionCard({
+  title,
+  href,
+  children,
+}: {
+  title: string;
+  href: string;
+  children: React.ReactNode;
+}) {
   return (
-    <PageWrapper title="Overview">
+    <div className="rounded-xl border border-[#1E1E1E] bg-[#111111] p-5">
+      <div className="flex items-center justify-between mb-4">
+        <h2 className="text-sm font-semibold">{title}</h2>
+        <Link
+          href={href}
+          className="flex items-center gap-1 text-xs font-medium text-primary hover:underline"
+        >
+          View All <ArrowRight className="h-3 w-3" />
+        </Link>
+      </div>
+      {children}
+    </div>
+  );
+}
+
+// --------------- Main Page ---------------
+
+export default function DashboardPage() {
+  const [balances, setBalances] = useState<AccountBalance[]>([]);
+  const [entries, setEntries] = useState<FinanceEntry[]>([]);
+  const [clients, setClients] = useState<Client[]>([]);
+  const [tasks, setTasks] = useState<ClickUpTask[]>([]);
+  const [igProfile, setIgProfile] = useState<IGProfile | null>(null);
+  const [fbProfile, setFbProfile] = useState<FBProfile | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [lastFetched, setLastFetched] = useState<string | null>(null);
+
+  const fetchAll = useCallback(async () => {
+    setLoading(true);
+    const now = new Date();
+    const month = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+
+    try {
+      const [balRes, finRes, cliRes, taskRes, igRes, fbRes] =
+        await Promise.allSettled([
+          fetch("/api/supabase/balances"),
+          fetch(`/api/supabase/finance?month=${month}`),
+          fetch("/api/supabase/clients"),
+          fetch("/api/clickup/tasks"),
+          fetch("/api/instagram/metrics"),
+          fetch("/api/facebook/metrics"),
+        ]);
+
+      if (balRes.status === "fulfilled" && balRes.value.ok) {
+        setBalances(await balRes.value.json());
+      }
+      if (finRes.status === "fulfilled" && finRes.value.ok) {
+        setEntries(await finRes.value.json());
+      }
+      if (cliRes.status === "fulfilled" && cliRes.value.ok) {
+        setClients(await cliRes.value.json());
+      }
+      if (taskRes.status === "fulfilled" && taskRes.value.ok) {
+        const taskData = await taskRes.value.json();
+        setTasks(taskData.tasks || []);
+      }
+      if (igRes.status === "fulfilled" && igRes.value.ok) {
+        const igData = await igRes.value.json();
+        if (igData.profile) setIgProfile(igData.profile);
+      }
+      if (fbRes.status === "fulfilled" && fbRes.value.ok) {
+        const fbData = await fbRes.value.json();
+        if (fbData.profile) setFbProfile(fbData.profile);
+      }
+
+      setLastFetched(new Date().toISOString());
+    } catch {
+      // Partial data is fine
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchAll();
+  }, [fetchAll]);
+
+  // ---------- Computed metrics ----------
+
+  const totalBalance = balances.reduce((sum, b) => sum + (b.balance || 0), 0);
+
+  const monthlyIncome = entries
+    .filter((e) => e.type === "income")
+    .reduce((sum, e) => sum + e.amount, 0);
+
+  const monthlyExpense = entries
+    .filter((e) => e.type === "expense")
+    .reduce((sum, e) => sum + e.amount, 0);
+
+  const netProfit = monthlyIncome - monthlyExpense;
+
+  const activeClients = clients.filter((c) => c.stage === "closed").length;
+  const totalLeads = clients.filter((c) => c.stage !== "closed").length;
+  const stalledClients = clients.filter((c) => c.status === "stalled").length;
+
+  const stageCounts = PIPELINE_STAGES.map((s) => ({
+    ...s,
+    count: clients.filter((c) => c.stage === s.key).length,
+  }));
+
+  const openTasks = tasks.filter(
+    (t) => t.status.status.toLowerCase() !== "complete"
+  );
+  const urgentTasks = openTasks.filter(
+    (t) => t.priority?.priority === "urgent" || t.priority?.priority === "high"
+  );
+
+  // ---------- Loading skeleton ----------
+
+  if (loading) {
+    return (
+      <PageWrapper title="Overview" lastSynced={lastFetched}>
+        <div className="space-y-6">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            {[1, 2, 3, 4].map((i) => (
+              <div
+                key={i}
+                className="h-28 animate-pulse rounded-xl border border-[#1E1E1E] bg-[#111111]"
+              />
+            ))}
+          </div>
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+            {[1, 2, 3, 4].map((i) => (
+              <div
+                key={i}
+                className="h-56 animate-pulse rounded-xl border border-[#1E1E1E] bg-[#111111]"
+              />
+            ))}
+          </div>
+        </div>
+      </PageWrapper>
+    );
+  }
+
+  return (
+    <PageWrapper title="Overview" lastSynced={lastFetched}>
       <div className="space-y-6">
-        {/* Metric Cards */}
+        {/* Top Metric Cards */}
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <MetricCard
-            title="OCBC Balance"
-            value="MYR 0.00"
-            icon={DollarSign}
-            subtitle="Last updated: —"
+            title="Total Balance"
+            value={formatMYR(totalBalance)}
+            icon={Wallet}
+            subtitle={`Across ${balances.length} accounts`}
           />
           <MetricCard
-            title="This Month Profit"
-            value="MYR 0.00"
-            icon={TrendingUp}
-            subtitle="Apr 2026"
+            title="Monthly Profit"
+            value={formatMYR(netProfit)}
+            icon={netProfit >= 0 ? TrendingUp : TrendingDown}
+            trend={
+              monthlyIncome > 0
+                ? `${formatMYR(monthlyIncome)} in`
+                : undefined
+            }
+            trendDown={netProfit < 0}
+            subtitle={
+              monthlyExpense > 0
+                ? `${formatMYR(monthlyExpense)} out`
+                : "April 2026"
+            }
           />
           <MetricCard
-            title="Total Profit"
-            value="MYR 0.00"
-            icon={BarChart3}
-            subtitle="All time"
-          />
-          <MetricCard
-            title="Active Clients"
-            value="0"
+            title="Pipeline"
+            value={`${activeClients} closed`}
             icon={Users}
-            subtitle="Currently active"
+            subtitle={`${totalLeads} leads in pipeline`}
+            trend={
+              stalledClients > 0
+                ? `${stalledClients} stalled`
+                : undefined
+            }
+            trendDown={stalledClients > 0}
+          />
+          <MetricCard
+            title="Open Tasks"
+            value={String(openTasks.length)}
+            icon={CheckSquare}
+            subtitle={`${tasks.length} total in ClickUp`}
+            trend={
+              urgentTasks.length > 0
+                ? `${urgentTasks.length} urgent`
+                : undefined
+            }
+            trendDown={urgentTasks.length > 0}
           />
         </div>
 
-        {/* Second Row */}
+        {/* Second Row — Pipeline + Finance */}
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-          {/* Tasks Widget */}
-          <div className="rounded-xl border border-[#1E1E1E] bg-[#111111] p-5">
-            <div className="flex items-center justify-between">
-              <h2 className="text-base font-semibold">Current Tasks</h2>
-              <a
-                href="/tasks"
-                className="text-xs font-medium text-primary hover:underline"
-              >
-                View All
-              </a>
-            </div>
-            <div className="mt-4 flex flex-col items-center justify-center py-8 text-muted-foreground">
-              <p className="text-sm">No tasks loaded</p>
-              <p className="mt-1 text-xs">
-                Connect ClickUp to see your tasks here
-              </p>
-            </div>
-          </div>
+          {/* Client Pipeline Summary */}
+          <SectionCard title="Client Pipeline" href="/clients">
+            <div className="space-y-3">
+              {/* Pipeline bar */}
+              <div className="flex items-center gap-1 rounded-lg bg-[#0A0A0A] p-3">
+                {stageCounts.map((s, i) => (
+                  <div key={s.key} className="flex items-center gap-1">
+                    <div className="flex flex-col items-center min-w-[50px]">
+                      <span className="text-lg font-bold font-mono text-foreground">
+                        {s.count}
+                      </span>
+                      <span className="text-[9px] text-muted-foreground whitespace-nowrap">
+                        {s.label}
+                      </span>
+                    </div>
+                    {i < stageCounts.length - 1 && (
+                      <ArrowRight className="h-3 w-3 text-muted-foreground/30 mx-1" />
+                    )}
+                  </div>
+                ))}
+              </div>
 
-          {/* Pipeline Summary */}
-          <div className="rounded-xl border border-[#1E1E1E] bg-[#111111] p-5">
-            <div className="flex items-center justify-between">
-              <h2 className="text-base font-semibold">Client Pipeline</h2>
-              <a
-                href="/clients"
-                className="text-xs font-medium text-primary hover:underline"
-              >
-                View All
-              </a>
+              {/* Recent clients */}
+              {clients.slice(0, 4).map((c) => (
+                <div
+                  key={c.id}
+                  className="flex items-center justify-between rounded-lg border border-[#1E1E1E] bg-[#0A0A0A] px-3 py-2"
+                >
+                  <div className="flex items-center gap-2 min-w-0">
+                    <div
+                      className="h-2 w-2 rounded-full shrink-0"
+                      style={{
+                        backgroundColor:
+                          PIPELINE_STAGES.find((s) => s.key === c.stage)
+                            ?.color || "#6B7280",
+                      }}
+                    />
+                    <span className="text-sm font-medium truncate">
+                      {c.name}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0 ml-2">
+                    {c.status === "stalled" && (
+                      <AlertTriangle className="h-3 w-3 text-[#F59E0B]" />
+                    )}
+                    {c.deal_value && (
+                      <span className="text-xs font-mono text-primary">
+                        {c.deal_value}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              ))}
+
+              {clients.length === 0 && (
+                <p className="text-center text-xs text-muted-foreground py-4">
+                  No clients yet — add leads in the pipeline
+                </p>
+              )}
             </div>
-            <div className="mt-4 flex flex-col items-center justify-center py-8 text-muted-foreground">
-              <p className="text-sm">No clients yet</p>
-              <p className="mt-1 text-xs">
-                Add clients to see pipeline summary
-              </p>
+          </SectionCard>
+
+          {/* Finance Summary */}
+          <SectionCard title="Finance" href="/finance">
+            <div className="space-y-3">
+              {/* Account balances */}
+              <div className="grid grid-cols-3 gap-2">
+                {balances.map((b) => (
+                  <div
+                    key={b.account}
+                    className="rounded-lg bg-[#0A0A0A] p-3 text-center"
+                  >
+                    <p className="text-[10px] uppercase tracking-wider text-muted-foreground">
+                      {b.account}
+                    </p>
+                    <p className="mt-1 text-sm font-bold font-mono">
+                      {formatMYR(b.balance || 0)}
+                    </p>
+                  </div>
+                ))}
+              </div>
+
+              {/* Income vs Expense bars */}
+              <div className="space-y-2 rounded-lg bg-[#0A0A0A] p-3">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-muted-foreground">Income</span>
+                  <span className="font-mono text-[#10B981]">
+                    {formatMYR(monthlyIncome)}
+                  </span>
+                </div>
+                <div className="h-2 rounded-full bg-[#1E1E1E] overflow-hidden">
+                  <div
+                    className="h-full rounded-full bg-[#10B981] transition-all"
+                    style={{
+                      width: `${
+                        monthlyIncome + monthlyExpense > 0
+                          ? (monthlyIncome / (monthlyIncome + monthlyExpense)) * 100
+                          : 0
+                      }%`,
+                    }}
+                  />
+                </div>
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-muted-foreground">Expenses</span>
+                  <span className="font-mono text-[#EF4444]">
+                    {formatMYR(monthlyExpense)}
+                  </span>
+                </div>
+                <div className="h-2 rounded-full bg-[#1E1E1E] overflow-hidden">
+                  <div
+                    className="h-full rounded-full bg-[#EF4444] transition-all"
+                    style={{
+                      width: `${
+                        monthlyIncome + monthlyExpense > 0
+                          ? (monthlyExpense / (monthlyIncome + monthlyExpense)) * 100
+                          : 0
+                      }%`,
+                    }}
+                  />
+                </div>
+              </div>
+
+              {/* Recent transactions */}
+              {entries.slice(0, 3).map((e) => (
+                <div
+                  key={e.id}
+                  className="flex items-center justify-between rounded-lg border border-[#1E1E1E] bg-[#0A0A0A] px-3 py-2"
+                >
+                  <div className="min-w-0">
+                    <p className="text-xs font-medium truncate">
+                      {e.description || e.category || "Entry"}
+                    </p>
+                    <p className="text-[10px] text-muted-foreground">
+                      {e.category}
+                    </p>
+                  </div>
+                  <span
+                    className={`text-xs font-mono font-semibold shrink-0 ml-2 ${
+                      e.type === "income" ? "text-[#10B981]" : "text-[#EF4444]"
+                    }`}
+                  >
+                    {e.type === "income" ? "+" : "-"}
+                    {formatMYR(e.amount)}
+                  </span>
+                </div>
+              ))}
             </div>
-          </div>
+          </SectionCard>
+        </div>
+
+        {/* Third Row — Tasks + Social */}
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+          {/* Tasks */}
+          <SectionCard title="Tasks" href="/tasks">
+            <div className="space-y-2">
+              {openTasks.length > 0 ? (
+                openTasks.slice(0, 5).map((t) => (
+                  <div
+                    key={t.id}
+                    className="flex items-center gap-3 rounded-lg border border-[#1E1E1E] bg-[#0A0A0A] px-3 py-2.5"
+                  >
+                    <div
+                      className="h-2 w-2 rounded-full shrink-0"
+                      style={{ backgroundColor: t.status.color || "#6B7280" }}
+                    />
+                    <span className="flex-1 text-xs font-medium truncate">
+                      {t.name}
+                    </span>
+                    <div className="flex items-center gap-2 shrink-0">
+                      {t.priority?.priority && (
+                        <span
+                          className={`text-[10px] font-semibold uppercase ${
+                            t.priority.priority === "urgent"
+                              ? "text-[#EF4444]"
+                              : t.priority.priority === "high"
+                              ? "text-[#F59E0B]"
+                              : "text-muted-foreground"
+                          }`}
+                        >
+                          {t.priority.priority}
+                        </span>
+                      )}
+                      {t.due_date && (
+                        <span className="flex items-center gap-1 text-[10px] text-muted-foreground">
+                          <Clock className="h-2.5 w-2.5" />
+                          {new Date(parseInt(t.due_date)).toLocaleDateString(
+                            "en-GB",
+                            { day: "2-digit", month: "short" }
+                          )}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <div className="flex flex-col items-center justify-center py-6 text-muted-foreground">
+                  <CheckCircle2 className="h-8 w-8 mb-2 text-[#10B981]/30" />
+                  <p className="text-xs">All tasks complete!</p>
+                </div>
+              )}
+              {openTasks.length > 5 && (
+                <p className="text-center text-[10px] text-muted-foreground">
+                  +{openTasks.length - 5} more tasks
+                </p>
+              )}
+            </div>
+          </SectionCard>
+
+          {/* Social Media */}
+          <SectionCard title="Social Media" href="/social">
+            <div className="space-y-3">
+              {/* Instagram */}
+              <div className="flex items-center gap-3 rounded-lg bg-[#0A0A0A] p-3">
+                <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-to-br from-[#833AB4] via-[#E1306C] to-[#F77737]">
+                  <Camera className="h-4 w-4 text-white" />
+                </div>
+                <div className="flex-1">
+                  <p className="text-sm font-medium">
+                    {igProfile ? `@${igProfile.username}` : "Instagram"}
+                  </p>
+                  {igProfile ? (
+                    <p className="text-xs text-muted-foreground">
+                      {igProfile.followers_count.toLocaleString()} followers · {igProfile.media_count} posts
+                    </p>
+                  ) : (
+                    <p className="text-xs text-muted-foreground/50">
+                      Not connected
+                    </p>
+                  )}
+                </div>
+                {igProfile && (
+                  <span className="rounded-md bg-[#10B981]/10 px-2 py-0.5 text-[10px] font-semibold text-[#10B981]">
+                    LIVE
+                  </span>
+                )}
+              </div>
+
+              {/* Facebook */}
+              <div className="flex items-center gap-3 rounded-lg bg-[#0A0A0A] p-3">
+                <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#1877F2] text-white font-bold text-sm">
+                  f
+                </div>
+                <div className="flex-1">
+                  <p className="text-sm font-medium">
+                    {fbProfile ? fbProfile.name : "Facebook"}
+                  </p>
+                  {fbProfile ? (
+                    <p className="text-xs text-muted-foreground">
+                      {fbProfile.followers_count.toLocaleString()} followers · {fbProfile.fan_count.toLocaleString()} likes
+                    </p>
+                  ) : (
+                    <p className="text-xs text-muted-foreground/50">
+                      Not connected
+                    </p>
+                  )}
+                </div>
+                {fbProfile && (
+                  <span className="rounded-md bg-[#10B981]/10 px-2 py-0.5 text-[10px] font-semibold text-[#10B981]">
+                    LIVE
+                  </span>
+                )}
+              </div>
+            </div>
+          </SectionCard>
+        </div>
+
+        {/* Refresh Button */}
+        <div className="flex justify-center pt-2">
+          <button
+            onClick={fetchAll}
+            className="flex items-center gap-2 rounded-lg border border-[#1E1E1E] bg-[#111111] px-4 py-2 text-xs text-muted-foreground transition-colors hover:bg-[#1A1A1A] hover:text-foreground"
+          >
+            <RefreshCw className="h-3.5 w-3.5" />
+            Refresh All Data
+          </button>
         </div>
       </div>
     </PageWrapper>
