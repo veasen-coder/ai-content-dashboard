@@ -29,7 +29,8 @@ interface Conversation {
   id: string;
   title: string;
   messages: Message[];
-  createdAt: string;
+  created_at: string;
+  updated_at: string;
 }
 
 // --------------- Constants ---------------
@@ -155,12 +156,55 @@ export default function AssistantPage() {
   const [activeId, setActiveId] = useState<string | null>(null);
   const [input, setInput] = useState("");
   const [streaming, setStreaming] = useState(false);
+  const [loadingConvs, setLoadingConvs] = useState(true);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const abortRef = useRef<AbortController | null>(null);
+  const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const activeConversation = conversations.find((c) => c.id === activeId);
   const messages = activeConversation?.messages || [];
+
+  // ---------- Load conversations from Supabase on mount ----------
+  useEffect(() => {
+    async function load() {
+      try {
+        const res = await fetch("/api/supabase/conversations");
+        if (res.ok) {
+          const data = await res.json();
+          setConversations(data || []);
+        }
+      } catch {
+        // Silently fail — start fresh
+      } finally {
+        setLoadingConvs(false);
+      }
+    }
+    load();
+  }, []);
+
+  // ---------- Save conversation to Supabase (debounced) ----------
+  const saveConversation = useCallback(
+    (conv: Conversation) => {
+      if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+      saveTimeoutRef.current = setTimeout(async () => {
+        try {
+          await fetch("/api/supabase/conversations", {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              id: conv.id,
+              title: conv.title,
+              messages: conv.messages,
+            }),
+          });
+        } catch {
+          // Silent fail — won't block UX
+        }
+      }, 500);
+    },
+    []
+  );
 
   // Auto-scroll to bottom
   useEffect(() => {
@@ -176,23 +220,57 @@ export default function AssistantPage() {
     }
   }, [input]);
 
-  function createConversation(): string {
+  async function createConversation(): Promise<string> {
+    try {
+      const res = await fetch("/api/supabase/conversations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title: "New Chat", messages: [] }),
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        const conv: Conversation = {
+          id: data.id,
+          title: data.title,
+          messages: data.messages || [],
+          created_at: data.created_at,
+          updated_at: data.updated_at,
+        };
+        setConversations((prev) => [conv, ...prev]);
+        setActiveId(conv.id);
+        return conv.id;
+      }
+    } catch {
+      // Fall through to local-only
+    }
+
+    // Fallback: create locally if Supabase fails
     const id = crypto.randomUUID();
     const conv: Conversation = {
       id,
       title: "New Chat",
       messages: [],
-      createdAt: new Date().toISOString(),
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
     };
     setConversations((prev) => [conv, ...prev]);
     setActiveId(id);
     return id;
   }
 
-  function deleteConversation(id: string) {
+  async function deleteConversation(id: string) {
     setConversations((prev) => prev.filter((c) => c.id !== id));
-    if (activeId === id) {
-      setActiveId(null);
+    if (activeId === id) setActiveId(null);
+
+    try {
+      await fetch("/api/supabase/conversations", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id }),
+      });
+    } catch {
+      // Already removed from UI
     }
   }
 
@@ -202,7 +280,7 @@ export default function AssistantPage() {
 
       let convId = activeId;
       if (!convId) {
-        convId = createConversation();
+        convId = await createConversation();
       }
 
       const userMessage: Message = {
@@ -211,7 +289,7 @@ export default function AssistantPage() {
         timestamp: new Date().toISOString(),
       };
 
-      // Add user message and create assistant placeholder
+      // Add user message
       setConversations((prev) =>
         prev.map((c) => {
           if (c.id !== convId) return c;
@@ -231,7 +309,7 @@ export default function AssistantPage() {
       setInput("");
       setStreaming(true);
 
-      // Build messages array for API
+      // Build messages for API
       const apiMessages = [
         ...(conversations.find((c) => c.id === convId)?.messages || []).map(
           (m) => ({ role: m.role, content: m.content })
@@ -294,7 +372,10 @@ export default function AssistantPage() {
                 try {
                   const parsed = JSON.parse(data);
 
-                  if (parsed.type === "content_block_delta" && parsed.delta?.text) {
+                  if (
+                    parsed.type === "content_block_delta" &&
+                    parsed.delta?.text
+                  ) {
                     fullText += parsed.delta.text;
 
                     setConversations((prev) =>
@@ -313,18 +394,28 @@ export default function AssistantPage() {
                     );
                   }
                 } catch {
-                  // Skip non-JSON lines (like event: lines)
+                  // Skip non-JSON lines
                 }
               }
             }
           }
         }
+
+        // Save to Supabase after streaming completes
+        // Use a timeout to let state settle first
+        setTimeout(() => {
+          setConversations((prev) => {
+            const conv = prev.find((c) => c.id === convId);
+            if (conv) saveConversation(conv);
+            return prev;
+          });
+        }, 100);
       } catch (err) {
         if (err instanceof Error && err.name === "AbortError") return;
         toast.error(
           err instanceof Error ? err.message : "Failed to get response"
         );
-        // Remove the empty assistant message on error
+        // Remove empty assistant message on error
         setConversations((prev) =>
           prev.map((c) => {
             if (c.id !== convId) return c;
@@ -345,7 +436,7 @@ export default function AssistantPage() {
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [activeId, streaming, conversations]
+    [activeId, streaming, conversations, saveConversation]
   );
 
   function handleKeyDown(e: React.KeyboardEvent) {
@@ -373,7 +464,16 @@ export default function AssistantPage() {
             </button>
           </div>
           <div className="flex-1 overflow-y-auto px-2 pb-3">
-            {conversations.length > 0 ? (
+            {loadingConvs ? (
+              <div className="space-y-2 px-2 py-4">
+                {[1, 2, 3].map((i) => (
+                  <div
+                    key={i}
+                    className="h-8 animate-pulse rounded-lg bg-[#1E1E1E]"
+                  />
+                ))}
+              </div>
+            ) : conversations.length > 0 ? (
               <div className="space-y-0.5">
                 {conversations.map((conv) => (
                   <ConversationItem
@@ -393,7 +493,7 @@ export default function AssistantPage() {
           </div>
           <div className="border-t border-[#1E1E1E] p-3">
             <p className="text-xs text-muted-foreground">
-              Model: Claude Sonnet 4.5
+              Model: Claude Sonnet 4
             </p>
           </div>
         </div>
