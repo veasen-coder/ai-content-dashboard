@@ -3,7 +3,6 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { PageWrapper } from "@/components/layout/page-wrapper";
 import {
-  Cpu,
   Send,
   User,
   Loader2,
