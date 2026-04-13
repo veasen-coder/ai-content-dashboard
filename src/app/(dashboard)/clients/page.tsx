@@ -743,6 +743,144 @@ function ClientModal({ isOpen, onClose, onSaved, client }: ClientModalProps) {
   );
 }
 
+// --------------- Client Detail (Read-Only) Modal ---------------
+
+function ClientDetailModal({
+  client,
+  onClose,
+  onEdit,
+}: {
+  client: Client;
+  onClose: () => void;
+  onEdit: () => void;
+}) {
+  const stageInfo = STAGE_MAP[client.stage];
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center">
+      <div
+        className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+        onClick={onClose}
+      />
+      <div className="relative z-10 w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-xl border border-[#1E1E1E] bg-[#111111] shadow-2xl">
+        {/* Header */}
+        <div className="flex items-center justify-between border-b border-[#1E1E1E] px-5 py-4">
+          <h2 className="text-base font-semibold">{client.name}</h2>
+          <button
+            onClick={onClose}
+            className="flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-[#1E1E1E] hover:text-foreground"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        <div className="p-5 space-y-4">
+          {/* Tags */}
+          <div className="flex flex-wrap gap-2">
+            {stageInfo && (
+              <span
+                className="rounded-md px-2.5 py-1 text-xs font-semibold text-white"
+                style={{ backgroundColor: stageInfo.color }}
+              >
+                {stageInfo.label}
+              </span>
+            )}
+            {client.industry && (
+              <span
+                className="rounded-md px-2.5 py-1 text-xs font-semibold text-white"
+                style={{ backgroundColor: INDUSTRY_COLORS[client.industry] || "#6B7280" }}
+              >
+                {client.industry}
+              </span>
+            )}
+            {client.status && (
+              <span
+                className={`rounded-md px-2.5 py-1 text-xs font-semibold ${
+                  client.status === "stalled"
+                    ? "bg-[#F59E0B]/15 text-[#F59E0B]"
+                    : "bg-[#10B981]/15 text-[#10B981]"
+                }`}
+              >
+                {client.status === "stalled" ? "Stalled" : "Active"}
+              </span>
+            )}
+          </div>
+
+          {/* Details Grid */}
+          <div className="grid grid-cols-2 gap-4">
+            {client.business && (
+              <div>
+                <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">Business</p>
+                <p className="text-sm flex items-center gap-1.5"><Building2 className="h-3.5 w-3.5 text-muted-foreground" />{client.business}</p>
+              </div>
+            )}
+            {client.email && (
+              <div>
+                <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">Email</p>
+                <p className="text-sm flex items-center gap-1.5"><Mail className="h-3.5 w-3.5 text-muted-foreground" />{client.email}</p>
+              </div>
+            )}
+            {client.phone && (
+              <div>
+                <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">Phone</p>
+                <p className="text-sm flex items-center gap-1.5"><Phone className="h-3.5 w-3.5 text-muted-foreground" />{client.phone}</p>
+              </div>
+            )}
+            {client.source && (
+              <div>
+                <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">Source</p>
+                <p className="text-sm">{client.source}</p>
+              </div>
+            )}
+            {client.deal_value && (
+              <div>
+                <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">Deal Value</p>
+                <p className="text-sm font-semibold font-mono text-primary">{client.deal_value}</p>
+              </div>
+            )}
+            {client.close_probability != null && (
+              <div>
+                <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">Close Probability</p>
+                <p className="text-sm font-mono">{client.close_probability}%</p>
+              </div>
+            )}
+          </div>
+
+          {/* Notes */}
+          {client.notes && (
+            <div>
+              <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">Notes</p>
+              <p className="text-sm text-muted-foreground leading-relaxed whitespace-pre-wrap">{client.notes}</p>
+            </div>
+          )}
+
+          {/* Timestamps */}
+          <div className="flex gap-4 text-[10px] text-muted-foreground/60 pt-2 border-t border-[#1E1E1E]">
+            <span>Created {timeAgo(client.created_at)}</span>
+            {client.updated_at && <span>Updated {timeAgo(client.updated_at)}</span>}
+          </div>
+
+          {/* Actions */}
+          <div className="flex gap-2 pt-2">
+            <button
+              onClick={onEdit}
+              className="flex-1 rounded-lg bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+            >
+              Edit Client
+            </button>
+            <button
+              onClick={onClose}
+              className="rounded-lg border border-[#1E1E1E] px-4 py-2.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-[#1E1E1E] hover:text-foreground"
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // --------------- Main Page ---------------
 
 export default function ClientsPage() {
@@ -754,6 +892,7 @@ export default function ClientsPage() {
   const [lastFetched, setLastFetched] = useState<string | null>(null);
   const [showModal, setShowModal] = useState(false);
   const [selectedClient, setSelectedClient] = useState<Client | null>(null);
+  const [viewingClient, setViewingClient] = useState<Client | null>(null);
 
   const fetchClients = useCallback(async () => {
     try {
@@ -900,13 +1039,13 @@ export default function ClientsPage() {
 
         {/* Kanban Columns */}
         {!loading && !error && (
-          <div className="flex gap-3 overflow-x-auto pb-4">
+          <div className="flex gap-3 overflow-x-auto pb-4 pr-4">
             {STAGES.map((s) => {
               const stageClients = stageGroups.get(s.key) || [];
               return (
                 <div
                   key={s.key}
-                  className="min-w-[270px] max-w-[300px] flex-shrink-0"
+                  className="min-w-[260px] w-[260px] flex-shrink-0"
                 >
                   {/* Stage Header */}
                   <div className="mb-2 flex items-center gap-2 px-1">
@@ -936,8 +1075,7 @@ export default function ClientsPage() {
                           key={client.id}
                           client={client}
                           onClick={() => {
-                            setSelectedClient(client);
-                            setShowModal(true);
+                            setViewingClient(client);
                           }}
                           onMove={(newStage) => moveClient(client, newStage)}
                           onProbChange={(prob) =>
@@ -969,6 +1107,19 @@ export default function ClientsPage() {
           </div>
         )}
       </div>
+
+      {/* Client Detail (Read-Only) Modal */}
+      {viewingClient && (
+        <ClientDetailModal
+          client={viewingClient}
+          onClose={() => setViewingClient(null)}
+          onEdit={() => {
+            setSelectedClient(viewingClient);
+            setViewingClient(null);
+            setShowModal(true);
+          }}
+        />
+      )}
 
       {/* Add / Edit Client Modal */}
       <ClientModal

@@ -89,6 +89,7 @@ function MetricCard({
   subtitle,
   trend,
   trendDown,
+  href,
 }: {
   title: string;
   value: string;
@@ -96,9 +97,10 @@ function MetricCard({
   subtitle?: string;
   trend?: string;
   trendDown?: boolean;
+  href?: string;
 }) {
-  return (
-    <div className="rounded-xl border border-[#1E1E1E] bg-[#111111] p-5">
+  const content = (
+    <div className={`rounded-xl border border-[#1E1E1E] bg-[#111111] p-5 transition-colors ${href ? "hover:border-[#2E2E2E] hover:bg-[#161616] cursor-pointer" : ""}`}>
       <div className="flex items-center justify-between">
         <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
           {title}
@@ -124,6 +126,9 @@ function MetricCard({
       )}
     </div>
   );
+
+  if (href) return <Link href={href}>{content}</Link>;
+  return content;
 }
 
 // --------------- Section Card ---------------
@@ -282,11 +287,13 @@ export default function DashboardPage() {
             value={formatMYR(totalBalance)}
             icon={Wallet}
             subtitle={`Across ${balances.length} accounts`}
+            href="/finance"
           />
           <MetricCard
             title="Monthly Profit"
             value={formatMYR(netProfit)}
             icon={netProfit >= 0 ? TrendingUp : TrendingDown}
+            href="/finance"
             trend={
               monthlyIncome > 0
                 ? `${formatMYR(monthlyIncome)} in`
@@ -304,6 +311,7 @@ export default function DashboardPage() {
             value={`${activeClients} closed`}
             icon={Users}
             subtitle={`${totalLeads} leads in pipeline`}
+            href="/clients"
             trend={
               stalledClients > 0
                 ? `${stalledClients} stalled`
@@ -316,6 +324,7 @@ export default function DashboardPage() {
             value={String(openTasks.length)}
             icon={CheckSquare}
             subtitle={`${tasks.length} total in ClickUp`}
+            href="/tasks"
             trend={
               urgentTasks.length > 0
                 ? `${urgentTasks.length} urgent`

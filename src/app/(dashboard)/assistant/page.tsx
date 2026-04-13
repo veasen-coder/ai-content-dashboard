@@ -12,6 +12,7 @@ import {
   Copy,
   Check,
   Sparkles,
+  Square,
 } from "lucide-react";
 import { toast } from "sonner";
 import ReactMarkdown from "react-markdown";
@@ -572,17 +573,23 @@ export default function AssistantPage() {
                 disabled={streaming}
                 className="flex-1 resize-none rounded-xl border border-[#1E1E1E] bg-[#0A0A0A] px-4 py-3 text-sm outline-none transition-colors focus:border-primary disabled:opacity-50"
               />
-              <button
-                onClick={() => sendMessage(input)}
-                disabled={!input.trim() || streaming}
-                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"
-              >
-                {streaming ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
+              {streaming ? (
+                <button
+                  onClick={() => abortRef.current?.abort()}
+                  className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[#EF4444] text-white transition-colors hover:bg-[#EF4444]/80"
+                  title="Stop generating"
+                >
+                  <Square className="h-4 w-4" />
+                </button>
+              ) : (
+                <button
+                  onClick={() => sendMessage(input)}
+                  disabled={!input.trim()}
+                  className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"
+                >
                   <Send className="h-4 w-4" />
-                )}
-              </button>
+                </button>
+              )}
             </div>
             <p className="mt-2 text-xs text-muted-foreground">
               Press Enter to send · Shift+Enter for new line

@@ -128,7 +128,15 @@ function AssigneeBadge({ assignee }: { assignee: Assignee }) {
   );
 }
 
-function TaskRow({ task }: { task: Task }) {
+function TaskDetailDrawer({
+  task,
+  onClose,
+}: {
+  task: Task | null;
+  onClose: () => void;
+}) {
+  if (!task) return null;
+
   const due = formatDueDate(task.due_date);
   const priorityLabel = task.priority
     ? PRIORITY_LABELS[task.priority.priority] || task.priority.priority
@@ -138,7 +146,178 @@ function TaskRow({ task }: { task: Task }) {
     : null;
 
   return (
-    <div className="group flex items-center gap-4 border-b border-[#1E1E1E] px-4 py-3 transition-colors hover:bg-[#1A1A1A]">
+    <div className="fixed inset-0 z-50 flex justify-end">
+      <div
+        className="absolute inset-0 bg-black/50 backdrop-blur-sm"
+        onClick={onClose}
+      />
+      <div className="relative z-10 w-full max-w-md animate-in slide-in-from-right border-l border-[#1E1E1E] bg-[#0A0A0A] shadow-2xl">
+        {/* Header */}
+        <div className="flex items-center justify-between border-b border-[#1E1E1E] px-5 py-4">
+          <h2 className="text-base font-semibold">Task Details</h2>
+          <div className="flex items-center gap-2">
+            <a
+              href={task.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-[#1E1E1E] hover:text-foreground"
+              title="Open in ClickUp"
+            >
+              <ExternalLink className="h-4 w-4" />
+            </a>
+            <button
+              onClick={onClose}
+              className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-[#1E1E1E] hover:text-foreground"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
+
+        {/* Body */}
+        <div className="overflow-y-auto p-5 space-y-5" style={{ maxHeight: "calc(100vh - 65px)" }}>
+          {/* Task Name */}
+          <h3 className="text-lg font-semibold leading-snug">{task.name}</h3>
+
+          {/* Status */}
+          <div>
+            <label className="mb-1.5 block text-xs font-medium uppercase tracking-wider text-muted-foreground">
+              Status
+            </label>
+            <div
+              className="inline-flex items-center rounded-md px-2.5 py-1 text-xs font-bold uppercase tracking-wider text-white"
+              style={{ backgroundColor: task.status.color || "#87909e" }}
+            >
+              {task.status.status}
+            </div>
+          </div>
+
+          {/* Priority */}
+          <div>
+            <label className="mb-1.5 block text-xs font-medium uppercase tracking-wider text-muted-foreground">
+              Priority
+            </label>
+            {priorityLabel ? (
+              <span
+                className="inline-flex items-center gap-1.5 text-sm font-medium"
+                style={{ color: priorityColor || undefined }}
+              >
+                <Flag className="h-4 w-4" />
+                {priorityLabel}
+              </span>
+            ) : (
+              <span className="text-sm text-muted-foreground/50">None</span>
+            )}
+          </div>
+
+          {/* Due Date */}
+          <div>
+            <label className="mb-1.5 block text-xs font-medium uppercase tracking-wider text-muted-foreground">
+              Due Date
+            </label>
+            {due.text ? (
+              <span
+                className={`inline-flex items-center gap-1.5 text-sm font-mono ${
+                  due.isOverdue ? "text-[#EF4444]" : "text-foreground"
+                }`}
+              >
+                <Calendar className="h-4 w-4" />
+                {due.text}
+              </span>
+            ) : (
+              <span className="text-sm text-muted-foreground/50">No due date</span>
+            )}
+          </div>
+
+          {/* Assignees */}
+          <div>
+            <label className="mb-1.5 block text-xs font-medium uppercase tracking-wider text-muted-foreground">
+              Assignees
+            </label>
+            {task.assignees.length > 0 ? (
+              <div className="flex flex-wrap gap-2">
+                {task.assignees.map((a) => (
+                  <div
+                    key={a.id}
+                    className="flex items-center gap-2 rounded-lg border border-[#1E1E1E] bg-[#111111] px-3 py-2"
+                  >
+                    <div
+                      className="flex h-6 w-6 items-center justify-center rounded-full text-[10px] font-bold text-white"
+                      style={{ backgroundColor: a.color || "#6B7280" }}
+                    >
+                      {a.initials}
+                    </div>
+                    <span className="text-sm">{a.username}</span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <span className="text-sm text-muted-foreground/50">Unassigned</span>
+            )}
+          </div>
+
+          {/* Tags */}
+          {task.tags.length > 0 && (
+            <div>
+              <label className="mb-1.5 block text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                Tags
+              </label>
+              <div className="flex flex-wrap gap-1.5">
+                {task.tags.map((tag) => (
+                  <span
+                    key={tag.name}
+                    className="rounded-md px-2 py-1 text-xs font-medium"
+                    style={{
+                      backgroundColor: tag.tag_bg || "#1E1E1E",
+                      color: tag.tag_fg || "#F5F5F5",
+                    }}
+                  >
+                    {tag.name}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Description */}
+          {task.description && (
+            <div>
+              <label className="mb-1.5 block text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                Description
+              </label>
+              <div className="rounded-lg border border-[#1E1E1E] bg-[#111111] p-3 text-sm text-muted-foreground whitespace-pre-wrap">
+                {task.description}
+              </div>
+            </div>
+          )}
+
+          {/* Open in ClickUp */}
+          <a
+            href={task.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex w-full items-center justify-center gap-2 rounded-lg border border-[#1E1E1E] bg-[#111111] px-4 py-2.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-[#1A1A1A] hover:text-foreground"
+          >
+            <ExternalLink className="h-4 w-4" />
+            Open in ClickUp
+          </a>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function TaskRow({ task, onClick }: { task: Task; onClick: () => void }) {
+  const due = formatDueDate(task.due_date);
+  const priorityLabel = task.priority
+    ? PRIORITY_LABELS[task.priority.priority] || task.priority.priority
+    : null;
+  const priorityColor = task.priority
+    ? PRIORITY_COLORS[task.priority.priority] || "#6B7280"
+    : null;
+
+  return (
+    <div onClick={onClick} role="button" tabIndex={0} className="group flex cursor-pointer items-center gap-4 border-b border-[#1E1E1E] px-4 py-3 transition-colors hover:bg-[#1A1A1A]">
       <div className="flex min-w-0 flex-1 items-center gap-3">
         <span className="truncate text-sm font-medium text-foreground">
           {task.name}
@@ -202,7 +381,7 @@ function TaskRow({ task }: { task: Task }) {
   );
 }
 
-function StatusSection({ group }: { group: StatusGroup }) {
+function StatusSection({ group, onTaskClick }: { group: StatusGroup; onTaskClick: (task: Task) => void }) {
   const [isOpen, setIsOpen] = useState(group.type !== "closed");
 
   return (
@@ -243,7 +422,7 @@ function StatusSection({ group }: { group: StatusGroup }) {
             </span>
           </div>
           {group.tasks.map((task) => (
-            <TaskRow key={task.id} task={task} />
+            <TaskRow key={task.id} task={task} onClick={() => onTaskClick(task)} />
           ))}
         </div>
       )}
@@ -532,6 +711,7 @@ export default function TasksPage() {
   const [refreshing, setRefreshing] = useState(false);
   const [lastFetched, setLastFetched] = useState<string | null>(null);
   const [showAddModal, setShowAddModal] = useState(false);
+  const [selectedTask, setSelectedTask] = useState<Task | null>(null);
 
   const fetchTasks = useCallback(async () => {
     try {
@@ -661,7 +841,7 @@ export default function TasksPage() {
               </div>
             ) : (
               sorted.map((group) => (
-                <StatusSection key={group.status} group={group} />
+                <StatusSection key={group.status} group={group} onTaskClick={setSelectedTask} />
               ))
             )}
           </>
@@ -673,6 +853,12 @@ export default function TasksPage() {
         isOpen={showAddModal}
         onClose={() => setShowAddModal(false)}
         onCreated={fetchTasks}
+      />
+
+      {/* Task Detail Drawer */}
+      <TaskDetailDrawer
+        task={selectedTask}
+        onClose={() => setSelectedTask(null)}
       />
     </PageWrapper>
   );

@@ -12,11 +12,11 @@ export default function DashboardLayout({
   const { isCollapsed } = useSidebarStore();
 
   return (
-    <div className="flex min-h-screen">
+    <div className="flex h-screen overflow-hidden">
       <Sidebar />
       <div
         className={cn(
-          "flex flex-1 flex-col transition-all duration-300",
+          "flex flex-1 flex-col overflow-hidden transition-all duration-300",
           isCollapsed ? "ml-16" : "ml-60"
         )}
       >

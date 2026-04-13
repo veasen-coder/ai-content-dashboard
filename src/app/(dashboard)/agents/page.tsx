@@ -15,6 +15,7 @@ import {
   ArrowLeft,
   Bot,
   ChevronRight,
+  Square,
 } from "lucide-react";
 import { toast } from "sonner";
 import ReactMarkdown from "react-markdown";
@@ -363,7 +364,7 @@ function AgentCard({
 
 // --------------- Agent Workflow Diagram ---------------
 
-function WorkflowDiagram() {
+function WorkflowDiagram({ onSelect }: { onSelect: (agent: AgentDef) => void }) {
   return (
     <div className="rounded-xl border border-[#1E1E1E] bg-[#111111] p-6">
       <h3 className="text-sm font-medium text-muted-foreground mb-4">
@@ -374,16 +375,19 @@ function WorkflowDiagram() {
           const Icon = agent.icon;
           return (
             <div key={agent.id} className="flex items-center gap-3">
-              <div className="flex flex-col items-center gap-2">
+              <button
+                onClick={() => onSelect(agent)}
+                className="flex flex-col items-center gap-2 group"
+              >
                 <div
-                  className={`flex h-10 w-10 items-center justify-center rounded-lg ${agent.colorBg}`}
+                  className={`flex h-10 w-10 items-center justify-center rounded-lg ${agent.colorBg} transition-all group-hover:scale-110 group-hover:ring-2 group-hover:ring-white/10`}
                 >
                   <Icon className={`h-5 w-5 ${agent.color}`} />
                 </div>
-                <span className="text-xs text-muted-foreground">
+                <span className="text-xs text-muted-foreground group-hover:text-foreground transition-colors">
                   {agent.shortName}
                 </span>
-              </div>
+              </button>
               {i < AGENTS.length - 1 && (
                 <ChevronRight className="h-4 w-4 text-muted-foreground mb-5" />
               )}
@@ -392,7 +396,7 @@ function WorkflowDiagram() {
         })}
       </div>
       <p className="mt-4 text-center text-xs text-muted-foreground">
-        Content creates posts &rarr; Research finds leads &rarr; Email sends
+        Click an agent to start &middot; Content creates posts &rarr; Research finds leads &rarr; Email sends
         outreach
       </p>
     </div>
@@ -667,17 +671,23 @@ export default function AgentsPage() {
                 disabled={streaming}
                 className="flex-1 resize-none rounded-xl border border-[#1E1E1E] bg-[#0A0A0A] px-4 py-3 text-sm outline-none transition-colors focus:border-primary disabled:opacity-50"
               />
-              <button
-                onClick={() => sendMessage(input)}
-                disabled={!input.trim() || streaming}
-                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"
-              >
-                {streaming ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
+              {streaming ? (
+                <button
+                  onClick={() => abortRef.current?.abort()}
+                  className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[#EF4444] text-white transition-colors hover:bg-[#EF4444]/80"
+                  title="Stop generating"
+                >
+                  <Square className="h-4 w-4" />
+                </button>
+              ) : (
+                <button
+                  onClick={() => sendMessage(input)}
+                  disabled={!input.trim()}
+                  className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"
+                >
                   <Send className="h-4 w-4" />
-                )}
-              </button>
+                </button>
+              )}
             </div>
             <p className="mt-2 text-xs text-muted-foreground">
               Press Enter to send &middot; Shift+Enter for new line
@@ -719,7 +729,7 @@ export default function AgentsPage() {
         </div>
 
         {/* Workflow */}
-        <WorkflowDiagram />
+        <WorkflowDiagram onSelect={openAgent} />
       </div>
     </PageWrapper>
   );

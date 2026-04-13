@@ -417,7 +417,7 @@ function AddEntryModal({
                 Amount (MYR)
               </label>
               <div className="relative">
-                <DollarSign className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-semibold text-muted-foreground">RM</span>
                 <input
                   type="number"
                   step="0.01"
@@ -426,7 +426,7 @@ function AddEntryModal({
                   onChange={(e) => setAmount(e.target.value)}
                   placeholder="0.00"
                   required
-                  className="w-full rounded-lg border border-[#1E1E1E] bg-[#0A0A0A] pl-9 pr-3 py-2.5 text-sm font-mono outline-none transition-colors focus:border-primary"
+                  className="w-full rounded-lg border border-[#1E1E1E] bg-[#0A0A0A] pl-10 pr-3 py-2.5 text-sm font-mono outline-none transition-colors focus:border-primary"
                 />
               </div>
             </div>
