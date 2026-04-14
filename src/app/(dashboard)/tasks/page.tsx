@@ -52,9 +52,9 @@ interface StatusGroup {
 // --------------- Constants ---------------
 
 const STATUS_ORDER: Record<string, number> = {
-  complete: 0,
+  "to do": 0,
   "in progress": 1,
-  "to do": 2,
+  complete: 2,
 };
 
 const PRIORITY_COLORS: Record<string, string> = {
