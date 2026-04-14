@@ -234,6 +234,12 @@ export default function ImageDumpPage() {
           notes: notes || "",
         }),
       });
+
+      if (!analyzeRes.ok) {
+        const errData = await analyzeRes.json().catch(() => ({}));
+        throw new Error(errData.error || "AI analysis failed");
+      }
+
       const analysis: AnalysisResult = await analyzeRes.json();
 
       // Add pending approval status to each group

@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
+export const maxDuration = 60;
+
 export async function POST(request: NextRequest) {
   const apiKey = process.env.ANTHROPIC_API_KEY;
 
@@ -79,21 +81,28 @@ Group related screenshots together (e.g. multiple screenshots from same conversa
     });
 
     if (!res.ok) {
-      const errData = await res.json().catch(() => ({}));
-      return NextResponse.json(
-        {
-          error:
-            errData.error?.message || "Failed to analyze images with Claude",
-        },
-        { status: res.status }
-      );
+      const errText = await res.text().catch(() => "Unknown error");
+      let errMsg = "Failed to analyze images with Claude";
+      try {
+        const errData = JSON.parse(errText);
+        errMsg = errData.error?.message || errMsg;
+      } catch {
+        errMsg = errText.slice(0, 200);
+      }
+      return NextResponse.json({ error: errMsg }, { status: res.status });
     }
 
     const data = await res.json();
     const rawText = data.content?.[0]?.text || "";
 
+    // Strip markdown code fences if present
+    let jsonStr = rawText.trim();
+    if (jsonStr.startsWith("```")) {
+      jsonStr = jsonStr.replace(/^```(?:json)?\n?/, "").replace(/\n?```$/, "");
+    }
+
     try {
-      const analysis = JSON.parse(rawText);
+      const analysis = JSON.parse(jsonStr);
       return NextResponse.json(analysis);
     } catch {
       return NextResponse.json({
