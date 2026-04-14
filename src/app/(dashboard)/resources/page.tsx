@@ -18,6 +18,7 @@ import {
   Code2,
   Star,
   MoreVertical,
+  Upload,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -31,6 +32,7 @@ interface Resource {
   url: string | null;
   description: string | null;
   html_content: string | null;
+  image_url: string | null;
   is_pinned: boolean;
   created_at: string;
 }
@@ -114,6 +116,9 @@ export default function ResourcesPage() {
   const [formUrl, setFormUrl] = useState("");
   const [formDescription, setFormDescription] = useState("");
   const [saving, setSaving] = useState(false);
+  const [formImageFile, setFormImageFile] = useState<File | null>(null);
+  const [formImagePreview, setFormImagePreview] = useState<string | null>(null);
+  const [uploadingImage, setUploadingImage] = useState(false);
 
   // Context menu
   const [contextMenuId, setContextMenuId] = useState<string | null>(null);
@@ -148,6 +153,26 @@ export default function ResourcesPage() {
     }
     try {
       setSaving(true);
+
+      // Upload image first if one is selected
+      let imageUrl: string | null = null;
+      if (formImageFile) {
+        setUploadingImage(true);
+        const formData = new FormData();
+        formData.append("file", formImageFile);
+        const uploadRes = await fetch("/api/supabase/resources/upload", {
+          method: "POST",
+          body: formData,
+        });
+        if (!uploadRes.ok) {
+          const err = await uploadRes.json();
+          throw new Error(err.error || "Failed to upload image");
+        }
+        const uploadData = await uploadRes.json();
+        imageUrl = uploadData.url;
+        setUploadingImage(false);
+      }
+
       const res = await fetch("/api/supabase/resources", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -157,6 +182,7 @@ export default function ResourcesPage() {
           type: formType,
           url: formUrl.trim() || null,
           description: formDescription.trim() || null,
+          image_url: imageUrl,
         }),
       });
       if (!res.ok) throw new Error("Failed to create");
@@ -223,6 +249,25 @@ export default function ResourcesPage() {
     setFormType("link");
     setFormUrl("");
     setFormDescription("");
+    setFormImageFile(null);
+    setFormImagePreview(null);
+  };
+
+  const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      toast.error("Only image files are allowed");
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error("Image must be under 5MB");
+      return;
+    }
+    setFormImageFile(file);
+    const reader = new FileReader();
+    reader.onload = () => setFormImagePreview(reader.result as string);
+    reader.readAsDataURL(file);
   };
 
   // --------------- Filtered Data ---------------
@@ -322,9 +367,20 @@ export default function ResourcesPage() {
                 resource.url ? "cursor-pointer hover:border-[#7C3AED]/40" : ""
               }`}
             >
+              {/* Image thumbnail */}
+              {resource.image_url && (
+                <div className="mb-3 -mx-4 -mt-4 overflow-hidden rounded-t-xl">
+                  <img
+                    src={resource.image_url}
+                    alt={resource.title}
+                    className="h-36 w-full object-cover"
+                  />
+                </div>
+              )}
+
               {/* Pin indicator */}
               {resource.is_pinned && (
-                <div className="absolute right-3 top-3">
+                <div className={`absolute right-3 ${resource.image_url ? "top-[156px]" : "top-3"}`}>
                   <Star className="h-4 w-4 fill-[#F59E0B] text-[#F59E0B]" />
                 </div>
               )}
@@ -520,6 +576,39 @@ export default function ResourcesPage() {
                   className="w-full resize-none rounded-lg border border-[#1E1E1E] bg-[#0A0A0A] px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:border-[#7C3AED] focus:outline-none focus:ring-1 focus:ring-[#7C3AED]"
                 />
               </div>
+              {/* Image Upload */}
+              <div>
+                <label className="mb-1.5 block text-xs font-medium text-muted-foreground">
+                  Image (optional)
+                </label>
+                {formImagePreview ? (
+                  <div className="relative">
+                    <img
+                      src={formImagePreview}
+                      alt="Preview"
+                      className="h-32 w-full rounded-lg border border-[#1E1E1E] object-cover"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => { setFormImageFile(null); setFormImagePreview(null); }}
+                      className="absolute right-2 top-2 flex h-6 w-6 items-center justify-center rounded-full bg-black/60 text-white hover:bg-black/80"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                ) : (
+                  <label className="flex h-24 cursor-pointer flex-col items-center justify-center rounded-lg border border-dashed border-[#1E1E1E] bg-[#0A0A0A] transition-colors hover:border-[#7C3AED]/40">
+                    <Upload className="mb-1 h-5 w-5 text-muted-foreground" />
+                    <span className="text-xs text-muted-foreground">Click to upload image</span>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={handleImageSelect}
+                      className="hidden"
+                    />
+                  </label>
+                )}
+              </div>
             </div>
 
             {/* Modal Actions */}
@@ -538,7 +627,7 @@ export default function ResourcesPage() {
                 disabled={saving || !formTitle.trim()}
                 className="h-9 rounded-lg bg-[#7C3AED] px-4 text-sm font-medium text-white transition-colors hover:bg-[#7C3AED]/90 disabled:opacity-50"
               >
-                {saving ? "Adding..." : "Add Resource"}
+                {saving ? (uploadingImage ? "Uploading image..." : "Adding...") : "Add Resource"}
               </button>
             </div>
           </div>

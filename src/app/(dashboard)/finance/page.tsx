@@ -17,7 +17,11 @@ import {
   RefreshCw,
   Trash2,
   AlertCircle,
+  Camera,
+  Loader2,
+  ExternalLink,
 } from "lucide-react";
+import Link from "next/link";
 import { toast } from "sonner";
 import {
   BarChart,
@@ -178,30 +182,6 @@ function BalanceCard({
   );
 }
 
-function SummaryCard({
-  label,
-  amount,
-  icon: Icon,
-  color,
-}: {
-  label: string;
-  amount: number;
-  icon: React.ElementType;
-  color: string;
-}) {
-  return (
-    <div className="rounded-xl border border-[#1E1E1E] bg-[#111111] p-5">
-      <div className="flex items-center justify-between">
-        <p className="text-sm font-medium text-muted-foreground">{label}</p>
-        <Icon className="h-4 w-4" style={{ color }} />
-      </div>
-      <p className="mt-2 text-2xl font-bold font-mono" style={{ color }}>
-        {formatMYR(amount)}
-      </p>
-    </div>
-  );
-}
-
 function TransactionRow({
   entry,
   onDelete,
@@ -253,22 +233,43 @@ function TransactionRow({
 
 // --------------- Add Entry Modal ---------------
 
+interface ReceiptDefaults {
+  type?: "income" | "expense";
+  category?: string;
+  description?: string;
+  amount?: string;
+  date?: string;
+}
+
 function AddEntryModal({
   isOpen,
   onClose,
   onCreated,
+  defaults,
 }: {
   isOpen: boolean;
   onClose: () => void;
   onCreated: () => void;
+  defaults?: ReceiptDefaults | null;
 }) {
-  const [type, setType] = useState<"income" | "expense">("income");
-  const [category, setCategory] = useState("");
-  const [description, setDescription] = useState("");
-  const [amount, setAmount] = useState("");
+  const [type, setType] = useState<"income" | "expense">(defaults?.type || "income");
+  const [category, setCategory] = useState(defaults?.category || "");
+  const [description, setDescription] = useState(defaults?.description || "");
+  const [amount, setAmount] = useState(defaults?.amount || "");
   const [account, setAccount] = useState("ocbc");
-  const [date, setDate] = useState(new Date().toISOString().split("T")[0]);
+  const [date, setDate] = useState(defaults?.date || new Date().toISOString().split("T")[0]);
   const [submitting, setSubmitting] = useState(false);
+
+  // Apply defaults when they change
+  useEffect(() => {
+    if (defaults) {
+      if (defaults.type) setType(defaults.type);
+      if (defaults.category) setCategory(defaults.category);
+      if (defaults.description) setDescription(defaults.description);
+      if (defaults.amount) setAmount(defaults.amount);
+      if (defaults.date) setDate(defaults.date);
+    }
+  }, [defaults]);
 
   function reset() {
     setType("income");
@@ -498,6 +499,148 @@ function AddEntryModal({
   );
 }
 
+// --------------- Receipt Upload Modal ---------------
+
+function ReceiptUploadModal({
+  isOpen,
+  onClose,
+  onExtracted,
+}: {
+  isOpen: boolean;
+  onClose: () => void;
+  onExtracted: (data: ReceiptDefaults) => void;
+}) {
+  const [preview, setPreview] = useState<string | null>(null);
+  const [extracting, setExtracting] = useState(false);
+
+  function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => setPreview(reader.result as string);
+    reader.readAsDataURL(file);
+  }
+
+  function handleDrop(e: React.DragEvent) {
+    e.preventDefault();
+    const file = e.dataTransfer.files?.[0];
+    if (!file || !file.type.startsWith("image/")) return;
+    const reader = new FileReader();
+    reader.onload = () => setPreview(reader.result as string);
+    reader.readAsDataURL(file);
+  }
+
+  async function handleExtract() {
+    if (!preview) return;
+    setExtracting(true);
+    try {
+      const res = await fetch("/api/claude/extract-receipt", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ image: preview }),
+      });
+
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || "Failed to extract receipt");
+      }
+
+      const data = await res.json();
+      toast.success("Receipt analyzed successfully");
+      onExtracted({
+        type: data.type || "expense",
+        category: data.category || "",
+        description: data.description || "",
+        amount: data.amount ? String(data.amount) : "",
+        date: data.date || new Date().toISOString().split("T")[0],
+      });
+      setPreview(null);
+      onClose();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to analyze receipt");
+    } finally {
+      setExtracting(false);
+    }
+  }
+
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center">
+      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative z-10 w-full max-w-md rounded-xl border border-[#1E1E1E] bg-[#111111] shadow-2xl">
+        <div className="flex items-center justify-between border-b border-[#1E1E1E] px-5 py-4">
+          <h2 className="text-base font-semibold">Upload Receipt</h2>
+          <button
+            onClick={() => { setPreview(null); onClose(); }}
+            className="flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-[#1E1E1E] hover:text-foreground"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        <div className="p-5 space-y-4">
+          {!preview ? (
+            <div
+              onDragOver={(e) => e.preventDefault()}
+              onDrop={handleDrop}
+              className="flex flex-col items-center justify-center rounded-xl border-2 border-dashed border-[#2E2E2E] bg-[#0A0A0A] py-12 transition-colors hover:border-primary/50"
+            >
+              <Camera className="mb-3 h-8 w-8 text-muted-foreground" />
+              <p className="text-sm text-muted-foreground">
+                Drag & drop a receipt image, or
+              </p>
+              <label className="mt-2 cursor-pointer rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90">
+                Browse files
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={handleFileChange}
+                  className="hidden"
+                />
+              </label>
+              <p className="mt-2 text-xs text-muted-foreground">PNG, JPG up to 10MB</p>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              <div className="overflow-hidden rounded-xl border border-[#1E1E1E]">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={preview} alt="Receipt preview" className="w-full object-contain max-h-64" />
+              </div>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setPreview(null)}
+                  className="flex-1 rounded-lg border border-[#1E1E1E] px-4 py-2.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-[#1E1E1E] hover:text-foreground"
+                >
+                  Change Image
+                </button>
+                <button
+                  onClick={handleExtract}
+                  disabled={extracting}
+                  className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"
+                >
+                  {extracting ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Analyzing...
+                    </>
+                  ) : (
+                    "Extract Data"
+                  )}
+                </button>
+              </div>
+            </div>
+          )}
+
+          <p className="text-center text-xs text-muted-foreground">
+            AI will extract amount, description, date, and category from the image
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // --------------- Main Page ---------------
 
 export default function FinancePage() {
@@ -507,6 +650,8 @@ export default function FinancePage() {
   const [refreshing, setRefreshing] = useState(false);
   const [month, setMonth] = useState(getCurrentMonth());
   const [showAddModal, setShowAddModal] = useState(false);
+  const [showReceiptModal, setShowReceiptModal] = useState(false);
+  const [receiptDefaults, setReceiptDefaults] = useState<ReceiptDefaults | null>(null);
   const [lastFetched, setLastFetched] = useState<string | null>(null);
 
   const fetchData = useCallback(async () => {
@@ -683,6 +828,13 @@ export default function FinancePage() {
               Refresh
             </button>
             <button
+              onClick={() => setShowReceiptModal(true)}
+              className="flex items-center gap-2 rounded-lg border border-[#1E1E1E] bg-[#111111] px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-[#1A1A1A] hover:text-foreground"
+            >
+              <Camera className="h-4 w-4" />
+              Upload Receipt
+            </button>
+            <button
               onClick={() => setShowAddModal(true)}
               className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
             >
@@ -737,18 +889,36 @@ export default function FinancePage() {
 
             {/* Summary Cards */}
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-              <SummaryCard
-                label="Monthly Income"
-                amount={monthlyIncome}
-                icon={TrendingUp}
-                color="#10B981"
-              />
-              <SummaryCard
-                label="Monthly Expenses"
-                amount={monthlyExpenses}
-                icon={TrendingDown}
-                color="#EF4444"
-              />
+              <Link href="/finance/income" className="group">
+                <div className="rounded-xl border border-[#1E1E1E] bg-[#111111] p-5 transition-colors group-hover:border-[#2E2E2E] group-hover:bg-[#161616]">
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm font-medium text-muted-foreground">Monthly Income</p>
+                    <div className="flex items-center gap-1">
+                      <TrendingUp className="h-4 w-4 text-[#10B981]" />
+                      <ExternalLink className="h-3 w-3 text-muted-foreground opacity-0 group-hover:opacity-100" />
+                    </div>
+                  </div>
+                  <p className="mt-2 text-2xl font-bold font-mono text-[#10B981]">
+                    {formatMYR(monthlyIncome)}
+                  </p>
+                  <p className="mt-1 text-xs text-muted-foreground">View all income &rarr;</p>
+                </div>
+              </Link>
+              <Link href="/finance/expenses" className="group">
+                <div className="rounded-xl border border-[#1E1E1E] bg-[#111111] p-5 transition-colors group-hover:border-[#2E2E2E] group-hover:bg-[#161616]">
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm font-medium text-muted-foreground">Monthly Expenses</p>
+                    <div className="flex items-center gap-1">
+                      <TrendingDown className="h-4 w-4 text-[#EF4444]" />
+                      <ExternalLink className="h-3 w-3 text-muted-foreground opacity-0 group-hover:opacity-100" />
+                    </div>
+                  </div>
+                  <p className="mt-2 text-2xl font-bold font-mono text-[#EF4444]">
+                    {formatMYR(monthlyExpenses)}
+                  </p>
+                  <p className="mt-1 text-xs text-muted-foreground">View all expenses &rarr;</p>
+                </div>
+              </Link>
               <div className="rounded-xl border border-[#1E1E1E] bg-[#111111] p-5">
                 <div className="flex items-center justify-between">
                   <p className="text-sm font-medium text-muted-foreground">
@@ -931,8 +1101,18 @@ export default function FinancePage() {
 
       <AddEntryModal
         isOpen={showAddModal}
-        onClose={() => setShowAddModal(false)}
+        onClose={() => { setShowAddModal(false); setReceiptDefaults(null); }}
         onCreated={fetchData}
+        defaults={receiptDefaults}
+      />
+
+      <ReceiptUploadModal
+        isOpen={showReceiptModal}
+        onClose={() => setShowReceiptModal(false)}
+        onExtracted={(data) => {
+          setReceiptDefaults(data);
+          setShowAddModal(true);
+        }}
       />
     </PageWrapper>
   );

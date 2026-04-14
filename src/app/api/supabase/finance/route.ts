@@ -23,6 +23,11 @@ export async function GET(request: NextRequest) {
       query = query.gte("date", startDate).lte("date", endDate);
     }
 
+    const type = searchParams.get("type");
+    if (type) {
+      query = query.eq("type", type);
+    }
+
     const { data, error } = await query;
 
     if (error) {

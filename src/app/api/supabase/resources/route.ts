@@ -30,7 +30,7 @@ export async function POST(request: NextRequest) {
     const supabase = createServerSupabaseClient();
     const body = await request.json();
 
-    const { title, category, type, url, description, html_content } = body;
+    const { title, category, type, url, description, html_content, image_url } = body;
 
     const { data, error } = await supabase
       .from("resources")
@@ -41,6 +41,7 @@ export async function POST(request: NextRequest) {
         url: url || null,
         description: description || null,
         html_content: html_content || null,
+        image_url: image_url || null,
         is_pinned: false,
       })
       .select()
