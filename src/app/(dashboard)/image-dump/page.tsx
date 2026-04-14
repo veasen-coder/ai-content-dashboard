@@ -474,11 +474,13 @@ export default function ImageDumpPage() {
         });
       }
 
-      // Delete created ClickUp tasks
+      // Delete created ClickUp tasks via API route
       if (group.created_ids?.taskIds?.length) {
         for (const taskId of group.created_ids.taskIds) {
-          await fetch(`https://api.clickup.com/api/v2/task/${taskId}`, {
-            method: "DELETE",
+          await fetch("/api/clickup/delete", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ task_id: taskId }),
           }).catch(() => {});
         }
       }
