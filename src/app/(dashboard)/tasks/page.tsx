@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { PageWrapper } from "@/components/layout/page-wrapper";
 import {
   ChevronDown,
@@ -312,7 +312,7 @@ function TaskDetailDrawer({
   );
 }
 
-function TaskRow({ task, onClick, selected, onToggleSelect }: { task: Task; onClick: () => void; selected: boolean; onToggleSelect: (id: string) => void }) {
+function TaskRow({ task, onClick, selected, onToggleSelect, indent, hasChildren, expanded, onToggleExpand, onDragStart, onDragEnter }: { task: Task; onClick: () => void; selected: boolean; onToggleSelect: (id: string, e: React.MouseEvent) => void; indent?: boolean; hasChildren?: boolean; expanded?: boolean; onToggleExpand?: () => void; onDragStart?: (id: string) => void; onDragEnter?: (id: string) => void }) {
   const due = formatDueDate(task.due_date);
   const priorityLabel = task.priority
     ? PRIORITY_LABELS[task.priority.priority] || task.priority.priority
@@ -322,22 +322,37 @@ function TaskRow({ task, onClick, selected, onToggleSelect }: { task: Task; onCl
     : null;
 
   return (
-    <div onClick={onClick} role="button" tabIndex={0} className={`group flex cursor-pointer items-center gap-4 border-b border-[#1E1E1E] px-4 py-3 transition-colors hover:bg-[#1A1A1A] ${selected ? "bg-primary/5" : ""}`}>
+    <div
+      onClick={onClick}
+      role="button"
+      tabIndex={0}
+      onMouseDown={(e) => { if (e.shiftKey) { e.preventDefault(); onDragStart?.(task.id); } }}
+      onMouseEnter={() => { onDragEnter?.(task.id); }}
+      className={`group flex cursor-pointer items-center gap-3 border-b border-[#1E1E1E] px-4 py-3 transition-colors hover:bg-[#1A1A1A] ${selected ? "bg-primary/5" : ""} ${indent ? "pl-14 bg-[#0D0D0D]" : ""}`}
+    >
       <button
-        onClick={(e) => { e.stopPropagation(); onToggleSelect(task.id); }}
-        className="shrink-0 text-muted-foreground transition-colors hover:text-foreground"
+        onClick={(e) => { e.stopPropagation(); onToggleSelect(task.id, e); }}
+        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-[#1E1E1E] hover:text-foreground"
       >
         {selected ? (
-          <CheckSquare className="h-4 w-4 text-primary" />
+          <CheckSquare className="h-5 w-5 text-primary" />
         ) : (
-          <Square className="h-4 w-4" />
+          <Square className="h-5 w-5" />
         )}
       </button>
+      {hasChildren && (
+        <button
+          onClick={(e) => { e.stopPropagation(); onToggleExpand?.(); }}
+          className="flex h-6 w-6 shrink-0 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-[#1E1E1E] hover:text-foreground"
+        >
+          {expanded ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
+        </button>
+      )}
       <div className="flex min-w-0 flex-1 items-center gap-3">
-        <span className="truncate text-sm font-medium text-foreground">
+        <span className={`truncate text-sm font-medium ${indent ? "text-muted-foreground" : "text-foreground"}`}>
           {task.name}
         </span>
-        {task.subtask_count && task.subtask_count > 0 ? (
+        {!indent && task.subtask_count && task.subtask_count > 0 && !hasChildren ? (
           <span className="flex shrink-0 items-center gap-0.5 text-xs text-muted-foreground">
             <Link2 className="h-3 w-3" />
             {task.subtask_count}
@@ -396,7 +411,7 @@ function TaskRow({ task, onClick, selected, onToggleSelect }: { task: Task; onCl
   );
 }
 
-function StatusSection({ group, onTaskClick, selectedIds, onToggleSelect }: { group: StatusGroup; onTaskClick: (task: Task) => void; selectedIds: Set<string>; onToggleSelect: (id: string) => void }) {
+function StatusSection({ group, onTaskClick, selectedIds, onToggleSelect, childrenMap, expandedParents, onToggleExpand, onDragStart, onDragEnter }: { group: StatusGroup; onTaskClick: (task: Task) => void; selectedIds: Set<string>; onToggleSelect: (id: string, e: React.MouseEvent) => void; childrenMap: Map<string, Task[]>; expandedParents: Set<string>; onToggleExpand: (id: string) => void; onDragStart: (id: string) => void; onDragEnter: (id: string) => void }) {
   const [isOpen, setIsOpen] = useState(group.type !== "closed");
 
   return (
@@ -436,9 +451,19 @@ function StatusSection({ group, onTaskClick, selectedIds, onToggleSelect }: { gr
               Priority
             </span>
           </div>
-          {group.tasks.map((task) => (
-            <TaskRow key={task.id} task={task} onClick={() => onTaskClick(task)} selected={selectedIds.has(task.id)} onToggleSelect={onToggleSelect} />
-          ))}
+          {group.tasks.map((task) => {
+            const children = childrenMap.get(task.id) || [];
+            const hasChildren = children.length > 0;
+            const isExpanded = expandedParents.has(task.id);
+            return (
+              <div key={task.id}>
+                <TaskRow task={task} onClick={() => onTaskClick(task)} selected={selectedIds.has(task.id)} onToggleSelect={onToggleSelect} hasChildren={hasChildren} expanded={isExpanded} onToggleExpand={() => onToggleExpand(task.id)} onDragStart={onDragStart} onDragEnter={onDragEnter} />
+                {hasChildren && isExpanded && children.map((child) => (
+                  <TaskRow key={child.id} task={child} onClick={() => onTaskClick(child)} selected={selectedIds.has(child.id)} onToggleSelect={onToggleSelect} indent onDragStart={onDragStart} onDragEnter={onDragEnter} />
+                ))}
+              </div>
+            );
+          })}
         </div>
       )}
     </div>
@@ -730,14 +755,68 @@ export default function TasksPage() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkLoading, setBulkLoading] = useState(false);
   const [showAssignDropdown, setShowAssignDropdown] = useState(false);
+  const [expandedParents, setExpandedParents] = useState<Set<string>>(new Set());
+  const lastClickedRef = useRef<string | null>(null);
+  const isDraggingRef = useRef(false);
 
-  function toggleSelect(id: string) {
+  // End drag-select on global mouseup
+  useEffect(() => {
+    const handleMouseUp = () => { isDraggingRef.current = false; };
+    window.addEventListener("mouseup", handleMouseUp);
+    return () => window.removeEventListener("mouseup", handleMouseUp);
+  }, []);
+
+  function handleDragStart(id: string) {
+    isDraggingRef.current = true;
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      next.add(id);
+      return next;
+    });
+  }
+
+  function handleDragEnter(id: string) {
+    if (!isDraggingRef.current) return;
+    setSelectedIds((prev) => {
+      if (prev.has(id)) return prev;
+      const next = new Set(prev);
+      next.add(id);
+      return next;
+    });
+  }
+
+  function toggleExpand(id: string) {
+    setExpandedParents((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function toggleSelect(id: string, e?: React.MouseEvent) {
+    if (e?.shiftKey && lastClickedRef.current && lastClickedRef.current !== id) {
+      const startIdx = flatIds.indexOf(lastClickedRef.current);
+      const endIdx = flatIds.indexOf(id);
+      if (startIdx !== -1 && endIdx !== -1) {
+        const [from, to] = startIdx < endIdx ? [startIdx, endIdx] : [endIdx, startIdx];
+        const rangeIds = flatIds.slice(from, to + 1);
+        setSelectedIds((prev) => {
+          const next = new Set(prev);
+          rangeIds.forEach((rid) => next.add(rid));
+          return next;
+        });
+        lastClickedRef.current = id;
+        return;
+      }
+    }
     setSelectedIds((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
       else next.add(id);
       return next;
     });
+    lastClickedRef.current = id;
   }
 
   function selectAll() {
@@ -813,8 +892,7 @@ export default function TasksPage() {
       const res = await fetch("/api/clickup/tasks");
       if (!res.ok) throw new Error("Failed to fetch tasks");
       const data = await res.json();
-      const topLevel = (data.tasks || []).filter((t: Task) => !t.parent);
-      setTasks(topLevel);
+      setTasks(data.tasks || []);
       setLastFetched(new Date().toISOString());
       setError(null);
     } catch (err) {
@@ -831,12 +909,26 @@ export default function TasksPage() {
     return () => clearInterval(interval);
   }, [fetchTasks]);
 
-  // Filter tasks by search
+  // Separate top-level tasks and build children map
+  const topLevel = tasks.filter((t) => !t.parent);
+  const childrenMap = new Map<string, Task[]>();
+  for (const task of tasks) {
+    if (task.parent) {
+      const list = childrenMap.get(task.parent) || [];
+      list.push(task);
+      childrenMap.set(task.parent, list);
+    }
+  }
+
+  // Filter top-level tasks by search (also match if any child matches)
   const filtered = search
-    ? tasks.filter((t) =>
-        t.name.toLowerCase().includes(search.toLowerCase())
-      )
-    : tasks;
+    ? topLevel.filter((t) => {
+        const q = search.toLowerCase();
+        if (t.name.toLowerCase().includes(q)) return true;
+        const children = childrenMap.get(t.id) || [];
+        return children.some((c) => c.name.toLowerCase().includes(q));
+      })
+    : topLevel;
 
   // Group by status
   const statusMap = new Map<string, StatusGroup>();
@@ -857,6 +949,19 @@ export default function TasksPage() {
     (a, b) =>
       (STATUS_ORDER[a.status] ?? 99) - (STATUS_ORDER[b.status] ?? 99)
   );
+
+  // Flat ordered list of all visible task IDs (for shift-select)
+  const flatIds: string[] = [];
+  for (const group of sorted) {
+    for (const task of group.tasks) {
+      flatIds.push(task.id);
+      if (expandedParents.has(task.id) && childrenMap.has(task.id)) {
+        for (const child of childrenMap.get(task.id)!) {
+          flatIds.push(child.id);
+        }
+      }
+    }
+  }
 
   return (
     <PageWrapper title="Tasks" lastSynced={lastFetched}>
@@ -1011,7 +1116,7 @@ export default function TasksPage() {
               </div>
             ) : (
               sorted.map((group) => (
-                <StatusSection key={group.status} group={group} onTaskClick={setSelectedTask} selectedIds={selectedIds} onToggleSelect={toggleSelect} />
+                <StatusSection key={group.status} group={group} onTaskClick={setSelectedTask} selectedIds={selectedIds} onToggleSelect={toggleSelect} childrenMap={childrenMap} expandedParents={expandedParents} onToggleExpand={toggleExpand} onDragStart={handleDragStart} onDragEnter={handleDragEnter} />
               ))
             )}
           </>

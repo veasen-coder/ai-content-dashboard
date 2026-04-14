@@ -15,7 +15,7 @@ export async function GET() {
 
   try {
     const res = await fetch(
-      `https://api.clickup.com/api/v2/list/${listId}/task?include_closed=true`,
+      `https://api.clickup.com/api/v2/list/${listId}/task?include_closed=true&subtasks=true`,
       {
         headers: { Authorization: apiKey },
         cache: "no-store",
