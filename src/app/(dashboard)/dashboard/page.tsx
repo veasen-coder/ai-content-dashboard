@@ -790,8 +790,8 @@ export default function DashboardPage() {
             )}
           </SectionCard>
 
-          {/* Team Chat */}
-          <SectionCard title="Team Chat" href="/chat">
+          {/* Chat */}
+          <SectionCard title="Chat" href="/chat">
             {chatChannels.length > 0 ? (
               <div className="space-y-2">
                 <div className="flex items-center justify-between rounded-lg bg-[#0A0A0A] p-3">

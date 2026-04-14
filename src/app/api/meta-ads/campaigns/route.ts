@@ -110,7 +110,29 @@ export async function GET(request: NextRequest) {
       };
     });
 
-    return NextResponse.json({ campaigns, dateFrom, dateTo });
+    // Aggregate summary across all campaigns
+    const summary = campaigns.reduce(
+      (acc: { spend: number; impressions: number; purchases: number; purchaseValue: number }, c: { spend: number; impressions: number; purchases: number; roas: number }) => {
+        acc.spend += c.spend;
+        acc.impressions += c.impressions;
+        acc.purchases += c.purchases;
+        acc.purchaseValue += c.roas * c.spend; // reverse: roas = value/spend
+        return acc;
+      },
+      { spend: 0, impressions: 0, purchases: 0, purchaseValue: 0 }
+    );
+
+    return NextResponse.json({
+      campaigns,
+      dateFrom,
+      dateTo,
+      summary: {
+        spend: summary.spend.toFixed(2),
+        impressions: String(summary.impressions),
+        purchases: String(summary.purchases),
+        roas: summary.spend > 0 ? (summary.purchaseValue / summary.spend).toFixed(2) : "0",
+      },
+    });
   } catch {
     return NextResponse.json(
       { error: "Failed to fetch campaign data" },
