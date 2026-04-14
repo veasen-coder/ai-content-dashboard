@@ -3,6 +3,10 @@
     {
       "path": "/api/cron/content-ideas",
       "schedule": "0 9 */3 * *"
+    },
+    {
+      "path": "/api/cron/daily-summary",
+      "schedule": "0 0 * * *"
     }
   ]
 }

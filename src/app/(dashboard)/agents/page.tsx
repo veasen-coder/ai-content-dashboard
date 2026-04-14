@@ -18,6 +18,7 @@ import {
   ChevronRight,
   Square,
   Lightbulb,
+  CalendarClock,
 } from "lucide-react";
 import { toast } from "sonner";
 import ReactMarkdown from "react-markdown";
@@ -719,22 +720,40 @@ export default function AgentsPage() {
           </div>
         </div>
 
-        {/* Content Ideas Agent - Quick Access */}
-        <Link
-          href="/agents/content-ideas"
-          className="group flex items-center gap-4 rounded-xl border border-amber-500/30 bg-amber-500/5 p-5 transition-all hover:border-amber-500/50 hover:bg-amber-500/10"
-        >
-          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-amber-500/15">
-            <Lightbulb className="h-6 w-6 text-amber-400" />
-          </div>
-          <div className="min-w-0 flex-1">
-            <h3 className="text-base font-semibold">Content Ideas Agent</h3>
-            <p className="mt-0.5 text-sm text-muted-foreground">
-              AI-generated posting ideas with copywriting, style guides, and image prompts · Auto-runs every 3 days
-            </p>
-          </div>
-          <ChevronRight className="h-5 w-5 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" />
-        </Link>
+        {/* Auto Agents - Quick Access */}
+        <div className="grid gap-4 md:grid-cols-2">
+          <Link
+            href="/agents/daily-summary"
+            className="group flex items-center gap-4 rounded-xl border border-violet-500/30 bg-violet-500/5 p-5 transition-all hover:border-violet-500/50 hover:bg-violet-500/10"
+          >
+            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-violet-500/15">
+              <CalendarClock className="h-6 w-6 text-violet-400" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <h3 className="text-base font-semibold">Daily Summary Agent</h3>
+              <p className="mt-0.5 text-sm text-muted-foreground">
+                Auto daily briefing — agenda, suggestions &amp; improvements &middot; 8 AM MYT &middot; Google Sheets
+              </p>
+            </div>
+            <ChevronRight className="h-5 w-5 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" />
+          </Link>
+
+          <Link
+            href="/agents/content-ideas"
+            className="group flex items-center gap-4 rounded-xl border border-amber-500/30 bg-amber-500/5 p-5 transition-all hover:border-amber-500/50 hover:bg-amber-500/10"
+          >
+            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-amber-500/15">
+              <Lightbulb className="h-6 w-6 text-amber-400" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <h3 className="text-base font-semibold">Content Ideas Agent</h3>
+              <p className="mt-0.5 text-sm text-muted-foreground">
+                AI-generated posting ideas with copywriting, style guides &amp; image prompts &middot; Every 3 days
+              </p>
+            </div>
+            <ChevronRight className="h-5 w-5 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" />
+          </Link>
+        </div>
 
         {/* Agent Cards */}
         <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
