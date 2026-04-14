@@ -284,7 +284,7 @@ Analyze this data and produce today's daily briefing.`;
     ];
 
     // Ensure sheet exists with headers
-    await ensureSheetHeaders(accessToken);
+    await ensureSheetExists(accessToken);
 
     const appendRes = await fetch(
       `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/${encodeURIComponent(SHEET_NAME)}!A:M:append?valueInputOption=USER_ENTERED`,
@@ -349,8 +349,8 @@ Analyze this data and produce today's daily briefing.`;
   }
 }
 
-async function ensureSheetHeaders(accessToken: string) {
-  // Check if sheet has data
+async function ensureSheetExists(accessToken: string) {
+  // Check if the tab exists by trying to read it
   const readRes = await fetch(
     `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/${encodeURIComponent(SHEET_NAME)}!A1:M1`,
     { headers: { Authorization: `Bearer ${accessToken}` } }
@@ -358,7 +358,30 @@ async function ensureSheetHeaders(accessToken: string) {
 
   if (readRes.ok) {
     const data = await readRes.json();
-    if (data.values && data.values.length > 0) return; // Headers exist
+    if (data.values && data.values.length > 0) return; // Tab exists with headers
+  }
+
+  // If 400 error, the tab doesn't exist — create it
+  if (!readRes.ok) {
+    await fetch(
+      `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}:batchUpdate`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          requests: [
+            {
+              addSheet: {
+                properties: { title: SHEET_NAME },
+              },
+            },
+          ],
+        }),
+      }
+    );
   }
 
   // Add headers
