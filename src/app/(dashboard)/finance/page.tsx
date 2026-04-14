@@ -224,9 +224,10 @@ function TransactionRow({
       </div>
       <button
         onClick={() => onDelete(entry.id)}
-        className="shrink-0 opacity-0 transition-opacity group-hover:opacity-100"
+        className="shrink-0 rounded-md p-1.5 text-muted-foreground/40 transition-colors hover:bg-red-500/10 hover:text-red-400"
+        title="Delete entry"
       >
-        <Trash2 className="h-3.5 w-3.5 text-muted-foreground hover:text-[#EF4444]" />
+        <Trash2 className="h-3.5 w-3.5" />
       </button>
     </div>
   );
