@@ -118,6 +118,14 @@ function getNextStage(
   return undefined;
 }
 
+function getPrevStage(
+  currentStage: string
+): (typeof STAGES)[number] | undefined {
+  const idx = STAGES.findIndex((s) => s.key === currentStage);
+  if (idx > 0) return STAGES[idx - 1];
+  return undefined;
+}
+
 // --------------- Client Card ---------------
 
 function ClientCard({
@@ -136,6 +144,7 @@ function ClientCard({
   const [confirmDel, setConfirmDel] = useState(false);
   const isClosed = client.stage === "closed";
   const nextStage = getNextStage(client.stage);
+  const prevStage = getPrevStage(client.stage);
   const isStalled = client.status === "stalled";
   const isActive = client.status === "active";
 
@@ -277,6 +286,16 @@ function ClientCard({
         >
           Move to {nextStage.label}
           <ArrowRight className="h-3 w-3" />
+        </button>
+      )}
+
+      {/* Back to previous stage */}
+      {!isClosed && prevStage && (
+        <button
+          onClick={() => onMove(prevStage.key)}
+          className="mt-1 flex w-full items-center justify-center gap-1 py-1 text-[10px] text-muted-foreground/50 transition-colors hover:text-muted-foreground"
+        >
+          ← Back to {prevStage.label}
         </button>
       )}
     </div>
