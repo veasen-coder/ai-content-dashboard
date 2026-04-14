@@ -337,13 +337,15 @@ export default function ImageDumpPage() {
 
     group.approval_status = action;
 
-    // If approved, create lead + tasks
+    // If approved, create lead + tasks and store IDs for undo
     if (action === "approved") {
       try {
+        const createdIds: { clientId?: string; taskIds: string[] } = { taskIds: [] };
+
         // Create client lead
         if (group.contacts.length > 0) {
           const contact = group.contacts[0];
-          await fetch("/api/supabase/clients", {
+          const clientRes = await fetch("/api/supabase/clients", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
@@ -361,17 +363,22 @@ export default function ImageDumpPage() {
               notes: `[Auto-created from Image Dump]\n${group.conversation_summary}`,
             }),
           });
+          const clientData = await clientRes.json();
+          if (clientRes.ok && clientData.id) {
+            createdIds.clientId = clientData.id;
+          }
           toast.success(`Lead created: ${contact.name}`);
         }
 
-        // Create tasks for action items
-        for (const item of group.action_items) {
-          await fetch("/api/clickup/create", {
+        // Create one main task with action items as subtasks
+        if (group.action_items.length > 0) {
+          const contactName = group.contacts[0]?.name || "Unknown";
+          const mainTaskRes = await fetch("/api/clickup/create", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
-              name: item,
-              description: `From Image Dump: ${group.label}\nContact: ${group.contacts[0]?.name || "Unknown"}\n${group.conversation_summary}`,
+              name: `[Image Dump] ${group.label}`,
+              description: `Contact: ${contactName}\nCategory: ${group.category}\nLead Potential: ${group.lead_potential}\n\n${group.conversation_summary}\n\nAction Items:\n${group.action_items.map((a) => `• ${a}`).join("\n")}`,
               status: "to do",
               priority:
                 group.lead_potential === "high"
@@ -381,12 +388,34 @@ export default function ImageDumpPage() {
                     : 4,
             }),
           });
-        }
-        if (group.action_items.length) {
+          const mainTask = await mainTaskRes.json();
+          if (mainTaskRes.ok && mainTask.id) {
+            createdIds.taskIds.push(mainTask.id);
+
+            // Create subtasks under the main task
+            for (const item of group.action_items) {
+              const subRes = await fetch("/api/clickup/create", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  name: item,
+                  parent: mainTask.id,
+                  status: "to do",
+                }),
+              });
+              const subData = await subRes.json();
+              if (subRes.ok && subData.id) {
+                createdIds.taskIds.push(subData.id);
+              }
+            }
+          }
           toast.success(
-            `${group.action_items.length} task(s) created in ClickUp`
+            `Task created with ${group.action_items.length} subtask(s) in ClickUp`
           );
         }
+
+        // Store created IDs on the group for undo
+        (group as AnalysisGroup & { created_ids?: typeof createdIds }).created_ids = createdIds;
       } catch {
         toast.error("Failed to create lead/tasks");
       }
@@ -423,6 +452,60 @@ export default function ImageDumpPage() {
     });
 
     await fetchDumps();
+  }
+
+  // ─── Undo approval ─────────────────────────────────────────
+  async function handleUndoGroup(groupId: string) {
+    if (!activeDump?.analysis_result) return;
+
+    const result = { ...activeDump.analysis_result };
+    const group = result.groups.find((g) => g.id === groupId) as
+      | (AnalysisGroup & { created_ids?: { clientId?: string; taskIds: string[] } })
+      | undefined;
+    if (!group) return;
+
+    try {
+      // Delete created client
+      if (group.created_ids?.clientId) {
+        await fetch("/api/supabase/clients", {
+          method: "DELETE",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id: group.created_ids.clientId }),
+        });
+      }
+
+      // Delete created ClickUp tasks
+      if (group.created_ids?.taskIds?.length) {
+        for (const taskId of group.created_ids.taskIds) {
+          await fetch(`https://api.clickup.com/api/v2/task/${taskId}`, {
+            method: "DELETE",
+          }).catch(() => {});
+        }
+      }
+
+      // Reset group status
+      group.approval_status = "pending";
+      delete group.created_ids;
+
+      // Recalculate dump status
+      const allPending = result.groups.every((g) => g.approval_status === "pending");
+      const newStatus = allPending ? "reviewed" : "partial";
+
+      await fetch("/api/supabase/image-dumps", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: activeDump.id,
+          status: newStatus,
+          analysis_result: result,
+        }),
+      });
+
+      toast.success("Approval undone — lead and tasks removed");
+      await fetchDumps();
+    } catch {
+      toast.error("Failed to undo");
+    }
   }
 
   // ─── Delete dump ──────────────────────────────────────────
@@ -743,6 +826,7 @@ export default function ImageDumpPage() {
                 <GroupCard
                   key={group.id}
                   group={group}
+                  onUndo={() => handleUndoGroup(group.id)}
                   dumpStatus={activeDump.status}
                   onApprove={() => handleGroupAction(group.id, "approved")}
                   onReject={() => handleGroupAction(group.id, "rejected")}
@@ -817,12 +901,14 @@ function GroupCard({
   onApprove,
   onReject,
   onAnswer,
+  onUndo,
 }: {
   group: AnalysisGroup;
   dumpStatus: string;
   onApprove: () => void;
   onReject: () => void;
   onAnswer: (answers: string) => void;
+  onUndo: () => void;
 }) {
   const isDecided = group.approval_status !== "pending";
   const [answers, setAnswers] = useState("");
@@ -996,6 +1082,19 @@ function GroupCard({
           >
             <X className="h-4 w-4" />
             Reject
+          </button>
+        </div>
+      )}
+
+      {/* Undo button for approved groups */}
+      {group.approval_status === "approved" && (
+        <div className="border-t border-[#1E1E1E] pt-4">
+          <button
+            onClick={onUndo}
+            className="flex items-center gap-1.5 rounded-lg border border-red-500/30 px-4 py-2 text-sm font-medium text-red-400 transition-colors hover:bg-red-500/10"
+          >
+            <Trash2 className="h-4 w-4" />
+            Undo — Remove created lead & tasks
           </button>
         </div>
       )}
