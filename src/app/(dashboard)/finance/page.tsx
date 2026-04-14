@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { PageWrapper } from "@/components/layout/page-wrapper";
 import {
   DollarSign,
@@ -20,6 +20,7 @@ import {
   Camera,
   Loader2,
   ExternalLink,
+  Upload,
 } from "lucide-react";
 import Link from "next/link";
 import { toast } from "sonner";
@@ -499,6 +500,389 @@ function AddEntryModal({
   );
 }
 
+// --------------- Mass Upload Modal ---------------
+
+interface ParsedRow {
+  date: string;
+  type: "income" | "expense";
+  category: string;
+  description: string;
+  amount: number;
+  account: string;
+  valid: boolean;
+  error?: string;
+}
+
+function parseCSVLine(line: string): string[] {
+  const result: string[] = [];
+  let current = "";
+  let inQuotes = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (ch === '"') {
+      inQuotes = !inQuotes;
+    } else if (ch === "," && !inQuotes) {
+      result.push(current.trim());
+      current = "";
+    } else {
+      current += ch;
+    }
+  }
+  result.push(current.trim());
+  return result;
+}
+
+function parseDate(raw: string): string | null {
+  // Try YYYY-MM-DD
+  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw;
+  // Try DD/MM/YYYY or DD-MM-YYYY
+  const dmy = raw.match(/^(\d{1,2})[/\-.](\d{1,2})[/\-.](\d{4})$/);
+  if (dmy) return `${dmy[3]}-${dmy[2].padStart(2, "0")}-${dmy[1].padStart(2, "0")}`;
+  // Try MM/DD/YYYY
+  const mdy = raw.match(/^(\d{1,2})[/\-.](\d{1,2})[/\-.](\d{4})$/);
+  if (mdy) {
+    const m = parseInt(mdy[1]), d = parseInt(mdy[2]);
+    if (m > 12 && d <= 12) return `${mdy[3]}-${mdy[2].padStart(2, "0")}-${mdy[1].padStart(2, "0")}`;
+  }
+  // Try Date parse
+  const dt = new Date(raw);
+  if (!isNaN(dt.getTime())) return dt.toISOString().split("T")[0];
+  return null;
+}
+
+function parseRows(text: string): ParsedRow[] {
+  const lines = text.split("\n").map((l) => l.trim()).filter(Boolean);
+  if (lines.length === 0) return [];
+
+  // Detect if first line is header
+  const firstLower = lines[0].toLowerCase();
+  const hasHeader = firstLower.includes("date") || firstLower.includes("type") || firstLower.includes("amount") || firstLower.includes("description");
+  const dataLines = hasHeader ? lines.slice(1) : lines;
+
+  return dataLines.map((line) => {
+    const cols = parseCSVLine(line);
+    // Expected: date, type, category, description, amount, account
+    // Also support: date, description, amount (auto-detect type from +/-)
+    if (cols.length >= 5) {
+      const date = parseDate(cols[0]);
+      const rawType = cols[1].toLowerCase().trim();
+      const type = rawType === "expense" ? "expense" : "income";
+      const category = cols[2] || "";
+      const description = cols[3] || "";
+      const amount = Math.abs(parseFloat(cols[4].replace(/[^0-9.\-]/g, "")));
+      const account = (cols[5] || "ocbc").toLowerCase().trim();
+
+      if (!date) return { date: cols[0], type, category, description, amount: amount || 0, account, valid: false, error: "Invalid date" };
+      if (!amount || isNaN(amount)) return { date, type, category, description, amount: 0, account, valid: false, error: "Invalid amount" };
+
+      return { date, type, category, description, amount, account, valid: true };
+    } else if (cols.length >= 3) {
+      // Short format: date, description, amount
+      const date = parseDate(cols[0]);
+      const description = cols[1] || "";
+      const rawAmount = parseFloat(cols[2].replace(/[^0-9.\-]/g, ""));
+      const type = rawAmount < 0 ? "expense" : "income";
+      const amount = Math.abs(rawAmount);
+      const account = (cols[3] || "ocbc").toLowerCase().trim();
+
+      if (!date) return { date: cols[0], type, category: "", description, amount: amount || 0, account, valid: false, error: "Invalid date" };
+      if (!amount || isNaN(amount)) return { date, type, category: "", description, amount: 0, account, valid: false, error: "Invalid amount" };
+
+      return { date, type, category: "", description, amount, account, valid: true };
+    }
+
+    return { date: "", type: "expense" as const, category: "", description: line, amount: 0, account: "ocbc", valid: false, error: "Not enough columns" };
+  });
+}
+
+function MassUploadModal({
+  isOpen,
+  onClose,
+  onUploaded,
+}: {
+  isOpen: boolean;
+  onClose: () => void;
+  onUploaded: () => void;
+}) {
+  const [rawText, setRawText] = useState("");
+  const [rows, setRows] = useState<ParsedRow[]>([]);
+  const [step, setStep] = useState<"input" | "preview">("input");
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  function reset() {
+    setRawText("");
+    setRows([]);
+    setStep("input");
+  }
+
+  function handleParse() {
+    const parsed = parseRows(rawText);
+    setRows(parsed);
+    setStep("preview");
+  }
+
+  function handleFileUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const text = reader.result as string;
+      setRawText(text);
+      const parsed = parseRows(text);
+      setRows(parsed);
+      setStep("preview");
+    };
+    reader.readAsText(file);
+    e.target.value = "";
+  }
+
+  function removeRow(idx: number) {
+    setRows((prev) => prev.filter((_, i) => i !== idx));
+  }
+
+  function toggleType(idx: number) {
+    setRows((prev) =>
+      prev.map((r, i) =>
+        i === idx ? { ...r, type: r.type === "income" ? "expense" : "income" } : r
+      )
+    );
+  }
+
+  async function handleUpload() {
+    const validRows = rows.filter((r) => r.valid);
+    if (validRows.length === 0) return;
+
+    setUploading(true);
+    try {
+      const res = await fetch("/api/supabase/finance/bulk", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          entries: validRows.map((r) => ({
+            type: r.type,
+            category: r.category,
+            description: r.description,
+            amount: r.amount,
+            account: r.account,
+            date: r.date,
+          })),
+        }),
+      });
+
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || "Bulk upload failed");
+      }
+
+      const data = await res.json();
+      toast.success(`${data.count} entries uploaded successfully`);
+      reset();
+      onClose();
+      onUploaded();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Upload failed");
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  if (!isOpen) return null;
+
+  const validCount = rows.filter((r) => r.valid).length;
+  const invalidCount = rows.filter((r) => !r.valid).length;
+  const totalAmount = rows
+    .filter((r) => r.valid)
+    .reduce((s, r) => s + (r.type === "income" ? r.amount : -r.amount), 0);
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center">
+      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => { reset(); onClose(); }} />
+      <div className="relative z-10 w-full max-w-3xl max-h-[90vh] flex flex-col rounded-xl border border-[#1E1E1E] bg-[#111111] shadow-2xl">
+        {/* Header */}
+        <div className="flex items-center justify-between border-b border-[#1E1E1E] px-5 py-4 shrink-0">
+          <div>
+            <h2 className="text-base font-semibold">Mass Upload</h2>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              {step === "input" ? "Paste CSV data or upload a file" : `${validCount} valid rows ready`}
+            </p>
+          </div>
+          <button
+            onClick={() => { reset(); onClose(); }}
+            className="flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-[#1E1E1E] hover:text-foreground"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        {step === "input" ? (
+          <div className="p-5 space-y-4">
+            {/* Format guide */}
+            <div className="rounded-lg bg-[#0A0A0A] border border-[#1E1E1E] p-3">
+              <p className="text-xs font-semibold text-muted-foreground mb-1.5">CSV Format (6 columns):</p>
+              <code className="text-[11px] text-violet-400 block">
+                date, type, category, description, amount, account
+              </code>
+              <p className="text-[10px] text-muted-foreground mt-1.5">
+                Or short format (3 columns): <code className="text-violet-400">date, description, amount</code> — negative = expense, positive = income
+              </p>
+              <p className="text-[10px] text-muted-foreground mt-1">
+                Date formats: YYYY-MM-DD, DD/MM/YYYY · Account: ocbc, paypal, stripe · Headers auto-detected
+              </p>
+            </div>
+
+            {/* Textarea */}
+            <textarea
+              value={rawText}
+              onChange={(e) => setRawText(e.target.value)}
+              placeholder={"2026-04-01, income, Client Payment, Flogen monthly, 3500, ocbc\n2026-04-02, expense, Tools/Subscriptions, Vercel Pro, 80, stripe\n2026-04-05, Lunch meeting, -45"}
+              rows={10}
+              className="w-full rounded-xl border border-[#1E1E1E] bg-[#0A0A0A] px-4 py-3 text-sm font-mono text-foreground outline-none focus:border-primary resize-none placeholder:text-muted-foreground/30"
+            />
+
+            {/* Actions */}
+            <div className="flex items-center gap-3">
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".csv,.txt,.tsv"
+                onChange={handleFileUpload}
+                className="hidden"
+              />
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                className="flex items-center gap-2 rounded-lg border border-[#1E1E1E] px-4 py-2 text-sm text-muted-foreground transition-colors hover:bg-[#1A1A1A] hover:text-foreground"
+              >
+                <ArrowUpRight className="h-4 w-4" />
+                Upload CSV File
+              </button>
+              <div className="flex-1" />
+              <button
+                onClick={handleParse}
+                disabled={!rawText.trim()}
+                className="flex items-center gap-2 rounded-lg bg-primary px-5 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+              >
+                Preview Entries
+                <ChevronRight className="h-4 w-4" />
+              </button>
+            </div>
+          </div>
+        ) : (
+          <>
+            {/* Preview summary */}
+            <div className="flex items-center gap-4 border-b border-[#1E1E1E] px-5 py-3 shrink-0">
+              <span className="rounded-md bg-emerald-500/10 px-2.5 py-1 text-xs font-semibold text-emerald-400">
+                {validCount} valid
+              </span>
+              {invalidCount > 0 && (
+                <span className="rounded-md bg-red-500/10 px-2.5 py-1 text-xs font-semibold text-red-400">
+                  {invalidCount} invalid
+                </span>
+              )}
+              <span className="text-xs text-muted-foreground">
+                Net: <span className={`font-mono font-semibold ${totalAmount >= 0 ? "text-emerald-400" : "text-red-400"}`}>
+                  {totalAmount >= 0 ? "+" : ""}{formatMYR(totalAmount)}
+                </span>
+              </span>
+              <div className="flex-1" />
+              <button
+                onClick={() => setStep("input")}
+                className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+              >
+                ← Edit data
+              </button>
+            </div>
+
+            {/* Table */}
+            <div className="flex-1 overflow-y-auto px-5 py-3">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="border-b border-[#1E1E1E] text-left text-muted-foreground">
+                    <th className="pb-2 pr-3 font-medium">Date</th>
+                    <th className="pb-2 pr-3 font-medium">Type</th>
+                    <th className="pb-2 pr-3 font-medium">Category</th>
+                    <th className="pb-2 pr-3 font-medium">Description</th>
+                    <th className="pb-2 pr-3 font-medium text-right">Amount</th>
+                    <th className="pb-2 pr-3 font-medium">Account</th>
+                    <th className="pb-2 font-medium w-16"></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.map((row, i) => (
+                    <tr key={i} className={`border-b border-[#1E1E1E]/50 ${!row.valid ? "opacity-50" : ""}`}>
+                      <td className="py-2 pr-3 font-mono">{row.date}</td>
+                      <td className="py-2 pr-3">
+                        <button
+                          onClick={() => toggleType(i)}
+                          className={`rounded-md px-2 py-0.5 text-[10px] font-semibold ${
+                            row.type === "income"
+                              ? "bg-emerald-500/15 text-emerald-400"
+                              : "bg-red-500/15 text-red-400"
+                          }`}
+                        >
+                          {row.type}
+                        </button>
+                      </td>
+                      <td className="py-2 pr-3 text-muted-foreground">{row.category || "—"}</td>
+                      <td className="py-2 pr-3 max-w-[180px] truncate">{row.description || "—"}</td>
+                      <td className="py-2 pr-3 text-right font-mono font-semibold">
+                        {formatMYR(row.amount)}
+                      </td>
+                      <td className="py-2 pr-3 text-muted-foreground">{row.account}</td>
+                      <td className="py-2">
+                        {!row.valid ? (
+                          <span className="text-[10px] text-red-400" title={row.error}>{row.error}</span>
+                        ) : (
+                          <button
+                            onClick={() => removeRow(i)}
+                            className="rounded p-1 text-muted-foreground hover:text-red-400 hover:bg-red-500/10 transition-colors"
+                          >
+                            <X className="h-3 w-3" />
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {rows.length === 0 && (
+                <p className="py-8 text-center text-sm text-muted-foreground">No rows parsed</p>
+              )}
+            </div>
+
+            {/* Upload button */}
+            <div className="flex items-center justify-end gap-3 border-t border-[#1E1E1E] px-5 py-4 shrink-0">
+              <button
+                onClick={() => { reset(); onClose(); }}
+                className="rounded-lg border border-[#1E1E1E] px-4 py-2 text-sm text-muted-foreground hover:text-foreground transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleUpload}
+                disabled={validCount === 0 || uploading}
+                className="flex items-center gap-2 rounded-lg bg-primary px-5 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+              >
+                {uploading ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Uploading...
+                  </>
+                ) : (
+                  <>
+                    <Plus className="h-4 w-4" />
+                    Upload {validCount} Entries
+                  </>
+                )}
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // --------------- Receipt Upload Modal ---------------
 
 function ReceiptUploadModal({
@@ -651,6 +1035,7 @@ export default function FinancePage() {
   const [month, setMonth] = useState(getCurrentMonth());
   const [showAddModal, setShowAddModal] = useState(false);
   const [showReceiptModal, setShowReceiptModal] = useState(false);
+  const [showMassUpload, setShowMassUpload] = useState(false);
   const [receiptDefaults, setReceiptDefaults] = useState<ReceiptDefaults | null>(null);
   const [lastFetched, setLastFetched] = useState<string | null>(null);
 
@@ -832,7 +1217,14 @@ export default function FinancePage() {
               className="flex items-center gap-2 rounded-lg border border-[#1E1E1E] bg-[#111111] px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-[#1A1A1A] hover:text-foreground"
             >
               <Camera className="h-4 w-4" />
-              Upload Receipt
+              Receipt
+            </button>
+            <button
+              onClick={() => setShowMassUpload(true)}
+              className="flex items-center gap-2 rounded-lg border border-[#1E1E1E] bg-[#111111] px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-[#1A1A1A] hover:text-foreground"
+            >
+              <Upload className="h-4 w-4" />
+              Mass Upload
             </button>
             <button
               onClick={() => setShowAddModal(true)}
@@ -1113,6 +1505,12 @@ export default function FinancePage() {
           setReceiptDefaults(data);
           setShowAddModal(true);
         }}
+      />
+
+      <MassUploadModal
+        isOpen={showMassUpload}
+        onClose={() => setShowMassUpload(false)}
+        onUploaded={fetchData}
       />
     </PageWrapper>
   );
