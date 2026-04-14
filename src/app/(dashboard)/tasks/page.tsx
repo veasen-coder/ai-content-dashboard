@@ -1329,21 +1329,6 @@ export default function TasksPage() {
     setShowAssignDropdown(false);
   }
 
-  async function markDone(taskId: string) {
-    try {
-      const res = await fetch("/api/clickup/update", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ task_id: taskId, status: "complete" }),
-      });
-      if (!res.ok) throw new Error("Failed to update");
-      toast.success("Task marked as done");
-      fetchTasks();
-    } catch {
-      toast.error("Failed to mark task as done");
-    }
-  }
-
   async function bulkDelete() {
     if (!selectedIds.size) return;
     const count = selectedIds.size;
