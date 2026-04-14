@@ -20,6 +20,7 @@ import {
   CheckSquare,
   Square,
   Loader2,
+  ListPlus,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -59,7 +60,8 @@ interface StatusGroup {
 const STATUS_ORDER: Record<string, number> = {
   "to do": 0,
   "in progress": 1,
-  complete: 2,
+  "complete": 2,
+  "closed": 3,
 };
 
 const PRIORITY_COLORS: Record<string, string> = {
@@ -118,6 +120,20 @@ function formatDueDate(timestamp: string | null): {
   return { text: `${month}/${day}/${year}`, isOverdue: diffDays < 0 };
 }
 
+function getStatusOrder(status: string): number {
+  return STATUS_ORDER[status.toLowerCase()] ?? 99;
+}
+
+async function updateTask(taskId: string, fields: Record<string, unknown>) {
+  const res = await fetch("/api/clickup/update", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ task_id: taskId, ...fields }),
+  });
+  if (!res.ok) throw new Error("Failed to update task");
+  return res.json();
+}
+
 // --------------- Sub-components ---------------
 
 function AssigneeBadge({ assignee }: { assignee: Assignee }) {
@@ -133,22 +149,316 @@ function AssigneeBadge({ assignee }: { assignee: Assignee }) {
   );
 }
 
-function TaskDetailDrawer({
-  task,
-  onClose,
-}: {
-  task: Task | null;
-  onClose: () => void;
-}) {
-  if (!task) return null;
+// --------------- Inline Dropdowns ---------------
 
-  const due = formatDueDate(task.due_date);
+function InlineStatusDropdown({
+  task,
+  onUpdate,
+}: {
+  task: Task;
+  onUpdate: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    }
+    if (open) document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [open]);
+
+  async function handleChange(value: string) {
+    setLoading(true);
+    try {
+      await updateTask(task.id, { status: value });
+      toast.success(`Status → ${value}`);
+      onUpdate();
+    } catch {
+      toast.error("Failed to update status");
+    } finally {
+      setLoading(false);
+      setOpen(false);
+    }
+  }
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        onClick={(e) => {
+          e.stopPropagation();
+          setOpen(!open);
+        }}
+        disabled={loading}
+        className="inline-flex items-center rounded-md px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-white transition-opacity hover:opacity-80"
+        style={{ backgroundColor: task.status.color || "#87909e" }}
+      >
+        {loading ? (
+          <Loader2 className="h-3 w-3 animate-spin" />
+        ) : (
+          task.status.status
+        )}
+      </button>
+      {open && (
+        <div className="absolute left-0 top-7 z-50 w-36 rounded-lg border border-[#1E1E1E] bg-[#111111] p-1 shadow-2xl">
+          {STATUS_OPTIONS.map((opt) => (
+            <button
+              key={opt.value}
+              onClick={(e) => {
+                e.stopPropagation();
+                handleChange(opt.value);
+              }}
+              className={`flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-xs transition-colors hover:bg-[#1E1E1E] ${
+                task.status.status.toLowerCase() === opt.value
+                  ? "text-white"
+                  : "text-[#D1D5DB]"
+              }`}
+            >
+              <div
+                className="h-2.5 w-2.5 rounded-full"
+                style={{ backgroundColor: opt.color }}
+              />
+              {opt.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function InlinePriorityDropdown({
+  task,
+  onUpdate,
+}: {
+  task: Task;
+  onUpdate: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    }
+    if (open) document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [open]);
+
+  async function handleChange(priorityId: number) {
+    setLoading(true);
+    try {
+      await updateTask(task.id, { priority: priorityId });
+      const label = PRIORITY_OPTIONS.find((p) => p.id === String(priorityId))?.label || "Updated";
+      toast.success(`Priority → ${label}`);
+      onUpdate();
+    } catch {
+      toast.error("Failed to update priority");
+    } finally {
+      setLoading(false);
+      setOpen(false);
+    }
+  }
+
   const priorityLabel = task.priority
     ? PRIORITY_LABELS[task.priority.priority] || task.priority.priority
     : null;
   const priorityColor = task.priority
     ? PRIORITY_COLORS[task.priority.priority] || "#6B7280"
-    : null;
+    : "#6B7280";
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        onClick={(e) => {
+          e.stopPropagation();
+          setOpen(!open);
+        }}
+        disabled={loading}
+        className="inline-flex items-center gap-1 text-sm transition-opacity hover:opacity-80"
+        style={{ color: priorityColor }}
+      >
+        {loading ? (
+          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+        ) : (
+          <>
+            <Flag className="h-3.5 w-3.5" />
+            {priorityLabel || ""}
+          </>
+        )}
+      </button>
+      {open && (
+        <div className="absolute right-0 top-7 z-50 w-32 rounded-lg border border-[#1E1E1E] bg-[#111111] p-1 shadow-2xl">
+          {PRIORITY_OPTIONS.map((opt) => (
+            <button
+              key={opt.id}
+              onClick={(e) => {
+                e.stopPropagation();
+                handleChange(parseInt(opt.id));
+              }}
+              className={`flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-xs transition-colors hover:bg-[#1E1E1E] ${
+                task.priority?.id === opt.id ? "font-bold" : ""
+              }`}
+              style={{ color: opt.color }}
+            >
+              <Flag className="h-3 w-3" />
+              {opt.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// --------------- Quick Add Subtask ---------------
+
+function QuickSubtaskInput({
+  parentId,
+  onCreated,
+}: {
+  parentId: string;
+  onCreated: () => void;
+}) {
+  const [name, setName] = useState("");
+  const [loading, setLoading] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    inputRef.current?.focus();
+  }, []);
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!name.trim()) return;
+    setLoading(true);
+    try {
+      const res = await fetch("/api/clickup/create", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: name.trim(), parent: parentId }),
+      });
+      if (!res.ok) throw new Error("Failed");
+      toast.success("Subtask created");
+      setName("");
+      onCreated();
+    } catch {
+      toast.error("Failed to create subtask");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <form
+      onSubmit={handleSubmit}
+      onClick={(e) => e.stopPropagation()}
+      className="flex items-center gap-2 border-b border-[#1E1E1E] bg-[#0D0D0D] px-4 py-2 pl-14"
+    >
+      <Plus className="h-3.5 w-3.5 shrink-0 text-[#6B7280]" />
+      <input
+        ref={inputRef}
+        type="text"
+        value={name}
+        onChange={(e) => setName(e.target.value)}
+        placeholder="Add subtask..."
+        className="flex-1 bg-transparent text-sm text-[#F5F5F5] outline-none placeholder-[#6B7280]"
+      />
+      {loading && <Loader2 className="h-3.5 w-3.5 animate-spin text-[#6B7280]" />}
+    </form>
+  );
+}
+
+// --------------- Task Detail Drawer (Editable) ---------------
+
+function TaskDetailDrawer({
+  task,
+  onClose,
+  onUpdate,
+}: {
+  task: Task | null;
+  onClose: () => void;
+  onUpdate: () => void;
+}) {
+  const [editingName, setEditingName] = useState(false);
+  const [nameValue, setNameValue] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (task) setNameValue(task.name);
+  }, [task]);
+
+  if (!task) return null;
+
+  const due = formatDueDate(task.due_date);
+
+  async function saveName() {
+    if (!nameValue.trim() || nameValue === task!.name) {
+      setEditingName(false);
+      return;
+    }
+    setSaving(true);
+    try {
+      await updateTask(task!.id, { name: nameValue.trim() });
+      toast.success("Task name updated");
+      onUpdate();
+    } catch {
+      toast.error("Failed to update name");
+    } finally {
+      setSaving(false);
+      setEditingName(false);
+    }
+  }
+
+  async function handleStatusChange(value: string) {
+    try {
+      await updateTask(task!.id, { status: value });
+      toast.success(`Status → ${value}`);
+      onUpdate();
+    } catch {
+      toast.error("Failed to update status");
+    }
+  }
+
+  async function handlePriorityChange(priorityId: number) {
+    try {
+      await updateTask(task!.id, { priority: priorityId });
+      toast.success("Priority updated");
+      onUpdate();
+    } catch {
+      toast.error("Failed to update priority");
+    }
+  }
+
+  async function handleAssigneeToggle(memberId: number) {
+    const isAssigned = task!.assignees.some((a) => a.id === memberId);
+    try {
+      await updateTask(task!.id, {
+        assignees: isAssigned ? { rem: [memberId] } : { add: [memberId] },
+      });
+      toast.success(isAssigned ? "Unassigned" : "Assigned");
+      onUpdate();
+    } catch {
+      toast.error("Failed to update assignee");
+    }
+  }
+
+  async function handleDueDateChange(dateStr: string) {
+    try {
+      const timestamp = dateStr ? new Date(dateStr).getTime() : null;
+      await updateTask(task!.id, {
+        due_date: timestamp,
+        due_date_time: false,
+      });
+      toast.success("Due date updated");
+      onUpdate();
+    } catch {
+      toast.error("Failed to update due date");
+    }
+  }
 
   return (
     <div className="fixed inset-0 z-50 flex justify-end">
@@ -159,7 +469,7 @@ function TaskDetailDrawer({
       <div className="relative z-10 w-full max-w-md animate-in slide-in-from-right border-l border-[#1E1E1E] bg-[#0A0A0A] shadow-2xl">
         {/* Header */}
         <div className="flex items-center justify-between border-b border-[#1E1E1E] px-5 py-4">
-          <h2 className="text-base font-semibold">Task Details</h2>
+          <h2 className="text-base font-semibold">Edit Task</h2>
           <div className="flex items-center gap-2">
             <a
               href={task.url}
@@ -180,85 +490,161 @@ function TaskDetailDrawer({
         </div>
 
         {/* Body */}
-        <div className="overflow-y-auto p-5 space-y-5" style={{ maxHeight: "calc(100vh - 65px)" }}>
-          {/* Task Name */}
-          <h3 className="text-lg font-semibold leading-snug">{task.name}</h3>
+        <div
+          className="overflow-y-auto p-5 space-y-5"
+          style={{ maxHeight: "calc(100vh - 65px)" }}
+        >
+          {/* Task Name - Editable */}
+          {editingName ? (
+            <div>
+              <input
+                type="text"
+                value={nameValue}
+                onChange={(e) => setNameValue(e.target.value)}
+                onBlur={saveName}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") saveName();
+                  if (e.key === "Escape") {
+                    setNameValue(task.name);
+                    setEditingName(false);
+                  }
+                }}
+                autoFocus
+                className="w-full rounded-lg border border-primary bg-[#111111] px-3 py-2 text-lg font-semibold outline-none"
+              />
+              {saving && (
+                <p className="mt-1 text-xs text-[#6B7280]">Saving...</p>
+              )}
+            </div>
+          ) : (
+            <h3
+              onClick={() => setEditingName(true)}
+              className="cursor-pointer rounded-lg px-1 py-0.5 text-lg font-semibold leading-snug transition-colors hover:bg-[#111111]"
+              title="Click to edit"
+            >
+              {task.name}
+            </h3>
+          )}
 
-          {/* Status */}
+          {/* Status - Clickable */}
           <div>
             <label className="mb-1.5 block text-xs font-medium uppercase tracking-wider text-muted-foreground">
               Status
             </label>
-            <div
-              className="inline-flex items-center rounded-md px-2.5 py-1 text-xs font-bold uppercase tracking-wider text-white"
-              style={{ backgroundColor: task.status.color || "#87909e" }}
-            >
-              {task.status.status}
+            <div className="flex flex-wrap gap-1.5">
+              {STATUS_OPTIONS.map((opt) => (
+                <button
+                  key={opt.value}
+                  onClick={() => handleStatusChange(opt.value)}
+                  className={`rounded-md px-2.5 py-1.5 text-xs font-medium transition-all ${
+                    task.status.status.toLowerCase() === opt.value
+                      ? "text-white ring-1 ring-white/20"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
+                  style={{
+                    backgroundColor:
+                      task.status.status.toLowerCase() === opt.value
+                        ? opt.color
+                        : "#1E1E1E",
+                  }}
+                >
+                  {opt.label}
+                </button>
+              ))}
             </div>
           </div>
 
-          {/* Priority */}
+          {/* Priority - Clickable */}
           <div>
             <label className="mb-1.5 block text-xs font-medium uppercase tracking-wider text-muted-foreground">
               Priority
             </label>
-            {priorityLabel ? (
-              <span
-                className="inline-flex items-center gap-1.5 text-sm font-medium"
-                style={{ color: priorityColor || undefined }}
-              >
-                <Flag className="h-4 w-4" />
-                {priorityLabel}
-              </span>
-            ) : (
-              <span className="text-sm text-muted-foreground/50">None</span>
-            )}
+            <div className="flex flex-wrap gap-1.5">
+              {PRIORITY_OPTIONS.map((opt) => (
+                <button
+                  key={opt.id}
+                  onClick={() => handlePriorityChange(parseInt(opt.id))}
+                  className={`flex items-center gap-1 rounded-md px-2 py-1.5 text-xs font-medium transition-all ${
+                    task.priority?.id === opt.id
+                      ? "ring-1 ring-white/20"
+                      : "bg-[#1E1E1E] text-muted-foreground hover:text-foreground"
+                  }`}
+                  style={{
+                    backgroundColor:
+                      task.priority?.id === opt.id
+                        ? opt.color + "30"
+                        : undefined,
+                    color:
+                      task.priority?.id === opt.id ? opt.color : undefined,
+                  }}
+                >
+                  <Flag className="h-3 w-3" />
+                  {opt.label}
+                </button>
+              ))}
+            </div>
           </div>
 
-          {/* Due Date */}
+          {/* Due Date - Editable */}
           <div>
             <label className="mb-1.5 block text-xs font-medium uppercase tracking-wider text-muted-foreground">
               Due Date
             </label>
-            {due.text ? (
-              <span
-                className={`inline-flex items-center gap-1.5 text-sm font-mono ${
-                  due.isOverdue ? "text-[#EF4444]" : "text-foreground"
-                }`}
-              >
-                <Calendar className="h-4 w-4" />
-                {due.text}
-              </span>
-            ) : (
-              <span className="text-sm text-muted-foreground/50">No due date</span>
-            )}
+            <div className="flex items-center gap-2">
+              <div className="relative flex-1">
+                <Calendar className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+                <input
+                  type="date"
+                  value={
+                    task.due_date
+                      ? new Date(parseInt(task.due_date))
+                          .toISOString()
+                          .split("T")[0]
+                      : ""
+                  }
+                  onChange={(e) => handleDueDateChange(e.target.value)}
+                  className="w-full rounded-lg border border-[#1E1E1E] bg-[#111111] pl-9 pr-3 py-2.5 text-sm outline-none transition-colors focus:border-primary"
+                />
+              </div>
+              {due.isOverdue && (
+                <span className="text-xs font-medium text-[#EF4444]">
+                  Overdue
+                </span>
+              )}
+            </div>
           </div>
 
-          {/* Assignees */}
+          {/* Assignees - Toggleable */}
           <div>
             <label className="mb-1.5 block text-xs font-medium uppercase tracking-wider text-muted-foreground">
               Assignees
             </label>
-            {task.assignees.length > 0 ? (
-              <div className="flex flex-wrap gap-2">
-                {task.assignees.map((a) => (
-                  <div
-                    key={a.id}
-                    className="flex items-center gap-2 rounded-lg border border-[#1E1E1E] bg-[#111111] px-3 py-2"
+            <div className="flex gap-2">
+              {TEAM_MEMBERS.map((member) => {
+                const isAssigned = task.assignees.some(
+                  (a) => a.id === member.id
+                );
+                return (
+                  <button
+                    key={member.id}
+                    onClick={() => handleAssigneeToggle(member.id)}
+                    className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-xs font-medium transition-all ${
+                      isAssigned
+                        ? "border-primary/50 bg-primary/10 text-foreground"
+                        : "border-[#1E1E1E] bg-[#111111] text-muted-foreground hover:text-foreground"
+                    }`}
                   >
                     <div
-                      className="flex h-6 w-6 items-center justify-center rounded-full text-[10px] font-bold text-white"
-                      style={{ backgroundColor: a.color || "#6B7280" }}
+                      className="flex h-5 w-5 items-center justify-center rounded-full text-[9px] font-bold text-white"
+                      style={{ backgroundColor: member.color }}
                     >
-                      {a.initials}
+                      {member.initials}
                     </div>
-                    <span className="text-sm">{a.username}</span>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <span className="text-sm text-muted-foreground/50">Unassigned</span>
-            )}
+                    {member.username}
+                  </button>
+                );
+              })}
+            </div>
           </div>
 
           {/* Tags */}
@@ -312,26 +698,59 @@ function TaskDetailDrawer({
   );
 }
 
-function TaskRow({ task, onClick, selected, onToggleSelect, indent, hasChildren, expanded, onToggleExpand, onDragStart, onDragEnter }: { task: Task; onClick: () => void; selected: boolean; onToggleSelect: (id: string, e: React.MouseEvent) => void; indent?: boolean; hasChildren?: boolean; expanded?: boolean; onToggleExpand?: () => void; onDragStart?: (id: string) => void; onDragEnter?: (id: string) => void }) {
+// --------------- Task Row ---------------
+
+function TaskRow({
+  task,
+  onClick,
+  selected,
+  onToggleSelect,
+  indent,
+  hasChildren,
+  expanded,
+  onToggleExpand,
+  onDragStart,
+  onDragEnter,
+  onUpdate,
+  onAddSubtask,
+}: {
+  task: Task;
+  onClick: () => void;
+  selected: boolean;
+  onToggleSelect: (id: string, e: React.MouseEvent) => void;
+  indent?: boolean;
+  hasChildren?: boolean;
+  expanded?: boolean;
+  onToggleExpand?: () => void;
+  onDragStart?: (id: string) => void;
+  onDragEnter?: (id: string) => void;
+  onUpdate: () => void;
+  onAddSubtask?: (id: string) => void;
+}) {
   const due = formatDueDate(task.due_date);
-  const priorityLabel = task.priority
-    ? PRIORITY_LABELS[task.priority.priority] || task.priority.priority
-    : null;
-  const priorityColor = task.priority
-    ? PRIORITY_COLORS[task.priority.priority] || "#6B7280"
-    : null;
 
   return (
     <div
       onClick={onClick}
       role="button"
       tabIndex={0}
-      onMouseDown={(e) => { if (e.shiftKey) { e.preventDefault(); onDragStart?.(task.id); } }}
-      onMouseEnter={() => { onDragEnter?.(task.id); }}
+      onMouseDown={(e) => {
+        if (e.shiftKey) {
+          e.preventDefault();
+          onDragStart?.(task.id);
+        }
+      }}
+      onMouseEnter={() => {
+        onDragEnter?.(task.id);
+      }}
       className={`group flex cursor-pointer items-center gap-3 border-b border-[#1E1E1E] px-4 py-3 transition-colors hover:bg-[#1A1A1A] ${selected ? "bg-primary/5" : ""} ${indent ? "pl-14 bg-[#0D0D0D]" : ""}`}
     >
+      {/* Checkbox */}
       <button
-        onClick={(e) => { e.stopPropagation(); onToggleSelect(task.id, e); }}
+        onClick={(e) => {
+          e.stopPropagation();
+          onToggleSelect(task.id, e);
+        }}
         className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-[#1E1E1E] hover:text-foreground"
       >
         {selected ? (
@@ -340,16 +759,34 @@ function TaskRow({ task, onClick, selected, onToggleSelect, indent, hasChildren,
           <Square className="h-5 w-5" />
         )}
       </button>
+
+      {/* Expand */}
       {hasChildren && (
         <button
-          onClick={(e) => { e.stopPropagation(); onToggleExpand?.(); }}
+          onClick={(e) => {
+            e.stopPropagation();
+            onToggleExpand?.();
+          }}
           className="flex h-6 w-6 shrink-0 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-[#1E1E1E] hover:text-foreground"
         >
-          {expanded ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
+          {expanded ? (
+            <ChevronDown className="h-3.5 w-3.5" />
+          ) : (
+            <ChevronRight className="h-3.5 w-3.5" />
+          )}
         </button>
       )}
-      <div className="flex min-w-0 flex-1 items-center gap-3">
-        <span className={`truncate text-sm font-medium ${indent ? "text-muted-foreground" : "text-foreground"}`}>
+
+      {/* Inline Status */}
+      <div onClick={(e) => e.stopPropagation()}>
+        <InlineStatusDropdown task={task} onUpdate={onUpdate} />
+      </div>
+
+      {/* Name */}
+      <div className="flex min-w-0 flex-1 items-center gap-2">
+        <span
+          className={`truncate text-sm font-medium ${indent ? "text-muted-foreground" : "text-foreground"}`}
+        >
           {task.name}
         </span>
         {!indent && task.subtask_count && task.subtask_count > 0 && !hasChildren ? (
@@ -358,15 +795,9 @@ function TaskRow({ task, onClick, selected, onToggleSelect, indent, hasChildren,
             {task.subtask_count}
           </span>
         ) : null}
-        <a
-          href={task.url}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="shrink-0 opacity-0 transition-opacity group-hover:opacity-100"
-        >
-          <ExternalLink className="h-3.5 w-3.5 text-muted-foreground hover:text-foreground" />
-        </a>
       </div>
+
+      {/* Assignees */}
       <div className="flex w-28 items-center justify-center -space-x-1">
         {task.assignees.length > 0 ? (
           task.assignees.map((a) => <AssigneeBadge key={a.id} assignee={a} />)
@@ -376,6 +807,8 @@ function TaskRow({ task, onClick, selected, onToggleSelect, indent, hasChildren,
           </div>
         )}
       </div>
+
+      {/* Due Date */}
       <div className="w-28 text-center">
         {due.text ? (
           <span
@@ -389,29 +822,69 @@ function TaskRow({ task, onClick, selected, onToggleSelect, indent, hasChildren,
           <span className="text-sm text-muted-foreground/40">—</span>
         )}
       </div>
-      <div className="w-24 text-right">
-        {priorityLabel ? (
-          <span
-            className="inline-flex items-center gap-1.5 text-sm"
-            style={{ color: priorityColor || undefined }}
-          >
-            <Flag
-              className="h-3.5 w-3.5"
-              style={{ color: priorityColor || undefined }}
-            />
-            {priorityLabel}
-          </span>
-        ) : (
-          <span className="inline-flex items-center gap-1.5 text-sm text-muted-foreground/40">
-            <Flag className="h-3.5 w-3.5" />
-          </span>
-        )}
+
+      {/* Inline Priority */}
+      <div className="w-24 text-right" onClick={(e) => e.stopPropagation()}>
+        <InlinePriorityDropdown task={task} onUpdate={onUpdate} />
       </div>
+
+      {/* Quick Actions */}
+      {!indent && (
+        <div
+          className="flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <button
+            onClick={() => onAddSubtask?.(task.id)}
+            className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-[#1E1E1E] hover:text-foreground"
+            title="Add subtask"
+          >
+            <ListPlus className="h-3.5 w-3.5" />
+          </button>
+          <a
+            href={task.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-[#1E1E1E] hover:text-foreground"
+            title="Open in ClickUp"
+          >
+            <ExternalLink className="h-3.5 w-3.5" />
+          </a>
+        </div>
+      )}
     </div>
   );
 }
 
-function StatusSection({ group, onTaskClick, selectedIds, onToggleSelect, childrenMap, expandedParents, onToggleExpand, onDragStart, onDragEnter }: { group: StatusGroup; onTaskClick: (task: Task) => void; selectedIds: Set<string>; onToggleSelect: (id: string, e: React.MouseEvent) => void; childrenMap: Map<string, Task[]>; expandedParents: Set<string>; onToggleExpand: (id: string) => void; onDragStart: (id: string) => void; onDragEnter: (id: string) => void }) {
+// --------------- Status Section ---------------
+
+function StatusSection({
+  group,
+  onTaskClick,
+  selectedIds,
+  onToggleSelect,
+  childrenMap,
+  expandedParents,
+  onToggleExpand,
+  onDragStart,
+  onDragEnter,
+  onUpdate,
+  subtaskInputId,
+  onAddSubtask,
+}: {
+  group: StatusGroup;
+  onTaskClick: (task: Task) => void;
+  selectedIds: Set<string>;
+  onToggleSelect: (id: string, e: React.MouseEvent) => void;
+  childrenMap: Map<string, Task[]>;
+  expandedParents: Set<string>;
+  onToggleExpand: (id: string) => void;
+  onDragStart: (id: string) => void;
+  onDragEnter: (id: string) => void;
+  onUpdate: () => void;
+  subtaskInputId: string | null;
+  onAddSubtask: (id: string) => void;
+}) {
   const [isOpen, setIsOpen] = useState(group.type !== "closed");
 
   return (
@@ -438,6 +911,10 @@ function StatusSection({ group, onTaskClick, selectedIds, onToggleSelect, childr
       {isOpen && (
         <div className="mt-1 overflow-hidden rounded-xl border border-[#1E1E1E] bg-[#111111]">
           <div className="flex items-center gap-4 border-b border-[#1E1E1E] px-4 py-2">
+            <span className="w-8 shrink-0" /> {/* checkbox space */}
+            <span className="w-16 text-xs font-medium uppercase tracking-wider text-muted-foreground">
+              Status
+            </span>
             <span className="flex-1 text-xs font-medium uppercase tracking-wider text-muted-foreground">
               Name
             </span>
@@ -450,6 +927,7 @@ function StatusSection({ group, onTaskClick, selectedIds, onToggleSelect, childr
             <span className="w-24 text-right text-xs font-medium uppercase tracking-wider text-muted-foreground">
               Priority
             </span>
+            <span className="w-16 shrink-0" /> {/* actions space */}
           </div>
           {group.tasks.map((task) => {
             const children = childrenMap.get(task.id) || [];
@@ -457,10 +935,37 @@ function StatusSection({ group, onTaskClick, selectedIds, onToggleSelect, childr
             const isExpanded = expandedParents.has(task.id);
             return (
               <div key={task.id}>
-                <TaskRow task={task} onClick={() => onTaskClick(task)} selected={selectedIds.has(task.id)} onToggleSelect={onToggleSelect} hasChildren={hasChildren} expanded={isExpanded} onToggleExpand={() => onToggleExpand(task.id)} onDragStart={onDragStart} onDragEnter={onDragEnter} />
-                {hasChildren && isExpanded && children.map((child) => (
-                  <TaskRow key={child.id} task={child} onClick={() => onTaskClick(child)} selected={selectedIds.has(child.id)} onToggleSelect={onToggleSelect} indent onDragStart={onDragStart} onDragEnter={onDragEnter} />
-                ))}
+                <TaskRow
+                  task={task}
+                  onClick={() => onTaskClick(task)}
+                  selected={selectedIds.has(task.id)}
+                  onToggleSelect={onToggleSelect}
+                  hasChildren={hasChildren}
+                  expanded={isExpanded}
+                  onToggleExpand={() => onToggleExpand(task.id)}
+                  onDragStart={onDragStart}
+                  onDragEnter={onDragEnter}
+                  onUpdate={onUpdate}
+                  onAddSubtask={onAddSubtask}
+                />
+                {hasChildren &&
+                  isExpanded &&
+                  children.map((child) => (
+                    <TaskRow
+                      key={child.id}
+                      task={child}
+                      onClick={() => onTaskClick(child)}
+                      selected={selectedIds.has(child.id)}
+                      onToggleSelect={onToggleSelect}
+                      indent
+                      onDragStart={onDragStart}
+                      onDragEnter={onDragEnter}
+                      onUpdate={onUpdate}
+                    />
+                  ))}
+                {subtaskInputId === task.id && (
+                  <QuickSubtaskInput parentId={task.id} onCreated={onUpdate} />
+                )}
               </div>
             );
           })}
@@ -546,15 +1051,11 @@ function AddTaskModal({ isOpen, onClose, onCreated }: AddTaskModalProps) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
-      {/* Backdrop */}
       <div
         className="absolute inset-0 bg-black/60 backdrop-blur-sm"
         onClick={onClose}
       />
-
-      {/* Modal */}
       <div className="relative z-10 w-full max-w-lg rounded-xl border border-[#1E1E1E] bg-[#111111] shadow-2xl">
-        {/* Header */}
         <div className="flex items-center justify-between border-b border-[#1E1E1E] px-5 py-4">
           <h2 className="text-base font-semibold">Create Task</h2>
           <button
@@ -565,9 +1066,7 @@ function AddTaskModal({ isOpen, onClose, onCreated }: AddTaskModalProps) {
           </button>
         </div>
 
-        {/* Form */}
         <form onSubmit={handleSubmit} className="p-5 space-y-4">
-          {/* Task Name */}
           <div>
             <label className="mb-1.5 block text-xs font-medium uppercase tracking-wider text-muted-foreground">
               Task Name
@@ -583,7 +1082,6 @@ function AddTaskModal({ isOpen, onClose, onCreated }: AddTaskModalProps) {
             />
           </div>
 
-          {/* Description */}
           <div>
             <label className="mb-1.5 block text-xs font-medium uppercase tracking-wider text-muted-foreground">
               Description
@@ -597,9 +1095,7 @@ function AddTaskModal({ isOpen, onClose, onCreated }: AddTaskModalProps) {
             />
           </div>
 
-          {/* Status + Priority Row */}
           <div className="grid grid-cols-2 gap-4">
-            {/* Status */}
             <div>
               <label className="mb-1.5 block text-xs font-medium uppercase tracking-wider text-muted-foreground">
                 Status
@@ -626,7 +1122,6 @@ function AddTaskModal({ isOpen, onClose, onCreated }: AddTaskModalProps) {
               </div>
             </div>
 
-            {/* Priority */}
             <div>
               <label className="mb-1.5 block text-xs font-medium uppercase tracking-wider text-muted-foreground">
                 Priority
@@ -658,9 +1153,7 @@ function AddTaskModal({ isOpen, onClose, onCreated }: AddTaskModalProps) {
             </div>
           </div>
 
-          {/* Due Date + Assignees Row */}
           <div className="grid grid-cols-2 gap-4">
-            {/* Due Date */}
             <div>
               <label className="mb-1.5 block text-xs font-medium uppercase tracking-wider text-muted-foreground">
                 Due Date
@@ -676,7 +1169,6 @@ function AddTaskModal({ isOpen, onClose, onCreated }: AddTaskModalProps) {
               </div>
             </div>
 
-            {/* Assignees */}
             <div>
               <label className="mb-1.5 block text-xs font-medium uppercase tracking-wider text-muted-foreground">
                 Assignees
@@ -709,7 +1201,6 @@ function AddTaskModal({ isOpen, onClose, onCreated }: AddTaskModalProps) {
             </div>
           </div>
 
-          {/* Footer */}
           <div className="flex items-center justify-between border-t border-[#1E1E1E] pt-4">
             <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
               <AlertCircle className="h-3 w-3" />
@@ -755,13 +1246,17 @@ export default function TasksPage() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkLoading, setBulkLoading] = useState(false);
   const [showAssignDropdown, setShowAssignDropdown] = useState(false);
-  const [expandedParents, setExpandedParents] = useState<Set<string>>(new Set());
+  const [expandedParents, setExpandedParents] = useState<Set<string>>(
+    new Set()
+  );
+  const [subtaskInputId, setSubtaskInputId] = useState<string | null>(null);
   const lastClickedRef = useRef<string | null>(null);
   const isDraggingRef = useRef(false);
 
-  // End drag-select on global mouseup
   useEffect(() => {
-    const handleMouseUp = () => { isDraggingRef.current = false; };
+    const handleMouseUp = () => {
+      isDraggingRef.current = false;
+    };
     window.addEventListener("mouseup", handleMouseUp);
     return () => window.removeEventListener("mouseup", handleMouseUp);
   }, []);
@@ -795,11 +1290,16 @@ export default function TasksPage() {
   }
 
   function toggleSelect(id: string, e?: React.MouseEvent) {
-    if (e?.shiftKey && lastClickedRef.current && lastClickedRef.current !== id) {
+    if (
+      e?.shiftKey &&
+      lastClickedRef.current &&
+      lastClickedRef.current !== id
+    ) {
       const startIdx = flatIds.indexOf(lastClickedRef.current);
       const endIdx = flatIds.indexOf(id);
       if (startIdx !== -1 && endIdx !== -1) {
-        const [from, to] = startIdx < endIdx ? [startIdx, endIdx] : [endIdx, startIdx];
+        const [from, to] =
+          startIdx < endIdx ? [startIdx, endIdx] : [endIdx, startIdx];
         const rangeIds = flatIds.slice(from, to + 1);
         setSelectedIds((prev) => {
           const next = new Set(prev);
@@ -886,6 +1386,32 @@ export default function TasksPage() {
     }
   }
 
+  async function bulkStatusChange(status: string) {
+    if (!selectedIds.size) return;
+    const count = selectedIds.size;
+
+    setBulkLoading(true);
+    try {
+      const ids = Array.from(selectedIds);
+      await Promise.all(
+        ids.map((id) =>
+          fetch("/api/clickup/update", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ task_id: id, status }),
+          })
+        )
+      );
+      toast.success(`${count} task(s) → ${status}`);
+      clearSelection();
+      fetchTasks();
+    } catch {
+      toast.error("Failed to update status");
+    } finally {
+      setBulkLoading(false);
+    }
+  }
+
   const fetchTasks = useCallback(async () => {
     try {
       setRefreshing(true);
@@ -920,7 +1446,7 @@ export default function TasksPage() {
     }
   }
 
-  // Filter top-level tasks by search (also match if any child matches)
+  // Filter
   const filtered = search
     ? topLevel.filter((t) => {
         const q = search.toLowerCase();
@@ -930,10 +1456,10 @@ export default function TasksPage() {
       })
     : topLevel;
 
-  // Group by status
+  // Group by status (case-insensitive)
   const statusMap = new Map<string, StatusGroup>();
   for (const task of filtered) {
-    const key = task.status.status;
+    const key = task.status.status.toLowerCase();
     if (!statusMap.has(key)) {
       statusMap.set(key, {
         status: task.status.status,
@@ -945,12 +1471,23 @@ export default function TasksPage() {
     statusMap.get(key)!.tasks.push(task);
   }
 
+  // Ensure all three statuses appear even if empty
+  for (const opt of STATUS_OPTIONS) {
+    if (!statusMap.has(opt.value)) {
+      statusMap.set(opt.value, {
+        status: opt.label,
+        color: opt.color,
+        type: opt.value === "complete" ? "closed" : "open",
+        tasks: [],
+      });
+    }
+  }
+
   const sorted = Array.from(statusMap.values()).sort(
-    (a, b) =>
-      (STATUS_ORDER[a.status] ?? 99) - (STATUS_ORDER[b.status] ?? 99)
+    (a, b) => getStatusOrder(a.status) - getStatusOrder(b.status)
   );
 
-  // Flat ordered list of all visible task IDs (for shift-select)
+  // Flat ordered IDs for shift-select
   const flatIds: string[] = [];
   for (const group of sorted) {
     for (const task of group.tasks) {
@@ -961,6 +1498,10 @@ export default function TasksPage() {
         }
       }
     }
+  }
+
+  function handleAddSubtask(taskId: string) {
+    setSubtaskInputId(subtaskInputId === taskId ? null : taskId);
   }
 
   return (
@@ -999,7 +1540,7 @@ export default function TasksPage() {
 
         {/* Bulk Action Bar */}
         {selectedIds.size > 0 && (
-          <div className="flex items-center gap-3 rounded-xl border border-primary/30 bg-primary/5 px-4 py-3">
+          <div className="flex flex-wrap items-center gap-3 rounded-xl border border-primary/30 bg-primary/5 px-4 py-3">
             <span className="text-sm font-medium text-primary">
               {selectedIds.size} selected
             </span>
@@ -1017,6 +1558,24 @@ export default function TasksPage() {
               Clear
             </button>
             <div className="flex-1" />
+
+            {/* Bulk Status */}
+            <div className="flex items-center gap-1">
+              {STATUS_OPTIONS.map((opt) => (
+                <button
+                  key={opt.value}
+                  onClick={() => bulkStatusChange(opt.value)}
+                  disabled={bulkLoading}
+                  className="rounded-md px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-white transition-opacity hover:opacity-80 disabled:opacity-50"
+                  style={{ backgroundColor: opt.color }}
+                  title={`Move to ${opt.label}`}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+
+            <div className="h-4 w-px bg-[#1E1E1E]" />
 
             {/* Assign dropdown */}
             <div className="relative">
@@ -1047,7 +1606,9 @@ export default function TasksPage() {
                   ))}
                   <div className="my-1 border-t border-[#1E1E1E]" />
                   <button
-                    onClick={() => bulkAssign(TEAM_MEMBERS.map((m) => m.id))}
+                    onClick={() =>
+                      bulkAssign(TEAM_MEMBERS.map((m) => m.id))
+                    }
                     className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors hover:bg-[#1E1E1E]"
                   >
                     <UserPlus className="h-4 w-4 text-muted-foreground" />
@@ -1108,17 +1669,23 @@ export default function TasksPage() {
         {/* Task Groups */}
         {!loading && !error && (
           <>
-            {sorted.length === 0 ? (
-              <div className="flex flex-col items-center justify-center rounded-xl border border-[#1E1E1E] bg-[#111111] py-16">
-                <p className="text-sm text-muted-foreground">
-                  {search ? "No tasks match your search" : "No tasks found"}
-                </p>
-              </div>
-            ) : (
-              sorted.map((group) => (
-                <StatusSection key={group.status} group={group} onTaskClick={setSelectedTask} selectedIds={selectedIds} onToggleSelect={toggleSelect} childrenMap={childrenMap} expandedParents={expandedParents} onToggleExpand={toggleExpand} onDragStart={handleDragStart} onDragEnter={handleDragEnter} />
-              ))
-            )}
+            {sorted.map((group) => (
+              <StatusSection
+                key={group.status}
+                group={group}
+                onTaskClick={setSelectedTask}
+                selectedIds={selectedIds}
+                onToggleSelect={toggleSelect}
+                childrenMap={childrenMap}
+                expandedParents={expandedParents}
+                onToggleExpand={toggleExpand}
+                onDragStart={handleDragStart}
+                onDragEnter={handleDragEnter}
+                onUpdate={fetchTasks}
+                subtaskInputId={subtaskInputId}
+                onAddSubtask={handleAddSubtask}
+              />
+            ))}
           </>
         )}
       </div>
@@ -1134,6 +1701,9 @@ export default function TasksPage() {
       <TaskDetailDrawer
         task={selectedTask}
         onClose={() => setSelectedTask(null)}
+        onUpdate={() => {
+          fetchTasks();
+        }}
       />
     </PageWrapper>
   );
