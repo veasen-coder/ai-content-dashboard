@@ -20,6 +20,8 @@ import {
   CheckSquare,
   Square,
   Loader2,
+  Circle,
+  CheckCircle2,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -312,8 +314,9 @@ function TaskDetailDrawer({
   );
 }
 
-function TaskRow({ task, onClick, selected, onToggleSelect, indent, hasChildren, expanded, onToggleExpand, onDragStart, onDragEnter }: { task: Task; onClick: () => void; selected: boolean; onToggleSelect: (id: string, e: React.MouseEvent) => void; indent?: boolean; hasChildren?: boolean; expanded?: boolean; onToggleExpand?: () => void; onDragStart?: (id: string) => void; onDragEnter?: (id: string) => void }) {
+function TaskRow({ task, onClick, selected, onToggleSelect, indent, hasChildren, expanded, onToggleExpand, onDragStart, onDragEnter, onMarkDone }: { task: Task; onClick: () => void; selected: boolean; onToggleSelect: (id: string, e: React.MouseEvent) => void; indent?: boolean; hasChildren?: boolean; expanded?: boolean; onToggleExpand?: () => void; onDragStart?: (id: string) => void; onDragEnter?: (id: string) => void; onMarkDone?: (id: string) => void }) {
   const due = formatDueDate(task.due_date);
+  const isDone = task.status.status.toLowerCase() === "complete";
   const priorityLabel = task.priority
     ? PRIORITY_LABELS[task.priority.priority] || task.priority.priority
     : null;
@@ -407,11 +410,18 @@ function TaskRow({ task, onClick, selected, onToggleSelect, indent, hasChildren,
           </span>
         )}
       </div>
+      <button
+        onClick={(e) => { e.stopPropagation(); onMarkDone?.(task.id); }}
+        title={isDone ? "Completed" : "Mark as done"}
+        className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full transition-colors ${isDone ? "text-[#10B981]" : "text-muted-foreground/40 hover:text-[#10B981] hover:bg-[#10B981]/10"}`}
+      >
+        {isDone ? <CheckCircle2 className="h-5 w-5" /> : <Circle className="h-5 w-5" />}
+      </button>
     </div>
   );
 }
 
-function StatusSection({ group, onTaskClick, selectedIds, onToggleSelect, childrenMap, expandedParents, onToggleExpand, onDragStart, onDragEnter }: { group: StatusGroup; onTaskClick: (task: Task) => void; selectedIds: Set<string>; onToggleSelect: (id: string, e: React.MouseEvent) => void; childrenMap: Map<string, Task[]>; expandedParents: Set<string>; onToggleExpand: (id: string) => void; onDragStart: (id: string) => void; onDragEnter: (id: string) => void }) {
+function StatusSection({ group, onTaskClick, selectedIds, onToggleSelect, childrenMap, expandedParents, onToggleExpand, onDragStart, onDragEnter, onMarkDone }: { group: StatusGroup; onTaskClick: (task: Task) => void; selectedIds: Set<string>; onToggleSelect: (id: string, e: React.MouseEvent) => void; childrenMap: Map<string, Task[]>; expandedParents: Set<string>; onToggleExpand: (id: string) => void; onDragStart: (id: string) => void; onDragEnter: (id: string) => void; onMarkDone: (id: string) => void }) {
   const [isOpen, setIsOpen] = useState(group.type !== "closed");
 
   return (
@@ -450,6 +460,7 @@ function StatusSection({ group, onTaskClick, selectedIds, onToggleSelect, childr
             <span className="w-24 text-right text-xs font-medium uppercase tracking-wider text-muted-foreground">
               Priority
             </span>
+            <span className="w-7 shrink-0" />
           </div>
           {group.tasks.map((task) => {
             const children = childrenMap.get(task.id) || [];
@@ -457,9 +468,9 @@ function StatusSection({ group, onTaskClick, selectedIds, onToggleSelect, childr
             const isExpanded = expandedParents.has(task.id);
             return (
               <div key={task.id}>
-                <TaskRow task={task} onClick={() => onTaskClick(task)} selected={selectedIds.has(task.id)} onToggleSelect={onToggleSelect} hasChildren={hasChildren} expanded={isExpanded} onToggleExpand={() => onToggleExpand(task.id)} onDragStart={onDragStart} onDragEnter={onDragEnter} />
+                <TaskRow task={task} onClick={() => onTaskClick(task)} selected={selectedIds.has(task.id)} onToggleSelect={onToggleSelect} hasChildren={hasChildren} expanded={isExpanded} onToggleExpand={() => onToggleExpand(task.id)} onDragStart={onDragStart} onDragEnter={onDragEnter} onMarkDone={onMarkDone} />
                 {hasChildren && isExpanded && children.map((child) => (
-                  <TaskRow key={child.id} task={child} onClick={() => onTaskClick(child)} selected={selectedIds.has(child.id)} onToggleSelect={onToggleSelect} indent onDragStart={onDragStart} onDragEnter={onDragEnter} />
+                  <TaskRow key={child.id} task={child} onClick={() => onTaskClick(child)} selected={selectedIds.has(child.id)} onToggleSelect={onToggleSelect} indent onDragStart={onDragStart} onDragEnter={onDragEnter} onMarkDone={onMarkDone} />
                 ))}
               </div>
             );
@@ -829,6 +840,21 @@ export default function TasksPage() {
     setShowAssignDropdown(false);
   }
 
+  async function markDone(taskId: string) {
+    try {
+      const res = await fetch("/api/clickup/update", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ task_id: taskId, status: "complete" }),
+      });
+      if (!res.ok) throw new Error("Failed to update");
+      toast.success("Task marked as done");
+      fetchTasks();
+    } catch {
+      toast.error("Failed to mark task as done");
+    }
+  }
+
   async function bulkDelete() {
     if (!selectedIds.size) return;
     const count = selectedIds.size;
@@ -1116,7 +1142,7 @@ export default function TasksPage() {
               </div>
             ) : (
               sorted.map((group) => (
-                <StatusSection key={group.status} group={group} onTaskClick={setSelectedTask} selectedIds={selectedIds} onToggleSelect={toggleSelect} childrenMap={childrenMap} expandedParents={expandedParents} onToggleExpand={toggleExpand} onDragStart={handleDragStart} onDragEnter={handleDragEnter} />
+                <StatusSection key={group.status} group={group} onTaskClick={setSelectedTask} selectedIds={selectedIds} onToggleSelect={toggleSelect} childrenMap={childrenMap} expandedParents={expandedParents} onToggleExpand={toggleExpand} onDragStart={handleDragStart} onDragEnter={handleDragEnter} onMarkDone={markDone} />
               ))
             )}
           </>
