@@ -43,8 +43,10 @@ function uid() {
   return crypto.randomUUID();
 }
 
-async function fileToBase64(file: File): Promise<string> {
-  // Compress if > 1MB
+async function fileToBase64(
+  file: File
+): Promise<{ base64: string; mime_type: string }> {
+  // Compress if > 1MB — always outputs JPEG
   if (file.size > 1_000_000 && file.type.startsWith("image/")) {
     const bitmap = await createImageBitmap(file);
     const canvas = document.createElement("canvas");
@@ -56,15 +58,20 @@ async function fileToBase64(file: File): Promise<string> {
       canvas.toBlob((b) => resolve(b!), "image/jpeg", 0.8)
     );
     const buf = await blob.arrayBuffer();
-    return btoa(
-      new Uint8Array(buf).reduce((s, b) => s + String.fromCharCode(b), "")
-    );
+    return {
+      base64: btoa(
+        new Uint8Array(buf).reduce((s, b) => s + String.fromCharCode(b), "")
+      ),
+      mime_type: "image/jpeg",
+    };
   }
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => {
       const result = reader.result as string;
-      resolve(result.split(",")[1]);
+      // Detect actual mime from data URL: "data:image/jpeg;base64,..."
+      const detectedMime = result.match(/^data:(image\/\w+);/)?.[1] || file.type;
+      resolve({ base64: result.split(",")[1], mime_type: detectedMime });
     };
     reader.onerror = reject;
     reader.readAsDataURL(file);
@@ -143,13 +150,13 @@ export default function ImageDumpPage() {
     const newImages: PendingImage[] = [];
     for (const file of Array.from(files)) {
       if (!file.type.startsWith("image/")) continue;
-      const base64 = await fileToBase64(file);
+      const { base64, mime_type } = await fileToBase64(file);
       newImages.push({
         id: uid(),
         file,
         preview: URL.createObjectURL(file),
         base64,
-        mime_type: file.type === "image/jpeg" ? "image/jpeg" : "image/png",
+        mime_type,
       });
     }
     setPendingImages((prev) => [...prev, ...newImages]);
