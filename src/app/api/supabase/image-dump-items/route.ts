@@ -15,9 +15,14 @@ export async function GET(request: NextRequest) {
       );
     }
 
+    const includeData = request.nextUrl.searchParams.get("include_data") === "true";
+    const columns = includeData
+      ? "*"
+      : "id, dump_id, file_name, mime_type, sort_order, created_at";
+
     const { data, error } = await supabase
       .from("image_dump_items")
-      .select("id, dump_id, file_name, mime_type, sort_order, created_at")
+      .select(columns)
       .eq("dump_id", dumpId)
       .order("sort_order", { ascending: true });
 

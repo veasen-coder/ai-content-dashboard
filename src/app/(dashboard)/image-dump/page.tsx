@@ -110,6 +110,11 @@ export default function ImageDumpPage() {
   const [dumps, setDumps] = useState<ImageDump[]>([]);
   const [activeDumpId, setActiveDumpId] = useState<string | null>(null);
   const [pendingImages, setPendingImages] = useState<PendingImage[]>([]);
+  const [dumpImages, setDumpImages] = useState<
+    { id: string; mime_type: string; base64_data: string; file_name: string | null }[]
+  >([]);
+  const [loadingImages, setLoadingImages] = useState(false);
+  const [expandedImage, setExpandedImage] = useState<string | null>(null);
   const [notes, setNotes] = useState("");
   const [analyzing, setAnalyzing] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -136,6 +141,26 @@ export default function ImageDumpPage() {
   useEffect(() => {
     fetchDumps();
   }, [fetchDumps]);
+
+  // ─── Fetch images for active dump ─────────────────────────
+  useEffect(() => {
+    if (!activeDumpId) {
+      setDumpImages([]);
+      return;
+    }
+    let cancelled = false;
+    setLoadingImages(true);
+    fetch(`/api/supabase/image-dump-items?dump_id=${activeDumpId}&include_data=true`)
+      .then((r) => r.json())
+      .then((data) => {
+        if (!cancelled && Array.isArray(data)) setDumpImages(data);
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (!cancelled) setLoadingImages(false);
+      });
+    return () => { cancelled = true; };
+  }, [activeDumpId]);
 
   // ─── Create new dump ──────────────────────────────────────
   async function handleNewDump() {
@@ -604,6 +629,44 @@ export default function ImageDumpPage() {
                   Delete
                 </button>
               </div>
+
+              {/* Uploaded images gallery */}
+              {dumpImages.length > 0 && (
+                <div className="space-y-2">
+                  <p className="text-xs font-medium text-muted-foreground">
+                    Uploaded Images ({dumpImages.length})
+                  </p>
+                  <div className="grid grid-cols-4 gap-2 sm:grid-cols-6 lg:grid-cols-8">
+                    {dumpImages.map((img) => (
+                      <button
+                        key={img.id}
+                        onClick={() => setExpandedImage(expandedImage === img.id ? null : img.id)}
+                        className={cn(
+                          "relative overflow-hidden rounded-lg border transition-all hover:border-primary/50",
+                          expandedImage === img.id
+                            ? "border-primary col-span-4 sm:col-span-3 lg:col-span-4"
+                            : "border-[#1E1E1E]"
+                        )}
+                      >
+                        <img
+                          src={`data:${img.mime_type};base64,${img.base64_data}`}
+                          alt={img.file_name || "Uploaded image"}
+                          className={cn(
+                            "w-full object-cover",
+                            expandedImage === img.id ? "h-auto max-h-96" : "h-20"
+                          )}
+                        />
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {loadingImages && (
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Loading images...
+                </div>
+              )}
 
               {activeDump.status === "analyzing" && (
                 <div className="flex flex-col items-center justify-center py-16">
