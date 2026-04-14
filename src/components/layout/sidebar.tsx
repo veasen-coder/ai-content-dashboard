@@ -12,7 +12,6 @@ import {
   FolderOpen,
   Bot,
   Cpu,
-  ImagePlus,
   MessageSquare,
   Settings,
   ChevronLeft,
@@ -29,7 +28,6 @@ const navItems = [
   { href: "/social", label: "Social Media", icon: Smartphone },
   { href: "/meta-ads", label: "Meta Ads", icon: Megaphone },
   { href: "/resources", label: "Resources", icon: FolderOpen },
-  { href: "/image-dump", label: "Image Dump", icon: ImagePlus },
   { href: "/agents", label: "Agents", icon: Cpu },
   { href: "/assistant", label: "Assistant", icon: Bot },
 ];

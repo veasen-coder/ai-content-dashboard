@@ -529,7 +529,7 @@ export default function ImageDumpPage() {
   // RENDER
   // ═════════════════════════════════════════════════════════
   return (
-    <PageWrapper title="Image Dump">
+    <PageWrapper title="Image Summary Agent">
       <div className="flex h-[calc(100vh-8rem)] gap-6">
         {/* ── Left: Dump List ─────────────────────────── */}
         <div className="w-72 shrink-0 space-y-3">

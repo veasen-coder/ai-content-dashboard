@@ -14,6 +14,10 @@ import {
   AlertTriangle,
   CheckCircle2,
   Camera,
+  Megaphone,
+  FolderOpen,
+  MessageSquare,
+  Lightbulb,
 } from "lucide-react";
 import Link from "next/link";
 
@@ -64,6 +68,35 @@ interface FBProfile {
   name: string;
   fan_count: number;
   followers_count: number;
+}
+
+interface MetaAdSummary {
+  spend: number;
+  impressions: number;
+  purchases: number;
+  roas: number;
+}
+
+interface Resource {
+  id: string;
+  name: string;
+  category: string;
+  url?: string;
+}
+
+interface ContentIdea {
+  id: string;
+  platform: string;
+  post_use: string;
+  copywriting: string;
+  status: string;
+  created_at: string;
+}
+
+interface ChatChannel {
+  id: string;
+  name: string;
+  members_count?: number;
 }
 
 // --------------- Helpers ---------------
@@ -167,6 +200,10 @@ export default function DashboardPage() {
   const [tasks, setTasks] = useState<ClickUpTask[]>([]);
   const [igProfile, setIgProfile] = useState<IGProfile | null>(null);
   const [fbProfile, setFbProfile] = useState<FBProfile | null>(null);
+  const [metaAds, setMetaAds] = useState<MetaAdSummary | null>(null);
+  const [resources, setResources] = useState<Resource[]>([]);
+  const [contentIdeas, setContentIdeas] = useState<ContentIdea[]>([]);
+  const [chatChannels, setChatChannels] = useState<ChatChannel[]>([]);
   const [loading, setLoading] = useState(true);
   const [lastFetched, setLastFetched] = useState<string | null>(null);
 
@@ -176,7 +213,7 @@ export default function DashboardPage() {
     const month = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
 
     try {
-      const [balRes, finRes, cliRes, taskRes, igRes, fbRes] =
+      const [balRes, finRes, cliRes, taskRes, igRes, fbRes, adsRes, resRes, ideasRes, chatRes] =
         await Promise.allSettled([
           fetch("/api/supabase/balances"),
           fetch(`/api/supabase/finance?month=${month}`),
@@ -184,6 +221,10 @@ export default function DashboardPage() {
           fetch("/api/clickup/tasks"),
           fetch("/api/instagram/metrics"),
           fetch("/api/facebook/metrics"),
+          fetch("/api/meta-ads/campaigns?date_preset=last_30d"),
+          fetch("/api/supabase/resources"),
+          fetch("/api/agents/content-ideas?limit=5&status=new"),
+          fetch("/api/clickup/chat?action=channels"),
         ]);
 
       if (balRes.status === "fulfilled" && balRes.value.ok) {
@@ -206,6 +247,29 @@ export default function DashboardPage() {
       if (fbRes.status === "fulfilled" && fbRes.value.ok) {
         const fbData = await fbRes.value.json();
         if (fbData.profile) setFbProfile(fbData.profile);
+      }
+      if (adsRes.status === "fulfilled" && adsRes.value.ok) {
+        const adsData = await adsRes.value.json();
+        if (adsData.summary) {
+          setMetaAds({
+            spend: parseFloat(adsData.summary.spend || "0"),
+            impressions: parseInt(adsData.summary.impressions || "0"),
+            purchases: parseInt(adsData.summary.purchases || "0"),
+            roas: parseFloat(adsData.summary.roas || "0"),
+          });
+        }
+      }
+      if (resRes.status === "fulfilled" && resRes.value.ok) {
+        const resData = await resRes.value.json();
+        setResources(Array.isArray(resData) ? resData : resData.data || []);
+      }
+      if (ideasRes.status === "fulfilled" && ideasRes.value.ok) {
+        const ideasData = await ideasRes.value.json();
+        setContentIdeas(ideasData.ideas || []);
+      }
+      if (chatRes.status === "fulfilled" && chatRes.value.ok) {
+        const chatData = await chatRes.value.json();
+        setChatChannels(chatData.channels || []);
       }
 
       setLastFetched(new Date().toISOString());
@@ -599,6 +663,164 @@ export default function DashboardPage() {
                 )}
               </div>
             </div>
+          </SectionCard>
+        </div>
+
+        {/* Fourth Row — Meta Ads + Resources */}
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+          {/* Meta Ads */}
+          <SectionCard title="Meta Ads" href="/meta-ads">
+            {metaAds ? (
+              <div className="grid grid-cols-2 gap-3">
+                <div className="rounded-lg bg-[#0A0A0A] p-3 text-center">
+                  <p className="text-[10px] uppercase tracking-wider text-muted-foreground">
+                    Spend (30d)
+                  </p>
+                  <p className="mt-1 text-sm font-bold font-mono">
+                    {formatMYR(metaAds.spend)}
+                  </p>
+                </div>
+                <div className="rounded-lg bg-[#0A0A0A] p-3 text-center">
+                  <p className="text-[10px] uppercase tracking-wider text-muted-foreground">
+                    ROAS
+                  </p>
+                  <p className={`mt-1 text-sm font-bold font-mono ${metaAds.roas >= 1 ? "text-[#10B981]" : "text-[#EF4444]"}`}>
+                    {metaAds.roas.toFixed(2)}x
+                  </p>
+                </div>
+                <div className="rounded-lg bg-[#0A0A0A] p-3 text-center">
+                  <p className="text-[10px] uppercase tracking-wider text-muted-foreground">
+                    Impressions
+                  </p>
+                  <p className="mt-1 text-sm font-bold font-mono">
+                    {metaAds.impressions.toLocaleString()}
+                  </p>
+                </div>
+                <div className="rounded-lg bg-[#0A0A0A] p-3 text-center">
+                  <p className="text-[10px] uppercase tracking-wider text-muted-foreground">
+                    Purchases
+                  </p>
+                  <p className="mt-1 text-sm font-bold font-mono">
+                    {metaAds.purchases}
+                  </p>
+                </div>
+              </div>
+            ) : (
+              <div className="flex flex-col items-center justify-center py-6 text-muted-foreground">
+                <Megaphone className="h-8 w-8 mb-2 opacity-30" />
+                <p className="text-xs">No ad data available</p>
+              </div>
+            )}
+          </SectionCard>
+
+          {/* Resources */}
+          <SectionCard title="Resources" href="/resources">
+            {resources.length > 0 ? (
+              <div className="space-y-2">
+                <div className="flex items-center justify-between rounded-lg bg-[#0A0A0A] p-3">
+                  <span className="text-sm font-medium">{resources.length} resources</span>
+                  <FolderOpen className="h-4 w-4 text-muted-foreground" />
+                </div>
+                {(() => {
+                  const cats = resources.reduce((acc, r) => {
+                    const c = r.category || "Uncategorized";
+                    acc[c] = (acc[c] || 0) + 1;
+                    return acc;
+                  }, {} as Record<string, number>);
+                  return Object.entries(cats).slice(0, 4).map(([cat, count]) => (
+                    <div
+                      key={cat}
+                      className="flex items-center justify-between rounded-lg border border-[#1E1E1E] bg-[#0A0A0A] px-3 py-2"
+                    >
+                      <span className="text-xs font-medium">{cat}</span>
+                      <span className="text-xs font-mono text-muted-foreground">{count}</span>
+                    </div>
+                  ));
+                })()}
+              </div>
+            ) : (
+              <div className="flex flex-col items-center justify-center py-6 text-muted-foreground">
+                <FolderOpen className="h-8 w-8 mb-2 opacity-30" />
+                <p className="text-xs">No resources yet</p>
+              </div>
+            )}
+          </SectionCard>
+        </div>
+
+        {/* Fifth Row — Content Ideas + Team Chat */}
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+          {/* Content Ideas */}
+          <SectionCard title="Content Ideas" href="/agents/content-ideas">
+            {contentIdeas.length > 0 ? (
+              <div className="space-y-2">
+                {contentIdeas.slice(0, 4).map((idea) => (
+                  <div
+                    key={idea.id}
+                    className="flex items-center gap-3 rounded-lg border border-[#1E1E1E] bg-[#0A0A0A] px-3 py-2.5"
+                  >
+                    <Lightbulb className="h-3.5 w-3.5 shrink-0 text-amber-400" />
+                    <div className="min-w-0 flex-1">
+                      <p className="text-xs font-medium truncate">{idea.copywriting}</p>
+                      <p className="text-[10px] text-muted-foreground">
+                        {idea.platform} · {idea.post_use}
+                      </p>
+                    </div>
+                    <span className={`rounded-md px-1.5 py-0.5 text-[9px] font-semibold ${
+                      idea.status === "new"
+                        ? "bg-amber-500/10 text-amber-400"
+                        : idea.status === "used"
+                        ? "bg-emerald-500/10 text-emerald-400"
+                        : "bg-gray-500/10 text-gray-400"
+                    }`}>
+                      {idea.status}
+                    </span>
+                  </div>
+                ))}
+                {contentIdeas.length > 4 && (
+                  <p className="text-center text-[10px] text-muted-foreground">
+                    +{contentIdeas.length - 4} more ideas
+                  </p>
+                )}
+              </div>
+            ) : (
+              <div className="flex flex-col items-center justify-center py-6 text-muted-foreground">
+                <Lightbulb className="h-8 w-8 mb-2 opacity-30" />
+                <p className="text-xs">No pending content ideas</p>
+              </div>
+            )}
+          </SectionCard>
+
+          {/* Team Chat */}
+          <SectionCard title="Team Chat" href="/chat">
+            {chatChannels.length > 0 ? (
+              <div className="space-y-2">
+                <div className="flex items-center justify-between rounded-lg bg-[#0A0A0A] p-3">
+                  <span className="text-sm font-medium">{chatChannels.length} channels</span>
+                  <MessageSquare className="h-4 w-4 text-muted-foreground" />
+                </div>
+                {chatChannels.slice(0, 3).map((ch) => (
+                  <div
+                    key={ch.id}
+                    className="flex items-center gap-3 rounded-lg border border-[#1E1E1E] bg-[#0A0A0A] px-3 py-2.5"
+                  >
+                    <div className="h-2 w-2 rounded-full bg-emerald-400 shrink-0" />
+                    <span className="text-xs font-medium flex-1 truncate">
+                      {ch.name}
+                    </span>
+                    {ch.members_count && (
+                      <span className="text-[10px] text-muted-foreground">
+                        {ch.members_count} members
+                      </span>
+                    )}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="flex flex-col items-center justify-center py-6 text-muted-foreground">
+                <MessageSquare className="h-8 w-8 mb-2 opacity-30" />
+                <p className="text-xs">No chat channels</p>
+              </div>
+            )}
           </SectionCard>
         </div>
 

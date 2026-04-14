@@ -11,7 +11,12 @@ import {
   Share2,
   ExternalLink,
   Image,
+  Plus,
+  X,
+  Loader2,
+  Upload,
 } from "lucide-react";
+import { toast } from "sonner";
 
 // --------------- Types ---------------
 
@@ -179,6 +184,253 @@ function FBPostRow({ post }: { post: FacebookPost }) {
   );
 }
 
+// --------------- Create Post Modal ---------------
+
+function CreatePostModal({
+  isOpen,
+  onClose,
+  onPosted,
+}: {
+  isOpen: boolean;
+  onClose: () => void;
+  onPosted: () => void;
+}) {
+  const [platform, setPlatform] = useState<"instagram" | "facebook" | "both">(
+    "both"
+  );
+  const [caption, setCaption] = useState("");
+  const [imageUrl, setImageUrl] = useState("");
+  const [mediaType, setMediaType] = useState<
+    "IMAGE" | "VIDEO" | "REELS" | "CAROUSEL_ALBUM"
+  >("IMAGE");
+  const [shareToFeed, setShareToFeed] = useState(true);
+  const [publishing, setPublishing] = useState(false);
+
+  function reset() {
+    setCaption("");
+    setImageUrl("");
+    setMediaType("IMAGE");
+    setPlatform("both");
+    setShareToFeed(true);
+  }
+
+  async function handlePublish(e: React.FormEvent) {
+    e.preventDefault();
+    if (!caption.trim()) return;
+
+    setPublishing(true);
+    try {
+      const body: Record<string, unknown> = {
+        platform,
+        caption: caption.trim(),
+        media_type: mediaType,
+        share_to_feed: shareToFeed,
+      };
+      if (imageUrl.trim()) body.image_url = imageUrl.trim();
+
+      const res = await fetch("/api/social/publish", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        toast.error(data.error || "Failed to publish");
+        return;
+      }
+
+      const targets = [];
+      if (data.instagram) targets.push("Instagram");
+      if (data.facebook) targets.push("Facebook");
+      toast.success(`Published to ${targets.join(" & ")}`);
+      reset();
+      onClose();
+      onPosted();
+    } catch {
+      toast.error("Failed to publish post");
+    } finally {
+      setPublishing(false);
+    }
+  }
+
+  if (!isOpen) return null;
+
+  const PLATFORM_OPTIONS = [
+    { value: "instagram" as const, label: "Instagram", color: "#E1306C" },
+    { value: "facebook" as const, label: "Facebook", color: "#1877F2" },
+    { value: "both" as const, label: "Both", color: "#7C3AED" },
+  ];
+
+  const MEDIA_TYPES = [
+    { value: "IMAGE" as const, label: "Photo" },
+    { value: "VIDEO" as const, label: "Video" },
+    { value: "REELS" as const, label: "Reels" },
+    { value: "CAROUSEL_ALBUM" as const, label: "Carousel" },
+  ];
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center">
+      <div
+        className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+        onClick={onClose}
+      />
+      <div className="relative z-10 w-full max-w-lg rounded-xl border border-[#1E1E1E] bg-[#111111] shadow-2xl">
+        <div className="flex items-center justify-between border-b border-[#1E1E1E] px-5 py-4">
+          <h2 className="text-base font-semibold">Create Post</h2>
+          <button
+            onClick={onClose}
+            className="flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-[#1E1E1E] hover:text-foreground"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        <form onSubmit={handlePublish} className="p-5 space-y-4">
+          {/* Platform */}
+          <div>
+            <label className="mb-1.5 block text-xs font-medium uppercase tracking-wider text-muted-foreground">
+              Post To
+            </label>
+            <div className="flex gap-2">
+              {PLATFORM_OPTIONS.map((opt) => (
+                <button
+                  key={opt.value}
+                  type="button"
+                  onClick={() => setPlatform(opt.value)}
+                  className={`flex-1 rounded-lg border px-3 py-2.5 text-xs font-medium transition-all ${
+                    platform === opt.value
+                      ? "text-white ring-1 ring-white/20"
+                      : "border-[#1E1E1E] bg-[#0A0A0A] text-muted-foreground hover:text-foreground"
+                  }`}
+                  style={{
+                    backgroundColor:
+                      platform === opt.value ? opt.color : undefined,
+                    borderColor:
+                      platform === opt.value ? opt.color : undefined,
+                  }}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Media Type */}
+          <div>
+            <label className="mb-1.5 block text-xs font-medium uppercase tracking-wider text-muted-foreground">
+              Media Type
+            </label>
+            <div className="flex gap-1.5">
+              {MEDIA_TYPES.map((opt) => (
+                <button
+                  key={opt.value}
+                  type="button"
+                  onClick={() => setMediaType(opt.value)}
+                  className={`rounded-md px-2.5 py-1.5 text-xs font-medium transition-all ${
+                    mediaType === opt.value
+                      ? "bg-primary text-white"
+                      : "bg-[#1E1E1E] text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Image URL */}
+          <div>
+            <label className="mb-1.5 block text-xs font-medium uppercase tracking-wider text-muted-foreground">
+              Image / Video URL
+            </label>
+            <div className="relative">
+              <Upload className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+              <input
+                type="url"
+                value={imageUrl}
+                onChange={(e) => setImageUrl(e.target.value)}
+                placeholder="https://example.com/image.jpg (public URL)"
+                className="w-full rounded-lg border border-[#1E1E1E] bg-[#0A0A0A] pl-9 pr-3 py-2.5 text-sm outline-none transition-colors focus:border-primary"
+              />
+            </div>
+            <p className="mt-1 text-[10px] text-muted-foreground">
+              Must be a publicly accessible URL. Required for Instagram.
+            </p>
+          </div>
+
+          {/* Caption */}
+          <div>
+            <label className="mb-1.5 block text-xs font-medium uppercase tracking-wider text-muted-foreground">
+              Caption
+            </label>
+            <textarea
+              value={caption}
+              onChange={(e) => setCaption(e.target.value)}
+              placeholder="Write your caption... #hashtags @mentions"
+              rows={5}
+              required
+              className="w-full resize-none rounded-lg border border-[#1E1E1E] bg-[#0A0A0A] px-3 py-2.5 text-sm outline-none transition-colors focus:border-primary"
+            />
+            <p className="mt-1 text-right text-[10px] text-muted-foreground">
+              {caption.length} / 2,200
+            </p>
+          </div>
+
+          {/* Reels: Share to Feed */}
+          {mediaType === "REELS" && (
+            <label className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={shareToFeed}
+                onChange={(e) => setShareToFeed(e.target.checked)}
+                className="h-4 w-4 rounded border-[#1E1E1E] bg-[#0A0A0A]"
+              />
+              <span className="text-xs text-muted-foreground">
+                Also share to feed
+              </span>
+            </label>
+          )}
+
+          {/* Footer */}
+          <div className="flex items-center justify-between border-t border-[#1E1E1E] pt-4">
+            <p className="text-[10px] text-muted-foreground">
+              Posts via Facebook Graph API
+            </p>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  reset();
+                  onClose();
+                }}
+                className="rounded-lg border border-[#1E1E1E] px-4 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-[#1E1E1E] hover:text-foreground"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={!caption.trim() || publishing}
+                className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"
+              >
+                {publishing ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Publishing...
+                  </>
+                ) : (
+                  "Publish"
+                )}
+              </button>
+            </div>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 // --------------- Main Page ---------------
 
 export default function SocialPage() {
@@ -189,6 +441,7 @@ export default function SocialPage() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [lastFetched, setLastFetched] = useState<string | null>(null);
+  const [showCreatePost, setShowCreatePost] = useState(false);
 
   const fetchData = useCallback(async () => {
     setRefreshing(true);
@@ -237,7 +490,7 @@ export default function SocialPage() {
     <PageWrapper title="Social Media" lastSynced={lastFetched}>
       <div className="space-y-6">
         {/* Toolbar */}
-        <div className="flex items-center justify-end">
+        <div className="flex items-center justify-end gap-3">
           <button
             onClick={fetchData}
             disabled={refreshing}
@@ -247,6 +500,13 @@ export default function SocialPage() {
               className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`}
             />
             Refresh
+          </button>
+          <button
+            onClick={() => setShowCreatePost(true)}
+            className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+          >
+            <Plus className="h-4 w-4" />
+            Create Post
           </button>
         </div>
 
@@ -438,6 +698,13 @@ export default function SocialPage() {
           </>
         )}
       </div>
+
+      {/* Create Post Modal */}
+      <CreatePostModal
+        isOpen={showCreatePost}
+        onClose={() => setShowCreatePost(false)}
+        onPosted={fetchData}
+      />
     </PageWrapper>
   );
 }

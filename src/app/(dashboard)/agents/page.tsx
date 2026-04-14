@@ -19,6 +19,7 @@ import {
   Square,
   Lightbulb,
   CalendarClock,
+  ImagePlus,
 } from "lucide-react";
 import { toast } from "sonner";
 import ReactMarkdown from "react-markdown";
@@ -721,7 +722,7 @@ export default function AgentsPage() {
         </div>
 
         {/* Auto Agents - Quick Access */}
-        <div className="grid gap-4 md:grid-cols-2">
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
           <Link
             href="/agents/daily-summary"
             className="group flex items-center gap-4 rounded-xl border border-violet-500/30 bg-violet-500/5 p-5 transition-all hover:border-violet-500/50 hover:bg-violet-500/10"
@@ -749,6 +750,22 @@ export default function AgentsPage() {
               <h3 className="text-base font-semibold">Content Ideas Agent</h3>
               <p className="mt-0.5 text-sm text-muted-foreground">
                 AI-generated posting ideas with copywriting, style guides &amp; image prompts &middot; Every 3 days
+              </p>
+            </div>
+            <ChevronRight className="h-5 w-5 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" />
+          </Link>
+
+          <Link
+            href="/agents/image-summary"
+            className="group flex items-center gap-4 rounded-xl border border-cyan-500/30 bg-cyan-500/5 p-5 transition-all hover:border-cyan-500/50 hover:bg-cyan-500/10"
+          >
+            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-cyan-500/15">
+              <ImagePlus className="h-6 w-6 text-cyan-400" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <h3 className="text-base font-semibold">Image Summary Agent</h3>
+              <p className="mt-0.5 text-sm text-muted-foreground">
+                Upload screenshots &amp; images — AI extracts contacts, leads &amp; action items automatically
               </p>
             </div>
             <ChevronRight className="h-5 w-5 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" />
