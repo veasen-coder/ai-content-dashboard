@@ -184,6 +184,7 @@ export default function ImageDumpPage() {
   async function handleAnalyze() {
     if (!pendingImages.length) return;
     setAnalyzing(true);
+    let dumpId: string | null = null;
 
     try {
       // 1. Create dump
@@ -197,6 +198,7 @@ export default function ImageDumpPage() {
       });
       const dump = await dumpRes.json();
       if (!dumpRes.ok) throw new Error(dump.error);
+      dumpId = dump.id;
 
       // 2. Upload images
       const itemsRes = await fetch("/api/supabase/image-dump-items", {
@@ -273,9 +275,18 @@ export default function ImageDumpPage() {
       await fetchDumps();
       setActiveDumpId(dump.id);
     } catch (err) {
-      toast.error(
-        err instanceof Error ? err.message : "Failed to analyze images"
-      );
+      const msg =
+        err instanceof Error ? err.message : "Failed to analyze images";
+      toast.error(msg);
+      // Clean up failed dump so it doesn't linger as "pending"
+      if (dumpId) {
+        await fetch("/api/supabase/image-dumps", {
+          method: "DELETE",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id: dumpId }),
+        });
+        fetchDumps();
+      }
     } finally {
       setAnalyzing(false);
     }
