@@ -13,6 +13,7 @@ import {
   Bot,
   Cpu,
   ImagePlus,
+  MessageSquare,
   Settings,
   ChevronLeft,
   ChevronRight,
@@ -89,6 +90,20 @@ export function Sidebar() {
 
       {/* Footer */}
       <div className="border-t border-[#1E1E1E] p-2">
+        <Link
+          href="/chat"
+          className={cn(
+            "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors",
+            pathname === "/chat"
+              ? "bg-primary/10 text-primary"
+              : "text-muted-foreground hover:bg-[#1E1E1E] hover:text-foreground",
+            isCollapsed && "justify-center px-2"
+          )}
+          title={isCollapsed ? "Team Chat" : undefined}
+        >
+          <MessageSquare className="h-5 w-5 shrink-0" />
+          {!isCollapsed && <span>Team Chat</span>}
+        </Link>
         <Link
           href="/settings"
           className={cn(
