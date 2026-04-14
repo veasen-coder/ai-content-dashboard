@@ -115,6 +115,62 @@ export interface SocialMetric {
   fetched_at: string;
 }
 
+// Image Dump types
+export type ImageDumpStatus =
+  | "pending"
+  | "analyzing"
+  | "reviewed"
+  | "approved"
+  | "rejected"
+  | "partial";
+
+export interface ImageDump {
+  id: string;
+  title: string | null;
+  notes: string | null;
+  status: ImageDumpStatus;
+  analysis_result: AnalysisResult | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ImageDumpItem {
+  id: string;
+  dump_id: string;
+  file_name: string | null;
+  mime_type: string;
+  base64_data: string;
+  sort_order: number;
+  created_at: string;
+}
+
+export interface ExtractedContact {
+  name: string;
+  phone?: string;
+  email?: string;
+  business?: string;
+}
+
+export interface AnalysisGroup {
+  id: string;
+  label: string;
+  image_item_ids: string[];
+  contacts: ExtractedContact[];
+  conversation_summary: string;
+  sentiment: "positive" | "neutral" | "negative";
+  action_items: string[];
+  lead_potential: "high" | "medium" | "low" | "none";
+  lead_reasoning: string;
+  category: string;
+  clarifying_questions?: string[];
+  approval_status?: "pending" | "approved" | "rejected";
+}
+
+export interface AnalysisResult {
+  groups: AnalysisGroup[];
+  raw_notes: string;
+}
+
 // ClickUp types
 export interface ClickUpTask {
   id: string;
