@@ -746,6 +746,47 @@ export default function ImageDumpPage() {
                   dumpStatus={activeDump.status}
                   onApprove={() => handleGroupAction(group.id, "approved")}
                   onReject={() => handleGroupAction(group.id, "rejected")}
+                  onAnswer={async (answers) => {
+                    if (!activeDump) return;
+                    toast("Re-analyzing with your answers...");
+                    try {
+                      const imgs = dumpImages.map((img) => ({
+                        id: img.id,
+                        mime_type: img.mime_type,
+                        base64_data: img.base64_data,
+                      }));
+                      const res = await fetch("/api/claude/analyze-images", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                          images: imgs,
+                          notes: `${activeDump.notes || ""}\n\nAdditional context from user:\n${answers}`,
+                        }),
+                      });
+                      if (!res.ok) throw new Error("Re-analysis failed");
+                      const analysis: AnalysisResult = await res.json();
+                      if (analysis.groups) {
+                        analysis.groups = analysis.groups.map((g) => ({
+                          ...g,
+                          id: g.id || uid(),
+                          approval_status: "pending" as const,
+                        }));
+                      }
+                      await fetch("/api/supabase/image-dumps", {
+                        method: "PATCH",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                          id: activeDump.id,
+                          status: "reviewed",
+                          analysis_result: analysis,
+                        }),
+                      });
+                      toast.success("Re-analysis complete!");
+                      await fetchDumps();
+                    } catch {
+                      toast.error("Re-analysis failed");
+                    }
+                  }}
                 />
               ))}
 
@@ -775,13 +816,16 @@ function GroupCard({
   dumpStatus,
   onApprove,
   onReject,
+  onAnswer,
 }: {
   group: AnalysisGroup;
   dumpStatus: string;
   onApprove: () => void;
   onReject: () => void;
+  onAnswer: (answers: string) => void;
 }) {
   const isDecided = group.approval_status !== "pending";
+  const [answers, setAnswers] = useState("");
 
   return (
     <div
@@ -904,18 +948,35 @@ function GroupCard({
       )}
 
       {/* Clarifying Questions */}
-      {group.clarifying_questions && group.clarifying_questions.length > 0 && (
-        <div className="rounded-lg border border-yellow-500/30 bg-yellow-500/5 p-3">
+      {group.clarifying_questions && group.clarifying_questions.length > 0 && !isDecided && (
+        <div className="space-y-3 rounded-lg border border-yellow-500/30 bg-yellow-500/5 p-4">
           <p className="text-xs font-medium text-yellow-400">
             AI needs clarification
           </p>
-          <ul className="mt-1 space-y-1">
+          <ul className="space-y-1">
             {group.clarifying_questions.map((q, i) => (
               <li key={i} className="text-sm text-yellow-200/80">
-                {q}
+                • {q}
               </li>
             ))}
           </ul>
+          <textarea
+            value={answers}
+            onChange={(e) => setAnswers(e.target.value)}
+            placeholder="Type your answers here..."
+            className="w-full rounded-lg border border-yellow-500/20 bg-[#0A0A0A] px-3 py-2 text-sm outline-none transition-colors focus:border-yellow-500/50 placeholder:text-muted-foreground"
+            rows={3}
+          />
+          <button
+            onClick={() => {
+              if (answers.trim()) onAnswer(answers.trim());
+            }}
+            disabled={!answers.trim()}
+            className="flex items-center gap-1.5 rounded-lg bg-yellow-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-yellow-700 disabled:opacity-50"
+          >
+            <Sparkles className="h-4 w-4" />
+            Re-analyze with answers
+          </button>
         </div>
       )}
 
