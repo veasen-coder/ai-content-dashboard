@@ -15,6 +15,11 @@ import {
   Calendar,
   User,
   AlertCircle,
+  Trash2,
+  UserPlus,
+  CheckSquare,
+  Square,
+  Loader2,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -307,7 +312,7 @@ function TaskDetailDrawer({
   );
 }
 
-function TaskRow({ task, onClick }: { task: Task; onClick: () => void }) {
+function TaskRow({ task, onClick, selected, onToggleSelect }: { task: Task; onClick: () => void; selected: boolean; onToggleSelect: (id: string) => void }) {
   const due = formatDueDate(task.due_date);
   const priorityLabel = task.priority
     ? PRIORITY_LABELS[task.priority.priority] || task.priority.priority
@@ -317,7 +322,17 @@ function TaskRow({ task, onClick }: { task: Task; onClick: () => void }) {
     : null;
 
   return (
-    <div onClick={onClick} role="button" tabIndex={0} className="group flex cursor-pointer items-center gap-4 border-b border-[#1E1E1E] px-4 py-3 transition-colors hover:bg-[#1A1A1A]">
+    <div onClick={onClick} role="button" tabIndex={0} className={`group flex cursor-pointer items-center gap-4 border-b border-[#1E1E1E] px-4 py-3 transition-colors hover:bg-[#1A1A1A] ${selected ? "bg-primary/5" : ""}`}>
+      <button
+        onClick={(e) => { e.stopPropagation(); onToggleSelect(task.id); }}
+        className="shrink-0 text-muted-foreground transition-colors hover:text-foreground"
+      >
+        {selected ? (
+          <CheckSquare className="h-4 w-4 text-primary" />
+        ) : (
+          <Square className="h-4 w-4" />
+        )}
+      </button>
       <div className="flex min-w-0 flex-1 items-center gap-3">
         <span className="truncate text-sm font-medium text-foreground">
           {task.name}
@@ -381,7 +396,7 @@ function TaskRow({ task, onClick }: { task: Task; onClick: () => void }) {
   );
 }
 
-function StatusSection({ group, onTaskClick }: { group: StatusGroup; onTaskClick: (task: Task) => void }) {
+function StatusSection({ group, onTaskClick, selectedIds, onToggleSelect }: { group: StatusGroup; onTaskClick: (task: Task) => void; selectedIds: Set<string>; onToggleSelect: (id: string) => void }) {
   const [isOpen, setIsOpen] = useState(group.type !== "closed");
 
   return (
@@ -422,7 +437,7 @@ function StatusSection({ group, onTaskClick }: { group: StatusGroup; onTaskClick
             </span>
           </div>
           {group.tasks.map((task) => (
-            <TaskRow key={task.id} task={task} onClick={() => onTaskClick(task)} />
+            <TaskRow key={task.id} task={task} onClick={() => onTaskClick(task)} selected={selectedIds.has(task.id)} onToggleSelect={onToggleSelect} />
           ))}
         </div>
       )}
@@ -712,6 +727,85 @@ export default function TasksPage() {
   const [lastFetched, setLastFetched] = useState<string | null>(null);
   const [showAddModal, setShowAddModal] = useState(false);
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkLoading, setBulkLoading] = useState(false);
+  const [showAssignDropdown, setShowAssignDropdown] = useState(false);
+
+  function toggleSelect(id: string) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function selectAll() {
+    const allIds = filtered.map((t) => t.id);
+    setSelectedIds(new Set(allIds));
+  }
+
+  function clearSelection() {
+    setSelectedIds(new Set());
+    setShowAssignDropdown(false);
+  }
+
+  async function bulkDelete() {
+    if (!selectedIds.size) return;
+    const count = selectedIds.size;
+    if (!confirm(`Delete ${count} task(s)? This cannot be undone.`)) return;
+
+    setBulkLoading(true);
+    try {
+      const ids = Array.from(selectedIds);
+      await Promise.all(
+        ids.map((id) =>
+          fetch("/api/clickup/delete", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ task_id: id }),
+          })
+        )
+      );
+      toast.success(`${count} task(s) deleted`);
+      clearSelection();
+      fetchTasks();
+    } catch {
+      toast.error("Failed to delete some tasks");
+    } finally {
+      setBulkLoading(false);
+    }
+  }
+
+  async function bulkAssign(assigneeIds: number[]) {
+    if (!selectedIds.size) return;
+    const count = selectedIds.size;
+
+    setBulkLoading(true);
+    try {
+      const ids = Array.from(selectedIds);
+      await Promise.all(
+        ids.map((id) =>
+          fetch("/api/clickup/update", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              task_id: id,
+              assignees: { add: assigneeIds },
+            }),
+          })
+        )
+      );
+      toast.success(`${count} task(s) assigned`);
+      setShowAssignDropdown(false);
+      clearSelection();
+      fetchTasks();
+    } catch {
+      toast.error("Failed to assign some tasks");
+    } finally {
+      setBulkLoading(false);
+    }
+  }
 
   const fetchTasks = useCallback(async () => {
     try {
@@ -798,6 +892,82 @@ export default function TasksPage() {
           </button>
         </div>
 
+        {/* Bulk Action Bar */}
+        {selectedIds.size > 0 && (
+          <div className="flex items-center gap-3 rounded-xl border border-primary/30 bg-primary/5 px-4 py-3">
+            <span className="text-sm font-medium text-primary">
+              {selectedIds.size} selected
+            </span>
+            <div className="h-4 w-px bg-[#1E1E1E]" />
+            <button
+              onClick={selectAll}
+              className="text-sm text-muted-foreground transition-colors hover:text-foreground"
+            >
+              Select all ({filtered.length})
+            </button>
+            <button
+              onClick={clearSelection}
+              className="text-sm text-muted-foreground transition-colors hover:text-foreground"
+            >
+              Clear
+            </button>
+            <div className="flex-1" />
+
+            {/* Assign dropdown */}
+            <div className="relative">
+              <button
+                onClick={() => setShowAssignDropdown(!showAssignDropdown)}
+                disabled={bulkLoading}
+                className="flex items-center gap-1.5 rounded-lg border border-[#1E1E1E] bg-[#111111] px-3 py-1.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-[#1A1A1A] hover:text-foreground disabled:opacity-50"
+              >
+                <UserPlus className="h-4 w-4" />
+                Assign
+              </button>
+              {showAssignDropdown && (
+                <div className="absolute right-0 top-10 z-50 w-48 rounded-xl border border-[#1E1E1E] bg-[#111111] p-2 shadow-2xl">
+                  {TEAM_MEMBERS.map((member) => (
+                    <button
+                      key={member.id}
+                      onClick={() => bulkAssign([member.id])}
+                      className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors hover:bg-[#1E1E1E]"
+                    >
+                      <div
+                        className="flex h-6 w-6 items-center justify-center rounded-full text-[9px] font-bold text-white"
+                        style={{ backgroundColor: member.color }}
+                      >
+                        {member.initials}
+                      </div>
+                      {member.username}
+                    </button>
+                  ))}
+                  <div className="my-1 border-t border-[#1E1E1E]" />
+                  <button
+                    onClick={() => bulkAssign(TEAM_MEMBERS.map((m) => m.id))}
+                    className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors hover:bg-[#1E1E1E]"
+                  >
+                    <UserPlus className="h-4 w-4 text-muted-foreground" />
+                    Assign both
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* Delete */}
+            <button
+              onClick={bulkDelete}
+              disabled={bulkLoading}
+              className="flex items-center gap-1.5 rounded-lg bg-red-600 px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-red-700 disabled:opacity-50"
+            >
+              {bulkLoading ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Trash2 className="h-4 w-4" />
+              )}
+              Delete
+            </button>
+          </div>
+        )}
+
         {/* Loading */}
         {loading && (
           <div className="space-y-4">
@@ -841,7 +1011,7 @@ export default function TasksPage() {
               </div>
             ) : (
               sorted.map((group) => (
-                <StatusSection key={group.status} group={group} onTaskClick={setSelectedTask} />
+                <StatusSection key={group.status} group={group} onTaskClick={setSelectedTask} selectedIds={selectedIds} onToggleSelect={toggleSelect} />
               ))
             )}
           </>
