@@ -26,16 +26,28 @@ function extractActionValue(values: ActionValueItem[] | undefined, type: string)
   return item ? parseFloat(item.value) || 0 : 0;
 }
 
+function getAccountConfig(account: string | null) {
+  if (account === "bv") {
+    return {
+      token: process.env.META_BV_USER_ACCESS_TOKEN,
+      adAccountId: process.env.META_BV_AD_ACCOUNT_ID,
+    };
+  }
+  return {
+    token: process.env.META_USER_ACCESS_TOKEN,
+    adAccountId: process.env.META_AD_ACCOUNT_ID,
+  };
+}
+
 export async function GET(request: NextRequest) {
-  const token = process.env.META_USER_ACCESS_TOKEN;
-  const adAccountId = process.env.META_AD_ACCOUNT_ID;
+  const { searchParams } = new URL(request.url);
+  const { token, adAccountId } = getAccountConfig(searchParams.get("account"));
 
   if (!token || !adAccountId) {
     return NextResponse.json({ error: "Meta Ads not configured" }, { status: 503 });
   }
 
   try {
-    const { searchParams } = new URL(request.url);
     const adsetId = searchParams.get("adset_id");
     const dateFrom = searchParams.get("date_from") || getDefaultDateFrom();
     const dateTo = searchParams.get("date_to") || getDefaultDateTo();
