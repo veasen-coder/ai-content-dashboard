@@ -16,7 +16,7 @@ export default function DashboardLayout({
       <Sidebar />
       <div
         className={cn(
-          "flex flex-1 flex-col overflow-hidden transition-all duration-300",
+          "flex min-h-0 flex-1 flex-col overflow-hidden transition-all duration-300",
           isCollapsed ? "ml-16" : "ml-60"
         )}
       >
