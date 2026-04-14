@@ -125,21 +125,50 @@ function ClientCard({
   onClick,
   onMove,
   onProbChange,
+  onDelete,
 }: {
   client: Client;
   onClick: () => void;
   onMove: (newStage: string) => void;
   onProbChange: (prob: number) => void;
+  onDelete: () => void;
 }) {
+  const [confirmDel, setConfirmDel] = useState(false);
   const isClosed = client.stage === "closed";
   const nextStage = getNextStage(client.stage);
   const isStalled = client.status === "stalled";
   const isActive = client.status === "active";
 
   return (
-    <div className="rounded-xl border border-[#1E1E1E] bg-[#0A0A0A] p-4 transition-all hover:border-[#333]">
+    <div className="group relative rounded-xl border border-[#1E1E1E] bg-[#0A0A0A] p-4 transition-all hover:border-[#333]">
+      {/* Delete button — top right */}
+      {!confirmDel ? (
+        <button
+          onClick={(e) => { e.stopPropagation(); setConfirmDel(true); }}
+          className="absolute right-2 top-2 rounded-md p-1 text-muted-foreground/0 transition-all group-hover:text-muted-foreground hover:!bg-red-500/20 hover:!text-red-400"
+          title="Delete client"
+        >
+          <Trash2 className="h-3.5 w-3.5" />
+        </button>
+      ) : (
+        <div className="absolute right-2 top-2 flex items-center gap-1">
+          <button
+            onClick={(e) => { e.stopPropagation(); onDelete(); setConfirmDel(false); }}
+            className="rounded-md bg-red-500/20 px-2 py-0.5 text-[10px] font-semibold text-red-400 hover:bg-red-500/30 transition-colors"
+          >
+            Delete
+          </button>
+          <button
+            onClick={(e) => { e.stopPropagation(); setConfirmDel(false); }}
+            className="rounded-md bg-[#1E1E1E] px-2 py-0.5 text-[10px] font-medium text-muted-foreground hover:text-foreground transition-colors"
+          >
+            Cancel
+          </button>
+        </div>
+      )}
+
       {/* Header — Name + alert */}
-      <div className="mb-2 flex items-start justify-between gap-2">
+      <div className="mb-2 flex items-start justify-between gap-2 pr-6">
         <h4
           onClick={onClick}
           className="cursor-pointer text-sm font-semibold text-foreground leading-tight hover:text-primary transition-colors"
@@ -941,6 +970,21 @@ export default function ClientsPage() {
     toast.success(`Moved ${client.name} to ${STAGE_MAP[newStage]?.label}`);
   }
 
+  async function deleteClient(client: Client) {
+    try {
+      const res = await fetch("/api/supabase/clients", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: client.id }),
+      });
+      if (!res.ok) throw new Error("Delete failed");
+      setClients((prev) => prev.filter((c) => c.id !== client.id));
+      toast.success(`Deleted ${client.name}`);
+    } catch {
+      toast.error("Failed to delete client");
+    }
+  }
+
   // Filter
   const filtered = search
     ? clients.filter(
@@ -1083,6 +1127,7 @@ export default function ClientsPage() {
                               close_probability: prob,
                             })
                           }
+                          onDelete={() => deleteClient(client)}
                         />
                       ))
                     )}
