@@ -440,9 +440,7 @@ function DateRangePicker({
     return dt.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
   };
 
-  const displayLabel = activePreset
-    ? `${activePreset}: ${formatDisplay(tempFrom)} – ${formatDisplay(tempTo)}`
-    : `${formatDisplay(dateFrom)} – ${formatDisplay(dateTo)}`;
+  const displayLabel = `${formatDisplay(dateFrom)} – ${formatDisplay(dateTo)}`;
 
   return (
     <div className="relative" ref={ref}>
@@ -594,6 +592,9 @@ export default function MetaAdsPage() {
   }, [dateFrom, dateTo]);
 
   useEffect(() => {
+    // Reset to campaigns level whenever dates change, then refetch
+    setFlogen((s) => ({ ...INITIAL_STATE, loading: s.loading }));
+    setBv((s) => ({ ...INITIAL_STATE, loading: s.loading }));
     fetchCampaigns("flogen", setFlogen);
     fetchCampaigns("bv", setBv);
   }, [fetchCampaigns]);
