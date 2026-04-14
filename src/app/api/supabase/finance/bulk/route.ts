@@ -89,6 +89,27 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // Sync all entries to Google Sheets (fire-and-forget)
+    try {
+      const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+      const sheetRows = entries.map((e) => [
+        e.date,
+        e.description || "",
+        e.type,
+        e.category || "",
+        String(e.amount),
+        "MYR",
+        e.account || "",
+      ]);
+      fetch(`${baseUrl}/api/google/sheets/append`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ values: sheetRows }),
+      }).catch(() => {});
+    } catch {
+      // Google Sheets sync is optional
+    }
+
     return NextResponse.json({
       success: true,
       count: data?.length || entries.length,
