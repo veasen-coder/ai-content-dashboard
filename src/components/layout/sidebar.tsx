@@ -43,9 +43,13 @@ export function Sidebar() {
       {/* Logo */}
       <div className="flex h-16 items-center border-b border-[#1E1E1E] px-4">
         <div className="flex items-center gap-3">
-          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground font-bold text-sm">
-            F
-          </div>
+          <img
+            src="https://cdn.shopify.com/s/files/1/0729/6424/3631/files/WhatsApp_Image_2026-03-08_at_19.02.23.jpg?v=1772968015"
+            alt="Flogen AI"
+            width={32}
+            height={32}
+            className="shrink-0 rounded-lg"
+          />
           {!isCollapsed && (
             <span className="text-lg font-semibold tracking-tight">
               Flogen AI

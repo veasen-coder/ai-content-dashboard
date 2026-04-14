@@ -37,9 +37,13 @@ export default function LoginPage() {
       <div className="w-full max-w-sm space-y-8">
         {/* Logo */}
         <div className="text-center">
-          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-xl bg-primary text-primary-foreground font-bold text-xl">
-            F
-          </div>
+          <img
+            src="https://cdn.shopify.com/s/files/1/0729/6424/3631/files/WhatsApp_Image_2026-03-08_at_19.02.23.jpg?v=1772968015"
+            alt="Flogen AI"
+            width={120}
+            height={120}
+            className="mx-auto rounded-xl"
+          />
           <h1 className="mt-4 text-2xl font-bold">Flogen AI</h1>
           <p className="mt-1 text-sm text-muted-foreground">
             Sign in to your dashboard
