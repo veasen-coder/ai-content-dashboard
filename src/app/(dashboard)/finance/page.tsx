@@ -567,7 +567,7 @@ function parseRows(text: string): ParsedRow[] {
     if (cols.length >= 5) {
       const date = parseDate(cols[0]);
       const rawType = cols[1].toLowerCase().trim();
-      const type = rawType === "expense" ? "expense" : "income";
+      const type = rawType.startsWith("expense") || rawType === "debit" || rawType === "dr" || rawType === "out" ? "expense" : "income";
       const category = cols[2] || "";
       const description = cols[3] || "";
       const amount = Math.abs(parseFloat(cols[4].replace(/[^0-9.\-]/g, "")));
@@ -623,19 +623,53 @@ function MassUploadModal({
     setStep("preview");
   }
 
-  function handleFileUpload(e: React.ChangeEvent<HTMLInputElement>) {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  function loadSheetJS(): Promise<any> {
+    return new Promise((resolve) => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      if ((window as any).XLSX) { resolve((window as any).XLSX); return; }
+      const script = document.createElement("script");
+      script.src = "https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js";
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      script.onload = () => resolve((window as any).XLSX);
+      script.onerror = () => resolve(null);
+      document.head.appendChild(script);
+    });
+  }
+
+  async function handleFileUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      const text = reader.result as string;
-      setRawText(text);
-      const parsed = parseRows(text);
-      setRows(parsed);
-      setStep("preview");
-    };
-    reader.readAsText(file);
     e.target.value = "";
+
+    const ext = file.name.split(".").pop()?.toLowerCase();
+
+    if (ext === "csv" || ext === "txt" || ext === "tsv") {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const text = reader.result as string;
+        setRawText(text);
+        setRows(parseRows(text));
+        setStep("preview");
+      };
+      reader.readAsText(file);
+    } else if (ext === "xlsx" || ext === "xls" || ext === "numbers") {
+      try {
+        const XLSX = await loadSheetJS();
+        if (!XLSX) throw new Error("Failed to load parser");
+        const buffer = await file.arrayBuffer();
+        const workbook = XLSX.read(buffer, { type: "array" });
+        const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+        const csv = XLSX.utils.sheet_to_csv(firstSheet);
+        setRawText(csv);
+        setRows(parseRows(csv));
+        setStep("preview");
+      } catch {
+        toast.error("Could not parse spreadsheet. Please export as CSV and try again.");
+      }
+    } else {
+      toast.error("Unsupported file type. Use CSV, XLSX, or Numbers.");
+    }
   }
 
   function removeRow(idx: number) {
@@ -746,7 +780,7 @@ function MassUploadModal({
               <input
                 ref={fileInputRef}
                 type="file"
-                accept=".csv,.txt,.tsv"
+                accept=".csv,.txt,.tsv,.xlsx,.xls,.numbers"
                 onChange={handleFileUpload}
                 className="hidden"
               />
