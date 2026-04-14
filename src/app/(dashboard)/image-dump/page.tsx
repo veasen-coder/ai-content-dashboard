@@ -636,31 +636,83 @@ export default function ImageDumpPage() {
                   <p className="text-xs font-medium text-muted-foreground">
                     Uploaded Images ({dumpImages.length})
                   </p>
-                  <div className="grid grid-cols-4 gap-2 sm:grid-cols-6 lg:grid-cols-8">
+                  <div className="grid grid-cols-4 gap-2 sm:grid-cols-5 lg:grid-cols-6">
                     {dumpImages.map((img) => (
                       <button
                         key={img.id}
-                        onClick={() => setExpandedImage(expandedImage === img.id ? null : img.id)}
-                        className={cn(
-                          "relative overflow-hidden rounded-lg border transition-all hover:border-primary/50",
-                          expandedImage === img.id
-                            ? "border-primary col-span-4 sm:col-span-3 lg:col-span-4"
-                            : "border-[#1E1E1E]"
-                        )}
+                        onClick={() => setExpandedImage(img.id)}
+                        className="relative overflow-hidden rounded-lg border border-[#1E1E1E] transition-all hover:border-primary/50"
                       >
                         <img
                           src={`data:${img.mime_type};base64,${img.base64_data}`}
                           alt={img.file_name || "Uploaded image"}
-                          className={cn(
-                            "w-full object-cover",
-                            expandedImage === img.id ? "h-auto max-h-96" : "h-20"
-                          )}
+                          className="h-24 w-full object-cover"
                         />
                       </button>
                     ))}
                   </div>
                 </div>
               )}
+
+              {/* Full-screen image lightbox */}
+              {expandedImage && (() => {
+                const idx = dumpImages.findIndex((i) => i.id === expandedImage);
+                const img = dumpImages[idx];
+                if (!img) return null;
+                return (
+                  <div
+                    className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-sm"
+                    onClick={() => setExpandedImage(null)}
+                  >
+                    {/* Close button */}
+                    <button
+                      className="absolute right-4 top-4 flex h-10 w-10 items-center justify-center rounded-full bg-white/10 text-white transition-colors hover:bg-white/20"
+                      onClick={() => setExpandedImage(null)}
+                    >
+                      <X className="h-5 w-5" />
+                    </button>
+
+                    {/* Counter */}
+                    <div className="absolute left-4 top-4 rounded-full bg-white/10 px-3 py-1 text-sm text-white">
+                      {idx + 1} / {dumpImages.length}
+                    </div>
+
+                    {/* Previous */}
+                    {idx > 0 && (
+                      <button
+                        className="absolute left-4 top-1/2 -translate-y-1/2 flex h-10 w-10 items-center justify-center rounded-full bg-white/10 text-white transition-colors hover:bg-white/20"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setExpandedImage(dumpImages[idx - 1].id);
+                        }}
+                      >
+                        <ChevronRight className="h-5 w-5 rotate-180" />
+                      </button>
+                    )}
+
+                    {/* Image */}
+                    <img
+                      src={`data:${img.mime_type};base64,${img.base64_data}`}
+                      alt={img.file_name || "Uploaded image"}
+                      className="max-h-[90vh] max-w-[90vw] rounded-lg object-contain"
+                      onClick={(e) => e.stopPropagation()}
+                    />
+
+                    {/* Next */}
+                    {idx < dumpImages.length - 1 && (
+                      <button
+                        className="absolute right-4 top-1/2 -translate-y-1/2 flex h-10 w-10 items-center justify-center rounded-full bg-white/10 text-white transition-colors hover:bg-white/20"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setExpandedImage(dumpImages[idx + 1].id);
+                        }}
+                      >
+                        <ChevronRight className="h-5 w-5" />
+                      </button>
+                    )}
+                  </div>
+                );
+              })()}
               {loadingImages && (
                 <div className="flex items-center gap-2 text-sm text-muted-foreground">
                   <Loader2 className="h-4 w-4 animate-spin" />
