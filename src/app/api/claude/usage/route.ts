@@ -37,7 +37,7 @@ export async function GET(request: NextRequest) {
       .eq("id", 1)
       .single();
 
-    const budget = budgetData?.budget_usd || 50;
+    const budget = parseFloat(budgetData?.budget_usd) || 50;
 
     // Get total spend (all time)
     const { data: allTimeData } = await supabase

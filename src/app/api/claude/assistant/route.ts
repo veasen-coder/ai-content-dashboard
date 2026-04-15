@@ -156,7 +156,10 @@ const CLICKUP_MEMBERS: Record<string, number> = {
   "flogen": 306772193,
 };
 
-function resolveAssignees(names: string[]): number[] {
+const DEFAULT_ASSIGNEES = [107691572, 107691573]; // Veasen + Way Hann
+
+function resolveAssignees(names?: string[]): number[] {
+  if (!names || names.length === 0) return DEFAULT_ASSIGNEES;
   const ids: number[] = [];
   for (const name of names) {
     const key = name.toLowerCase().trim();
@@ -164,7 +167,7 @@ function resolveAssignees(names: string[]): number[] {
       ids.push(CLICKUP_MEMBERS[key]);
     }
   }
-  return ids;
+  return ids.length > 0 ? ids : DEFAULT_ASSIGNEES;
 }
 
 // --------------- Tool definitions ---------------
@@ -301,10 +304,7 @@ async function executeTool(name: string, input: Record<string, unknown>): Promis
           body.due_date_time = false;
         }
         if (input.tags) body.tags = input.tags;
-        if (input.assignees) {
-          const ids = resolveAssignees(input.assignees as string[]);
-          if (ids.length > 0) body.assignees = ids;
-        }
+        body.assignees = resolveAssignees(input.assignees as string[] | undefined);
 
         const res = await fetch(`https://api.clickup.com/api/v2/list/${listId}/task`, {
           method: "POST",
@@ -313,7 +313,7 @@ async function executeTool(name: string, input: Record<string, unknown>): Promis
         });
         if (!res.ok) return JSON.stringify({ error: "Failed to create task", status: res.status });
         const data = await res.json();
-        return JSON.stringify({ success: true, task_id: data.id, name: data.name, url: data.url });
+        return JSON.stringify({ success: true, task_id: data.id, name: data.name, url: data.url, assignees: body.assignees });
       }
 
       case "add_client": {
@@ -378,11 +378,8 @@ async function executeTool(name: string, input: Record<string, unknown>): Promis
           due_date: dueDate.getTime(),
           due_date_time: !!input.time,
           tags: [...((input.tags as string[]) || []), "calendar"],
+          assignees: resolveAssignees(input.assignees as string[] | undefined),
         };
-        if (input.assignees) {
-          const ids = resolveAssignees(input.assignees as string[]);
-          if (ids.length > 0) body.assignees = ids;
-        }
 
         const res = await fetch(`https://api.clickup.com/api/v2/list/${listId}/task`, {
           method: "POST",
