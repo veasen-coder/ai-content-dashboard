@@ -269,24 +269,21 @@ export default function AssistantPage() {
     load();
   }, []);
 
-  // ---------- Refresh dashboard context ----------
+  // ---------- Refresh dashboard context (lightweight — just fetches counts) ----------
   const refreshContext = useCallback(async () => {
     setContextLoading(true);
     try {
-      // Fetch context via assistant endpoint with empty messages to get context only
-      const res = await fetch("/api/claude/assistant", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          messages: [{ role: "user", content: "ping" }],
-        }),
+      // Fetch key data points in parallel for the sidebar stats
+      const [clientsRes, tasksRes] = await Promise.all([
+        fetch("/api/supabase/clients").then((r) => (r.ok ? r.json() : [])).catch(() => []),
+        fetch("/api/clickup/tasks").then((r) => (r.ok ? r.json() : { tasks: [] })).catch(() => ({ tasks: [] })),
+      ]);
+      setDashboardContext({
+        clients: Array.isArray(clientsRes) ? clientsRes : [],
+        tasks: Array.isArray(tasksRes?.tasks) ? tasksRes.tasks : [],
       });
-      if (res.ok) {
-        const data = await res.json();
-        if (data.context) setDashboardContext(data.context);
-      }
     } catch {
-      // Context is optional — chat still works
+      // Context is optional
     } finally {
       setContextLoading(false);
     }
@@ -430,10 +427,7 @@ export default function AssistantPage() {
         const res = await fetch("/api/claude/assistant", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            messages: apiMessages,
-            context: dashboardContext,
-          }),
+          body: JSON.stringify({ messages: apiMessages }),
           signal: controller.signal,
         });
 
@@ -443,11 +437,6 @@ export default function AssistantPage() {
         }
 
         const data = await res.json();
-
-        // Update context if returned
-        if (data.context) {
-          setDashboardContext(data.context);
-        }
 
         const assistantMessage: Message = {
           role: "assistant",
@@ -481,7 +470,7 @@ export default function AssistantPage() {
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [activeId, loading, conversations, saveConversation, dashboardContext]
+    [activeId, loading, conversations, saveConversation]
   );
 
   function handleKeyDown(e: React.KeyboardEvent) {
