@@ -31,6 +31,7 @@ import type {
   ImageDump,
   AnalysisResult,
   AnalysisGroup,
+  ExtractedContact,
 } from "@/types";
 
 // ─── Pending image before upload ─────────────────────────────
@@ -332,7 +333,16 @@ export default function ImageDumpPage() {
   async function handleGroupAction(
     groupId: string,
     action: "approved" | "rejected",
-    finalTasks?: string[]
+    edits?: {
+      finalTasks: string[];
+      label: string;
+      category: string;
+      sentiment: AnalysisGroup["sentiment"];
+      lead_potential: AnalysisGroup["lead_potential"];
+      contacts: ExtractedContact[];
+      conversation_summary: string;
+      lead_reasoning: string;
+    }
   ) {
     if (!activeDump?.analysis_result) return;
 
@@ -342,9 +352,16 @@ export default function ImageDumpPage() {
 
     group.approval_status = action;
 
-    // Override action_items with user-edited task list for approval
-    if (action === "approved" && finalTasks) {
-      group.action_items = finalTasks;
+    // Apply user edits for approval
+    if (action === "approved" && edits) {
+      group.action_items = edits.finalTasks;
+      group.label = edits.label;
+      group.category = edits.category;
+      group.sentiment = edits.sentiment;
+      group.lead_potential = edits.lead_potential;
+      group.contacts = edits.contacts;
+      group.conversation_summary = edits.conversation_summary;
+      group.lead_reasoning = edits.lead_reasoning;
     }
 
     // If approved, create lead + tasks and store IDs for undo
@@ -840,7 +857,7 @@ export default function ImageDumpPage() {
                   group={group}
                   onUndo={() => handleUndoGroup(group.id)}
                   dumpStatus={activeDump.status}
-                  onApprove={(finalTasks) => handleGroupAction(group.id, "approved", finalTasks)}
+                  onApprove={(edits) => handleGroupAction(group.id, "approved", edits)}
                   onReject={() => handleGroupAction(group.id, "rejected")}
                   onAnswer={async (answers) => {
                     if (!activeDump) return;
@@ -917,13 +934,31 @@ function GroupCard({
 }: {
   group: AnalysisGroup;
   dumpStatus: string;
-  onApprove: (finalTasks: string[]) => void;
+  onApprove: (edits: {
+    finalTasks: string[];
+    label: string;
+    category: string;
+    sentiment: AnalysisGroup["sentiment"];
+    lead_potential: AnalysisGroup["lead_potential"];
+    contacts: ExtractedContact[];
+    conversation_summary: string;
+    lead_reasoning: string;
+  }) => void;
   onReject: () => void;
   onAnswer: (answers: string) => void;
   onUndo: () => void;
 }) {
   const isDecided = group.approval_status !== "pending";
   const [answers, setAnswers] = useState("");
+
+  // Editable group field state
+  const [label, setLabel] = useState(group.label);
+  const [category, setCategory] = useState(group.category);
+  const [sentiment, setSentiment] = useState(group.sentiment);
+  const [leadPotential, setLeadPotential] = useState(group.lead_potential);
+  const [contacts, setContacts] = useState<ExtractedContact[]>(group.contacts);
+  const [summary, setSummary] = useState(group.conversation_summary);
+  const [leadReasoning, setLeadReasoning] = useState(group.lead_reasoning);
 
   // Editable task list state
   const [suggested, setSuggested] = useState<string[]>(group.action_items || []);
@@ -936,6 +971,56 @@ function GroupCard({
   const [addedExtras, setAddedExtras] = useState<string[]>([]);
   const [newTaskInput, setNewTaskInput] = useState("");
   const [showAdditional, setShowAdditional] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+
+  function updateContact(i: number, field: keyof ExtractedContact, value: string) {
+    setContacts((prev) =>
+      prev.map((c, idx) => (idx === i ? { ...c, [field]: value } : c))
+    );
+  }
+
+  function removeContact(i: number) {
+    setContacts((prev) => prev.filter((_, idx) => idx !== i));
+  }
+
+  function addContact() {
+    setContacts((prev) => [
+      ...prev,
+      { name: "", phone: "", email: "", business: "" },
+    ]);
+  }
+
+  async function loadMoreSuggestions() {
+    setLoadingMore(true);
+    try {
+      const existingTasks = [...suggested, ...addedExtras, ...additional];
+      const res = await fetch("/api/claude/more-tasks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          conversation_summary: summary,
+          contacts,
+          category,
+          lead_potential: leadPotential,
+          existing_tasks: existingTasks,
+        }),
+      });
+      if (!res.ok) throw new Error("Failed");
+      const data = await res.json();
+      const newTasks: string[] = Array.isArray(data.tasks) ? data.tasks : [];
+      if (newTasks.length === 0) {
+        toast.error("No new suggestions returned");
+        return;
+      }
+      setAdditional((prev) => [...prev, ...newTasks]);
+      setShowAdditional(true);
+      toast.success(`Added ${newTasks.length} more suggestions`);
+    } catch {
+      toast.error("Failed to get more suggestions");
+    } finally {
+      setLoadingMore(false);
+    }
+  }
 
   function toggleSuggested(i: number) {
     setSelectedSuggested((prev) => {
@@ -995,32 +1080,69 @@ function GroupCard({
       )}
     >
       {/* Header */}
-      <div className="flex items-start justify-between">
-        <div>
-          <div className="flex items-center gap-2">
-            <MessageSquare className="h-4 w-4 text-primary" />
-            <h3 className="font-semibold">{group.label}</h3>
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0 flex-1 space-y-2">
+          <div className="flex items-start gap-2">
+            <MessageSquare className="mt-2 h-4 w-4 shrink-0 text-primary" />
+            {isDecided ? (
+              <h3 className="font-semibold">{label}</h3>
+            ) : (
+              <input
+                type="text"
+                value={label}
+                onChange={(e) => setLabel(e.target.value)}
+                placeholder="Group title..."
+                className="w-full rounded-lg border border-transparent bg-transparent px-2 py-1 text-base font-semibold outline-none transition-colors hover:border-[#1E1E1E] focus:border-primary focus:bg-[#111111]"
+              />
+            )}
           </div>
-          <div className="mt-1.5 flex flex-wrap gap-2">
-            <span className="rounded-full bg-[#1E1E1E] px-2.5 py-0.5 text-xs capitalize text-muted-foreground">
-              {group.category.replace("_", " ")}
-            </span>
-            <span
-              className={cn(
-                "rounded-full px-2.5 py-0.5 text-xs capitalize",
-                SENTIMENT_COLORS[group.sentiment]
-              )}
-            >
-              {group.sentiment}
-            </span>
-            <span
-              className={cn(
-                "rounded-full px-2.5 py-0.5 text-xs",
-                LEAD_COLORS[group.lead_potential]
-              )}
-            >
-              Lead: {group.lead_potential}
-            </span>
+          <div className="flex flex-wrap gap-2">
+            {isDecided ? (
+              <>
+                <span className="rounded-full bg-[#1E1E1E] px-2.5 py-0.5 text-xs capitalize text-muted-foreground">
+                  {category.replace("_", " ")}
+                </span>
+                <span className={cn("rounded-full px-2.5 py-0.5 text-xs capitalize", SENTIMENT_COLORS[sentiment])}>
+                  {sentiment}
+                </span>
+                <span className={cn("rounded-full px-2.5 py-0.5 text-xs", LEAD_COLORS[leadPotential])}>
+                  Lead: {leadPotential}
+                </span>
+              </>
+            ) : (
+              <>
+                <select
+                  value={category}
+                  onChange={(e) => setCategory(e.target.value)}
+                  className="rounded-full border border-[#1E1E1E] bg-[#1E1E1E] px-2.5 py-0.5 text-xs capitalize text-muted-foreground outline-none transition-colors hover:text-foreground focus:border-primary"
+                >
+                  <option value="whatsapp">WhatsApp</option>
+                  <option value="instagram_dm">Instagram DM</option>
+                  <option value="facebook">Facebook</option>
+                  <option value="email">Email</option>
+                  <option value="other">Other</option>
+                </select>
+                <select
+                  value={sentiment}
+                  onChange={(e) => setSentiment(e.target.value as AnalysisGroup["sentiment"])}
+                  className={cn("rounded-full border border-transparent px-2.5 py-0.5 text-xs capitalize outline-none transition-colors focus:border-primary", SENTIMENT_COLORS[sentiment])}
+                >
+                  <option value="positive">Positive</option>
+                  <option value="neutral">Neutral</option>
+                  <option value="negative">Negative</option>
+                </select>
+                <select
+                  value={leadPotential}
+                  onChange={(e) => setLeadPotential(e.target.value as AnalysisGroup["lead_potential"])}
+                  className={cn("rounded-full border border-transparent px-2.5 py-0.5 text-xs outline-none transition-colors focus:border-primary", LEAD_COLORS[leadPotential])}
+                >
+                  <option value="high">Lead: high</option>
+                  <option value="medium">Lead: medium</option>
+                  <option value="low">Lead: low</option>
+                  <option value="none">Lead: none</option>
+                </select>
+              </>
+            )}
             {group.approval_status === "approved" && (
               <span className="rounded-full bg-emerald-500/20 px-2.5 py-0.5 text-xs text-emerald-400">
                 Approved
@@ -1036,45 +1158,125 @@ function GroupCard({
       </div>
 
       {/* Contacts */}
-      {group.contacts.length > 0 && (
-        <div className="space-y-2">
+      <div className="space-y-2">
+        <div className="flex items-center justify-between">
           <p className="text-xs font-medium text-muted-foreground">Contacts</p>
-          {group.contacts.map((c, i) => (
-            <div
-              key={i}
-              className="flex flex-wrap items-center gap-x-4 gap-y-1 rounded-lg bg-[#111111] px-3 py-2 text-sm"
+          {!isDecided && (
+            <button
+              onClick={addContact}
+              className="flex items-center gap-1 rounded-md border border-[#1E1E1E] bg-[#111111] px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-[#1E1E1E] hover:text-foreground"
             >
-              <span className="flex items-center gap-1.5">
-                <User className="h-3.5 w-3.5 text-muted-foreground" />
-                {c.name}
-              </span>
-              {c.phone && (
-                <span className="flex items-center gap-1.5 text-muted-foreground">
-                  <Phone className="h-3.5 w-3.5" />
-                  {c.phone}
-                </span>
-              )}
-              {c.email && (
-                <span className="flex items-center gap-1.5 text-muted-foreground">
-                  <Mail className="h-3.5 w-3.5" />
-                  {c.email}
-                </span>
-              )}
-              {c.business && (
-                <span className="flex items-center gap-1.5 text-muted-foreground">
-                  <Building2 className="h-3.5 w-3.5" />
-                  {c.business}
-                </span>
-              )}
-            </div>
-          ))}
+              <Plus className="h-3 w-3" />
+              Add contact
+            </button>
+          )}
         </div>
-      )}
+        {contacts.length === 0 && isDecided && (
+          <p className="text-sm text-muted-foreground/50">No contacts</p>
+        )}
+        {contacts.map((c, i) => (
+          <div
+            key={i}
+            className="group/contact space-y-1.5 rounded-lg bg-[#111111] px-3 py-2.5"
+          >
+            {isDecided ? (
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
+                <span className="flex items-center gap-1.5">
+                  <User className="h-3.5 w-3.5 text-muted-foreground" />
+                  {c.name || <span className="text-muted-foreground/50">No name</span>}
+                </span>
+                {c.phone && (
+                  <span className="flex items-center gap-1.5 text-muted-foreground">
+                    <Phone className="h-3.5 w-3.5" />
+                    {c.phone}
+                  </span>
+                )}
+                {c.email && (
+                  <span className="flex items-center gap-1.5 text-muted-foreground">
+                    <Mail className="h-3.5 w-3.5" />
+                    {c.email}
+                  </span>
+                )}
+                {c.business && (
+                  <span className="flex items-center gap-1.5 text-muted-foreground">
+                    <Building2 className="h-3.5 w-3.5" />
+                    {c.business}
+                  </span>
+                )}
+              </div>
+            ) : (
+              <>
+                <div className="flex items-center gap-2">
+                  <div className="flex min-w-0 flex-1 items-center gap-1.5">
+                    <User className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                    <input
+                      type="text"
+                      value={c.name || ""}
+                      onChange={(e) => updateContact(i, "name", e.target.value)}
+                      placeholder="Name"
+                      className="w-full rounded border border-transparent bg-transparent px-1.5 py-0.5 text-sm outline-none transition-colors hover:border-[#1E1E1E] focus:border-primary focus:bg-[#0A0A0A]"
+                    />
+                  </div>
+                  <button
+                    onClick={() => removeContact(i)}
+                    className="shrink-0 text-muted-foreground opacity-0 transition-opacity hover:text-red-400 group-hover/contact:opacity-100"
+                    title="Remove contact"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+                <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-3">
+                  <div className="flex items-center gap-1.5">
+                    <Phone className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                    <input
+                      type="tel"
+                      value={c.phone || ""}
+                      onChange={(e) => updateContact(i, "phone", e.target.value)}
+                      placeholder="Phone"
+                      className="w-full rounded border border-transparent bg-transparent px-1.5 py-0.5 text-sm text-muted-foreground outline-none transition-colors hover:border-[#1E1E1E] focus:border-primary focus:bg-[#0A0A0A] focus:text-foreground"
+                    />
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <Mail className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                    <input
+                      type="email"
+                      value={c.email || ""}
+                      onChange={(e) => updateContact(i, "email", e.target.value)}
+                      placeholder="Email"
+                      className="w-full rounded border border-transparent bg-transparent px-1.5 py-0.5 text-sm text-muted-foreground outline-none transition-colors hover:border-[#1E1E1E] focus:border-primary focus:bg-[#0A0A0A] focus:text-foreground"
+                    />
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <Building2 className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                    <input
+                      type="text"
+                      value={c.business || ""}
+                      onChange={(e) => updateContact(i, "business", e.target.value)}
+                      placeholder="Business / Role"
+                      className="w-full rounded border border-transparent bg-transparent px-1.5 py-0.5 text-sm text-muted-foreground outline-none transition-colors hover:border-[#1E1E1E] focus:border-primary focus:bg-[#0A0A0A] focus:text-foreground"
+                    />
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+        ))}
+      </div>
 
       {/* Summary */}
       <div>
         <p className="text-xs font-medium text-muted-foreground">Summary</p>
-        <p className="mt-1 text-sm">{group.conversation_summary}</p>
+        {isDecided ? (
+          <p className="mt-1 text-sm">{summary}</p>
+        ) : (
+          <textarea
+            value={summary}
+            onChange={(e) => setSummary(e.target.value)}
+            placeholder="Conversation summary..."
+            rows={3}
+            className="mt-1 w-full resize-y rounded-lg border border-transparent bg-transparent px-2 py-1.5 text-sm outline-none transition-colors hover:border-[#1E1E1E] focus:border-primary focus:bg-[#111111]"
+          />
+        )}
       </div>
 
       {/* Lead Reasoning */}
@@ -1082,9 +1284,17 @@ function GroupCard({
         <p className="text-xs font-medium text-muted-foreground">
           Lead Reasoning
         </p>
-        <p className="mt-1 text-sm text-muted-foreground">
-          {group.lead_reasoning}
-        </p>
+        {isDecided ? (
+          <p className="mt-1 text-sm text-muted-foreground">{leadReasoning}</p>
+        ) : (
+          <textarea
+            value={leadReasoning}
+            onChange={(e) => setLeadReasoning(e.target.value)}
+            placeholder="Why is this (or isn't this) a good lead?"
+            rows={2}
+            className="mt-1 w-full resize-y rounded-lg border border-transparent bg-transparent px-2 py-1.5 text-sm text-muted-foreground outline-none transition-colors hover:border-[#1E1E1E] focus:border-primary focus:bg-[#111111] focus:text-foreground"
+          />
+        )}
       </div>
 
       {/* Tasks (editable before approval) */}
@@ -1186,6 +1396,20 @@ function GroupCard({
               Add
             </button>
           </div>
+
+          {/* Get more AI suggestions */}
+          <button
+            onClick={loadMoreSuggestions}
+            disabled={loadingMore}
+            className="flex w-full items-center justify-center gap-2 rounded-lg border border-dashed border-[#1E1E1E] bg-[#0A0A0A] px-3 py-2 text-sm text-muted-foreground transition-colors hover:border-primary/40 hover:bg-primary/5 hover:text-primary disabled:opacity-50"
+          >
+            {loadingMore ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <Sparkles className="h-3.5 w-3.5" />
+            )}
+            {loadingMore ? "Generating..." : "Get 5 more AI suggestions"}
+          </button>
 
           {/* Additional AI suggestions (collapsible) */}
           {additional.length > 0 && (
@@ -1290,7 +1514,16 @@ function GroupCard({
       {!isDecided && (dumpStatus === "reviewed" || dumpStatus === "partial") && (
         <div className="flex items-center gap-3 border-t border-[#1E1E1E] pt-4">
           <button
-            onClick={() => onApprove(getFinalTasks())}
+            onClick={() => onApprove({
+              finalTasks: getFinalTasks(),
+              label,
+              category,
+              sentiment,
+              lead_potential: leadPotential,
+              contacts,
+              conversation_summary: summary,
+              lead_reasoning: leadReasoning,
+            })}
             disabled={totalSelected === 0}
             className="flex items-center gap-1.5 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-40"
           >
