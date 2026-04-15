@@ -1,7 +1,16 @@
 "use client";
 
-import { useState } from "react";
-import { Copy, Check, ClipboardPaste, Loader2, ExternalLink } from "lucide-react";
+import { useState, useRef } from "react";
+import {
+  Copy,
+  Check,
+  ClipboardPaste,
+  Loader2,
+  ExternalLink,
+  Upload,
+  FileText,
+  X,
+} from "lucide-react";
 import { toast } from "sonner";
 
 interface PasteBridgeProps {
@@ -20,12 +29,15 @@ interface PasteBridgeProps {
 export function PasteBridge({
   prompt,
   onSubmit,
-  promptHint = "Copy this prompt → paste into Claude Code (or claude.ai) → Claude will return a formatted response → paste the full response below.",
-  pasteHint = "Paste Claude's entire response here, including the --- delimiters.",
+  promptHint = "Copy this prompt → paste into Claude Code (or claude.ai) → Claude will return a formatted response → paste the full response below OR drop a file with the response.",
+  pasteHint = "Paste Claude's response OR drop a .txt/.json/.md file with the response.",
   submitting = false,
 }: PasteBridgeProps) {
   const [copied, setCopied] = useState(false);
   const [pasted, setPasted] = useState("");
+  const [fileName, setFileName] = useState<string | null>(null);
+  const [dragging, setDragging] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   async function copyPrompt() {
     try {
@@ -42,10 +54,59 @@ export function PasteBridge({
     try {
       const text = await navigator.clipboard.readText();
       setPasted(text);
+      setFileName(null);
       toast.success("Pasted from clipboard");
     } catch {
       toast.error("Clipboard access denied — paste manually");
     }
+  }
+
+  async function readFile(file: File) {
+    // Accept anything that looks text-y: .txt, .json, .md, .html, or missing ext
+    const allowed = [
+      "text/",
+      "application/json",
+      "application/x-json",
+      "",
+    ];
+    const isText =
+      allowed.some((t) => file.type.startsWith(t)) ||
+      /\.(txt|json|md|html?)$/i.test(file.name);
+    if (!isText) {
+      toast.error("Only text files (.txt, .json, .md, .html) allowed");
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error("File too large (max 5MB)");
+      return;
+    }
+    try {
+      const text = await file.text();
+      setPasted(text);
+      setFileName(file.name);
+      toast.success(`Loaded ${file.name}`);
+    } catch {
+      toast.error("Failed to read file");
+    }
+  }
+
+  function handleFileDrop(e: React.DragEvent<HTMLDivElement>) {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragging(false);
+    const file = e.dataTransfer.files?.[0];
+    if (file) readFile(file);
+  }
+
+  function handleFilePick(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (file) readFile(file);
+    e.target.value = ""; // reset so same file can be picked again
+  }
+
+  function clearFile() {
+    setPasted("");
+    setFileName(null);
   }
 
   async function handleSubmit() {
@@ -105,23 +166,87 @@ export function PasteBridge({
       <div className="space-y-1.5">
         <div className="flex items-center justify-between">
           <p className="text-[10px] uppercase tracking-wider text-muted-foreground">
-            Step 2 — Paste Claude&apos;s response
+            Step 2 — Paste response OR drop file
           </p>
-          <button
-            onClick={pasteFromClipboard}
-            className="flex items-center gap-1 rounded-md border border-[#1E1E1E] bg-[#0A0A0A] px-2 py-1 text-[10px] text-muted-foreground transition-colors hover:border-primary/30 hover:text-foreground"
-          >
-            <ClipboardPaste className="h-3 w-3" />
-            Paste from clipboard
-          </button>
+          <div className="flex items-center gap-1">
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".txt,.json,.md,.html,text/*,application/json"
+              onChange={handleFilePick}
+              className="hidden"
+            />
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              className="flex items-center gap-1 rounded-md border border-[#1E1E1E] bg-[#0A0A0A] px-2 py-1 text-[10px] text-muted-foreground transition-colors hover:border-primary/30 hover:text-foreground"
+            >
+              <Upload className="h-3 w-3" />
+              Choose file
+            </button>
+            <button
+              onClick={pasteFromClipboard}
+              className="flex items-center gap-1 rounded-md border border-[#1E1E1E] bg-[#0A0A0A] px-2 py-1 text-[10px] text-muted-foreground transition-colors hover:border-primary/30 hover:text-foreground"
+            >
+              <ClipboardPaste className="h-3 w-3" />
+              Paste
+            </button>
+          </div>
         </div>
-        <textarea
-          value={pasted}
-          onChange={(e) => setPasted(e.target.value)}
-          rows={6}
-          placeholder="Paste Claude's full response here..."
-          className="w-full resize-y rounded-lg border border-[#1E1E1E] bg-[#0A0A0A] px-3 py-2 font-mono text-[11px] text-foreground outline-none focus:border-primary"
-        />
+
+        {fileName && (
+          <div className="flex items-center justify-between rounded-md border border-primary/30 bg-primary/5 px-2 py-1.5">
+            <div className="flex items-center gap-1.5 text-[11px] text-foreground">
+              <FileText className="h-3 w-3 text-primary" />
+              <span className="font-medium">{fileName}</span>
+              <span className="text-muted-foreground">
+                · {pasted.length.toLocaleString()} chars
+              </span>
+            </div>
+            <button
+              onClick={clearFile}
+              className="rounded p-0.5 text-muted-foreground hover:text-foreground"
+              title="Clear file"
+            >
+              <X className="h-3 w-3" />
+            </button>
+          </div>
+        )}
+
+        <div
+          onDragOver={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            setDragging(true);
+          }}
+          onDragLeave={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            setDragging(false);
+          }}
+          onDrop={handleFileDrop}
+          className={`relative rounded-lg border transition-colors ${
+            dragging
+              ? "border-primary bg-primary/5"
+              : "border-[#1E1E1E] bg-[#0A0A0A]"
+          }`}
+        >
+          <textarea
+            value={pasted}
+            onChange={(e) => {
+              setPasted(e.target.value);
+              if (fileName) setFileName(null);
+            }}
+            rows={6}
+            placeholder="Paste Claude's full response here, or drop a .txt/.json/.md file anywhere in this box..."
+            className="w-full resize-y rounded-lg border-0 bg-transparent px-3 py-2 font-mono text-[11px] text-foreground outline-none"
+          />
+          {dragging && (
+            <div className="pointer-events-none absolute inset-0 flex items-center justify-center rounded-lg bg-primary/10 text-[11px] font-medium text-primary">
+              <Upload className="mr-1.5 h-3.5 w-3.5" />
+              Drop file to load
+            </div>
+          )}
+        </div>
         <p className="text-[10px] text-muted-foreground/60">{pasteHint}</p>
       </div>
 

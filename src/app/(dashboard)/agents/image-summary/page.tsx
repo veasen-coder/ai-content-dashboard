@@ -24,9 +24,11 @@ import {
   Plus,
   CheckSquare,
   Square,
+  ClipboardPaste,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
+import { PasteBridge } from "@/components/paste-bridge";
 import type {
   ImageDump,
   AnalysisResult,
@@ -124,6 +126,10 @@ export default function ImageDumpPage() {
   const [analyzing, setAnalyzing] = useState(false);
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
+  const [pasteBridge, setPasteBridge] = useState<{
+    visible: boolean;
+    prompt: string;
+  }>({ visible: false, prompt: "" });
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const activeDump = dumps.find((d) => d.id === activeDumpId) || null;
@@ -316,6 +322,139 @@ export default function ImageDumpPage() {
         err instanceof Error ? err.message : "Failed to analyze images";
       toast.error(msg);
       // Clean up failed dump so it doesn't linger as "pending"
+      if (dumpId) {
+        await fetch("/api/supabase/image-dumps", {
+          method: "DELETE",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id: dumpId }),
+        });
+        fetchDumps();
+      }
+    } finally {
+      setAnalyzing(false);
+    }
+  }
+
+  // ─── Paste-bridge: generate prompt ────────────────────────
+  async function handleGeneratePrompt() {
+    if (!pendingImages.length) {
+      toast.error("Upload images first");
+      return;
+    }
+    try {
+      const res = await fetch("/api/claude/build-image-analysis-prompt", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          notes: notes || "",
+          image_count: pendingImages.length,
+        }),
+      });
+      if (!res.ok) throw new Error("Failed to build prompt");
+      const data = await res.json();
+      setPasteBridge({ visible: true, prompt: data.prompt });
+      toast.success("Prompt ready — copy & paste into Claude");
+    } catch {
+      toast.error("Failed to build prompt");
+    }
+  }
+
+  // ─── Paste-bridge: parse & save response ──────────────────
+  async function handlePasteBridgeSubmit(raw: string) {
+    if (!pendingImages.length) {
+      toast.error("No images to attach");
+      return;
+    }
+    setAnalyzing(true);
+    let dumpId: string | null = null;
+
+    try {
+      // Strip markdown code fences if present
+      let jsonStr = raw.trim();
+      const fenceMatch = jsonStr.match(
+        /```(?:json)?\s*\n?([\s\S]*?)\n?\s*```/
+      );
+      if (fenceMatch) jsonStr = fenceMatch[1].trim();
+
+      // Also strip leading "Here's..." preambles by finding first `{`
+      const firstBrace = jsonStr.indexOf("{");
+      if (firstBrace > 0) jsonStr = jsonStr.slice(firstBrace);
+
+      let analysis: AnalysisResult;
+      try {
+        analysis = JSON.parse(jsonStr);
+      } catch {
+        throw new Error(
+          "Invalid JSON — make sure you pasted the full response"
+        );
+      }
+
+      if (!analysis.groups || !Array.isArray(analysis.groups)) {
+        throw new Error("Response missing 'groups' array");
+      }
+
+      // 1. Create dump
+      const dumpRes = await fetch("/api/supabase/image-dumps", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: `Image Dump — ${new Date().toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}`,
+          notes: notes || null,
+        }),
+      });
+      const dump = await dumpRes.json();
+      if (!dumpRes.ok) throw new Error(dump.error);
+      dumpId = dump.id;
+
+      // 2. Upload images
+      const itemsRes = await fetch("/api/supabase/image-dump-items", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          dump_id: dump.id,
+          items: pendingImages.map((img) => ({
+            file_name: img.file.name,
+            mime_type: img.mime_type,
+            base64_data: img.base64,
+          })),
+        }),
+      });
+      const items = await itemsRes.json();
+      if (!itemsRes.ok) throw new Error(items.error);
+
+      // 3. Merge approval_status + image_item_ids into groups
+      analysis.groups = analysis.groups.map((g) => ({
+        ...g,
+        id: g.id || uid(),
+        approval_status: "pending" as const,
+        image_item_ids:
+          g.image_item_ids?.length
+            ? g.image_item_ids
+            : items.map((it: { id: string }) => it.id),
+      }));
+
+      // 4. Save analysis result
+      await fetch("/api/supabase/image-dumps", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: dump.id,
+          status: "reviewed",
+          analysis_result: analysis,
+        }),
+      });
+
+      toast.success("Analysis saved!");
+      setPendingImages([]);
+      setNotes("");
+      setCreating(false);
+      setPasteBridge({ visible: false, prompt: "" });
+      await fetchDumps();
+      setActiveDumpId(dump.id);
+    } catch (err) {
+      const msg =
+        err instanceof Error ? err.message : "Failed to parse response";
+      toast.error(msg);
       if (dumpId) {
         await fetch("/api/supabase/image-dumps", {
           method: "DELETE",
@@ -705,24 +844,69 @@ export default function ImageDumpPage() {
                 rows={3}
               />
 
-              {/* Analyze button */}
-              <button
-                onClick={handleAnalyze}
-                disabled={!pendingImages.length || analyzing}
-                className="flex items-center gap-2 rounded-xl bg-primary px-6 py-2.5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"
-              >
-                {analyzing ? (
-                  <>
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    Analyzing {pendingImages.length} image(s)...
-                  </>
-                ) : (
-                  <>
-                    <Sparkles className="h-4 w-4" />
-                    Analyze with AI
-                  </>
-                )}
-              </button>
+              {/* Analyze buttons */}
+              <div className="flex flex-wrap gap-2">
+                <button
+                  onClick={handleAnalyze}
+                  disabled={!pendingImages.length || analyzing}
+                  className="flex items-center gap-2 rounded-xl bg-primary px-6 py-2.5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"
+                  title="Uses Claude API token"
+                >
+                  {analyzing && !pasteBridge.visible ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Analyzing {pendingImages.length} image(s)...
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="h-4 w-4" />
+                      Analyze with AI
+                    </>
+                  )}
+                </button>
+
+                <button
+                  onClick={handleGeneratePrompt}
+                  disabled={!pendingImages.length || analyzing}
+                  className="flex items-center gap-2 rounded-xl border border-[#1E1E1E] bg-[#0A0A0A] px-6 py-2.5 text-sm font-medium text-foreground transition-colors hover:border-primary/30 hover:bg-[#111111] disabled:opacity-50"
+                  title="Uses your Claude Max subscription (no API tokens)"
+                >
+                  <ClipboardPaste className="h-4 w-4" />
+                  Generate Claude Prompt
+                </button>
+              </div>
+
+              {/* Paste-bridge panel */}
+              {pasteBridge.visible && (
+                <div className="rounded-xl border border-primary/30 bg-primary/5 p-4">
+                  <div className="mb-3 flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-medium">
+                        Paste Bridge Mode
+                      </p>
+                      <p className="text-[11px] text-muted-foreground">
+                        Copy prompt → open Claude → attach your {pendingImages.length} screenshot(s) → paste prompt → paste JSON response below
+                      </p>
+                    </div>
+                    <button
+                      onClick={() =>
+                        setPasteBridge({ visible: false, prompt: "" })
+                      }
+                      className="flex items-center gap-1 rounded-md border border-[#1E1E1E] bg-[#0A0A0A] px-2 py-1 text-[10px] text-muted-foreground transition-colors hover:border-red-500/30 hover:text-red-400"
+                    >
+                      <X className="h-3 w-3" />
+                      Cancel
+                    </button>
+                  </div>
+                  <PasteBridge
+                    prompt={pasteBridge.prompt}
+                    onSubmit={handlePasteBridgeSubmit}
+                    submitting={analyzing}
+                    promptHint="Copy this prompt → open claude.ai (or Claude Code) → attach your screenshots as images → paste the prompt → Claude returns JSON → paste the full JSON response below (or drop a .json/.txt file)."
+                    pasteHint="Paste Claude's JSON response — must start with { and include a 'groups' array. Markdown code fences are stripped automatically."
+                  />
+                </div>
+              )}
             </div>
           )}
 
