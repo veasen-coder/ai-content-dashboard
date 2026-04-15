@@ -304,8 +304,7 @@ async function executeTool(name: string, input: Record<string, unknown>): Promis
           body.due_date_time = false;
         }
         if (input.tags) body.tags = input.tags;
-        body.assignees = resolveAssignees(input.assignees as string[] | undefined);
-        console.log("ClickUp create_task payload:", JSON.stringify({ assignees: body.assignees, name: body.name }));
+        const assigneeIds = resolveAssignees(input.assignees as string[] | undefined);
 
         const res = await fetch(`https://api.clickup.com/api/v2/list/${listId}/task`, {
           method: "POST",
@@ -313,13 +312,20 @@ async function executeTool(name: string, input: Record<string, unknown>): Promis
           body: JSON.stringify(body),
         });
         if (!res.ok) {
-          const errText = await res.text();
-          console.error("ClickUp create_task error:", res.status, errText);
           return JSON.stringify({ error: "Failed to create task", status: res.status });
         }
         const data = await res.json();
-        console.log("ClickUp create_task response assignees:", JSON.stringify(data.assignees));
-        return JSON.stringify({ success: true, task_id: data.id, name: data.name, url: data.url, assignees: body.assignees });
+
+        // Assign via separate UPDATE call (more reliable than create-with-assignees)
+        if (assigneeIds.length > 0) {
+          await fetch(`https://api.clickup.com/api/v2/task/${data.id}`, {
+            method: "PUT",
+            headers: { Authorization: apiKey, "Content-Type": "application/json" },
+            body: JSON.stringify({ assignees: { add: assigneeIds } }),
+          });
+        }
+
+        return JSON.stringify({ success: true, task_id: data.id, name: data.name, url: data.url, assignees: assigneeIds });
       }
 
       case "add_client": {
@@ -378,15 +384,14 @@ async function executeTool(name: string, input: Record<string, unknown>): Promis
           dueDate.setHours(h, m, 0, 0);
         }
 
+        const assigneeIds = resolveAssignees(input.assignees as string[] | undefined);
         const body: Record<string, unknown> = {
           name: input.name,
           description: input.description || "",
           due_date: dueDate.getTime(),
           due_date_time: !!input.time,
           tags: [...((input.tags as string[]) || []), "calendar"],
-          assignees: resolveAssignees(input.assignees as string[] | undefined),
         };
-        console.log("ClickUp calendar_event payload:", JSON.stringify({ assignees: body.assignees, name: body.name }));
 
         const res = await fetch(`https://api.clickup.com/api/v2/list/${listId}/task`, {
           method: "POST",
@@ -394,12 +399,20 @@ async function executeTool(name: string, input: Record<string, unknown>): Promis
           body: JSON.stringify(body),
         });
         if (!res.ok) {
-          const errText = await res.text();
-          console.error("ClickUp calendar_event error:", res.status, errText);
           return JSON.stringify({ error: "Failed to create calendar event" });
         }
         const data = await res.json();
-        return JSON.stringify({ success: true, task_id: data.id, name: data.name, url: data.url, due_date: input.date, time: input.time || "all day" });
+
+        // Assign via separate UPDATE call (more reliable than create-with-assignees)
+        if (assigneeIds.length > 0) {
+          await fetch(`https://api.clickup.com/api/v2/task/${data.id}`, {
+            method: "PUT",
+            headers: { Authorization: apiKey, "Content-Type": "application/json" },
+            body: JSON.stringify({ assignees: { add: assigneeIds } }),
+          });
+        }
+
+        return JSON.stringify({ success: true, task_id: data.id, name: data.name, url: data.url, due_date: input.date, time: input.time || "all day", assignees: assigneeIds });
       }
 
       case "send_email": {
