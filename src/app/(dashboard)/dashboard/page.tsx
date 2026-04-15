@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { PageWrapper } from "@/components/layout/page-wrapper";
 import {
   TrendingUp,
@@ -18,7 +18,12 @@ import {
   FolderOpen,
   MessageSquare,
   Lightbulb,
+  Calendar,
+  Plus,
+  X,
+  ExternalLink,
 } from "lucide-react";
+import { toast } from "sonner";
 import Link from "next/link";
 
 // --------------- Types ---------------
@@ -97,6 +102,21 @@ interface ChatChannel {
   id: string;
   name: string;
   members_count?: number;
+}
+
+interface CalendarEvent {
+  id: string;
+  name: string;
+  description: string | null;
+  status: string;
+  statusColor: string;
+  priority: string | null;
+  priorityColor: string | null;
+  dueDate: number | null;
+  startDate: number | null;
+  assignees: { id: number; username: string; initials: string; profilePicture: string | null }[];
+  tags: { name: string; bg: string; fg: string }[];
+  url: string;
 }
 
 // --------------- Helpers ---------------
@@ -191,6 +211,225 @@ function SectionCard({
   );
 }
 
+// --------------- Add Event Modal ---------------
+
+function AddEventModal({
+  onClose,
+  onCreated,
+}: {
+  onClose: () => void;
+  onCreated: () => void;
+}) {
+  const [name, setName] = useState("");
+  const [description, setDescription] = useState("");
+  const [date, setDate] = useState("");
+  const [time, setTime] = useState("");
+  const [priority, setPriority] = useState(3); // 3 = normal
+  const [creating, setCreating] = useState(false);
+  const nameRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    nameRef.current?.focus();
+    // Set default date to today
+    const today = new Date();
+    setDate(today.toISOString().split("T")[0]);
+    setTime("10:00");
+  }, []);
+
+  async function handleCreate() {
+    if (!name.trim() || !date) return;
+    setCreating(true);
+
+    try {
+      // Build timestamp
+      const [y, m, d] = date.split("-").map(Number);
+      const [hr, min] = (time || "00:00").split(":").map(Number);
+      const dueMs = new Date(y, m - 1, d, hr, min).getTime();
+      const startMs = dueMs; // start = due for simple events
+
+      const res = await fetch("/api/clickup/calendar", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: name.trim(),
+          description: description.trim() || undefined,
+          dueDate: dueMs,
+          startDate: startMs,
+          priority,
+          assignToTeam: true,
+        }),
+      });
+
+      if (!res.ok) {
+        const err = await res.json();
+        toast.error(err.error || "Failed to create event");
+        return;
+      }
+
+      const data = await res.json();
+      toast.success(data.message || "Event created!");
+      onCreated();
+    } catch {
+      toast.error("Failed to create event");
+    } finally {
+      setCreating(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+      <div className="w-full max-w-md rounded-xl border border-[#1E1E1E] bg-[#111111] p-6 shadow-2xl">
+        <div className="flex items-center justify-between mb-5">
+          <h2 className="text-base font-semibold">Add Calendar Event</h2>
+          <button
+            onClick={onClose}
+            className="rounded-md p-1 text-muted-foreground hover:text-foreground hover:bg-[#1E1E1E] transition-colors"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        <div className="space-y-4">
+          {/* Name */}
+          <div>
+            <label className="text-xs font-medium text-muted-foreground mb-1 block">
+              Event Name *
+            </label>
+            <input
+              ref={nameRef}
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="e.g. Client Demo with Dr. Timothy"
+              className="w-full rounded-lg border border-[#1E1E1E] bg-[#0A0A0A] px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/50 focus:border-[#7B68EE] focus:outline-none"
+              onKeyDown={(e) => e.key === "Enter" && handleCreate()}
+            />
+          </div>
+
+          {/* Description */}
+          <div>
+            <label className="text-xs font-medium text-muted-foreground mb-1 block">
+              Description
+            </label>
+            <textarea
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              placeholder="Meeting agenda, notes..."
+              rows={2}
+              className="w-full rounded-lg border border-[#1E1E1E] bg-[#0A0A0A] px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/50 focus:border-[#7B68EE] focus:outline-none resize-none"
+            />
+          </div>
+
+          {/* Date + Time */}
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs font-medium text-muted-foreground mb-1 block">
+                Date *
+              </label>
+              <input
+                type="date"
+                value={date}
+                onChange={(e) => setDate(e.target.value)}
+                className="w-full rounded-lg border border-[#1E1E1E] bg-[#0A0A0A] px-3 py-2 text-sm text-foreground focus:border-[#7B68EE] focus:outline-none [color-scheme:dark]"
+              />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-muted-foreground mb-1 block">
+                Time
+              </label>
+              <input
+                type="time"
+                value={time}
+                onChange={(e) => setTime(e.target.value)}
+                className="w-full rounded-lg border border-[#1E1E1E] bg-[#0A0A0A] px-3 py-2 text-sm text-foreground focus:border-[#7B68EE] focus:outline-none [color-scheme:dark]"
+              />
+            </div>
+          </div>
+
+          {/* Priority */}
+          <div>
+            <label className="text-xs font-medium text-muted-foreground mb-1 block">
+              Priority
+            </label>
+            <div className="flex gap-2">
+              {[
+                { value: 1, label: "Urgent", color: "#EF4444" },
+                { value: 2, label: "High", color: "#F59E0B" },
+                { value: 3, label: "Normal", color: "#3B82F6" },
+                { value: 4, label: "Low", color: "#6B7280" },
+              ].map((p) => (
+                <button
+                  key={p.value}
+                  onClick={() => setPriority(p.value)}
+                  className={`flex-1 rounded-lg border px-2 py-1.5 text-[11px] font-medium transition-colors ${
+                    priority === p.value
+                      ? "border-current"
+                      : "border-[#1E1E1E] hover:border-[#2E2E2E]"
+                  }`}
+                  style={{
+                    color: priority === p.value ? p.color : "#6B7280",
+                    backgroundColor:
+                      priority === p.value ? `${p.color}15` : "transparent",
+                  }}
+                >
+                  {p.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Assignees info */}
+          <div className="rounded-lg bg-[#0A0A0A] border border-[#1E1E1E] px-3 py-2">
+            <p className="text-[10px] text-muted-foreground mb-1.5">
+              Auto-assigned & notified:
+            </p>
+            <div className="flex items-center gap-3">
+              <div className="flex items-center gap-1.5">
+                <div className="flex h-5 w-5 items-center justify-center rounded-full bg-[#b388ff]/20 text-[8px] font-bold text-[#b388ff]">
+                  WH
+                </div>
+                <span className="text-xs">Way Hann</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <div className="flex h-5 w-5 items-center justify-center rounded-full bg-[#006063]/20 text-[8px] font-bold text-[#26A69A]">
+                  VT
+                </div>
+                <span className="text-xs">Veasen</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Actions */}
+        <div className="flex items-center justify-end gap-3 mt-6">
+          <button
+            onClick={onClose}
+            className="rounded-lg border border-[#1E1E1E] px-4 py-2 text-sm text-muted-foreground hover:bg-[#1A1A1A] hover:text-foreground transition-colors"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={handleCreate}
+            disabled={!name.trim() || !date || creating}
+            className="flex items-center gap-2 rounded-lg bg-[#7B68EE] px-4 py-2 text-sm font-medium text-white hover:bg-[#6C5CE7] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          >
+            {creating ? (
+              <>
+                <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                Creating...
+              </>
+            ) : (
+              <>
+                <Calendar className="h-3.5 w-3.5" />
+                Create Event
+              </>
+            )}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // --------------- Main Page ---------------
 
 export default function DashboardPage() {
@@ -204,6 +443,9 @@ export default function DashboardPage() {
   const [resources, setResources] = useState<Resource[]>([]);
   const [contentIdeas, setContentIdeas] = useState<ContentIdea[]>([]);
   const [chatChannels, setChatChannels] = useState<ChatChannel[]>([]);
+  const [calendarEvents, setCalendarEvents] = useState<CalendarEvent[]>([]);
+  const [calendarUrl, setCalendarUrl] = useState<string>("https://app.clickup.com");
+  const [showAddEvent, setShowAddEvent] = useState(false);
   const [loading, setLoading] = useState(true);
   const [lastFetched, setLastFetched] = useState<string | null>(null);
 
@@ -213,7 +455,7 @@ export default function DashboardPage() {
     const month = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
 
     try {
-      const [balRes, finRes, cliRes, taskRes, igRes, fbRes, adsRes, resRes, ideasRes, chatRes] =
+      const [balRes, finRes, cliRes, taskRes, igRes, fbRes, adsRes, resRes, ideasRes, chatRes, calRes] =
         await Promise.allSettled([
           fetch("/api/supabase/balances"),
           fetch(`/api/supabase/finance?month=${month}`),
@@ -225,6 +467,7 @@ export default function DashboardPage() {
           fetch("/api/supabase/resources"),
           fetch("/api/agents/content-ideas?limit=5&status=new"),
           fetch("/api/clickup/chat?action=channels"),
+          fetch("/api/clickup/calendar?days=14"),
         ]);
 
       if (balRes.status === "fulfilled" && balRes.value.ok) {
@@ -270,6 +513,11 @@ export default function DashboardPage() {
       if (chatRes.status === "fulfilled" && chatRes.value.ok) {
         const chatData = await chatRes.value.json();
         setChatChannels(chatData.channels || []);
+      }
+      if (calRes.status === "fulfilled" && calRes.value.ok) {
+        const calData = await calRes.value.json();
+        setCalendarEvents(calData.events || []);
+        if (calData.calendarUrl) setCalendarUrl(calData.calendarUrl);
       }
 
       setLastFetched(new Date().toISOString());
@@ -397,6 +645,171 @@ export default function DashboardPage() {
             trendDown={urgentTasks.length > 0}
           />
         </div>
+
+        {/* Calendar — Upcoming ClickUp Events */}
+        <div className="rounded-xl border border-[#1E1E1E] bg-[#111111] p-5">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2">
+              <Calendar className="h-4 w-4 text-[#7B68EE]" />
+              <h2 className="text-sm font-semibold">Upcoming Schedule</h2>
+              <span className="text-[10px] text-muted-foreground">(Next 14 days)</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setShowAddEvent(true)}
+                className="flex items-center gap-1.5 rounded-lg bg-[#7B68EE]/10 px-3 py-1.5 text-[11px] font-medium text-[#7B68EE] hover:bg-[#7B68EE]/20 transition-colors"
+              >
+                <Plus className="h-3 w-3" />
+                Add Event
+              </button>
+              <a
+                href={calendarUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-1.5 rounded-lg border border-[#1E1E1E] px-3 py-1.5 text-[11px] font-medium text-muted-foreground hover:text-foreground hover:bg-[#1A1A1A] transition-colors"
+              >
+                <ExternalLink className="h-3 w-3" />
+                ClickUp Calendar
+              </a>
+            </div>
+          </div>
+          {calendarEvents.length > 0 ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+              {calendarEvents.slice(0, 8).map((event) => {
+                const dueDate = event.dueDate ? new Date(event.dueDate) : null;
+                const isToday = dueDate
+                  ? dueDate.toDateString() === new Date().toDateString()
+                  : false;
+                const isTomorrow = dueDate
+                  ? dueDate.toDateString() ===
+                    new Date(Date.now() + 86400000).toDateString()
+                  : false;
+                const isOverdue = dueDate ? dueDate.getTime() < Date.now() : false;
+
+                const dayLabel = isToday
+                  ? "Today"
+                  : isTomorrow
+                  ? "Tomorrow"
+                  : dueDate
+                  ? dueDate.toLocaleDateString("en-GB", {
+                      weekday: "short",
+                      day: "numeric",
+                      month: "short",
+                    })
+                  : "";
+
+                const timeLabel = dueDate
+                  ? dueDate.toLocaleTimeString("en-GB", {
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    })
+                  : "";
+
+                return (
+                  <a
+                    key={event.id}
+                    href={event.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className={`group rounded-lg border bg-[#0A0A0A] px-3 py-2.5 transition-colors hover:bg-[#111111] ${
+                      isOverdue && !isToday
+                        ? "border-[#EF4444]/30"
+                        : isToday
+                        ? "border-[#7B68EE]/30"
+                        : "border-[#1E1E1E]"
+                    }`}
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-1.5">
+                          <div
+                            className="h-2 w-2 rounded-full shrink-0"
+                            style={{ backgroundColor: event.statusColor }}
+                          />
+                          <p className="text-xs font-medium truncate">
+                            {event.name}
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-1.5 mt-1">
+                          <Clock className="h-2.5 w-2.5 text-muted-foreground shrink-0" />
+                          <span
+                            className={`text-[10px] ${
+                              isOverdue && !isToday
+                                ? "text-[#EF4444] font-medium"
+                                : isToday
+                                ? "text-[#7B68EE] font-medium"
+                                : "text-muted-foreground"
+                            }`}
+                          >
+                            {isOverdue && !isToday ? "Overdue · " : ""}
+                            {dayLabel}
+                            {timeLabel && timeLabel !== "00:00" ? ` · ${timeLabel}` : ""}
+                          </span>
+                        </div>
+                        {/* Assignees */}
+                        {event.assignees.length > 0 && (
+                          <div className="flex items-center gap-1 mt-1.5">
+                            {event.assignees.slice(0, 3).map((a) => (
+                              <div
+                                key={a.id}
+                                className="flex h-5 w-5 items-center justify-center rounded-full bg-[#1E1E1E] text-[8px] font-medium text-muted-foreground"
+                                title={a.username}
+                              >
+                                {a.initials}
+                              </div>
+                            ))}
+                            {event.assignees.length > 3 && (
+                              <span className="text-[9px] text-muted-foreground">
+                                +{event.assignees.length - 3}
+                              </span>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                      {/* Priority badge */}
+                      {event.priority && (
+                        <span
+                          className={`shrink-0 rounded px-1.5 py-0.5 text-[9px] font-bold uppercase ${
+                            event.priority === "urgent"
+                              ? "bg-[#EF4444]/10 text-[#EF4444]"
+                              : event.priority === "high"
+                              ? "bg-[#F59E0B]/10 text-[#F59E0B]"
+                              : event.priority === "normal"
+                              ? "bg-[#3B82F6]/10 text-[#3B82F6]"
+                              : "bg-[#6B7280]/10 text-[#6B7280]"
+                          }`}
+                        >
+                          {event.priority}
+                        </span>
+                      )}
+                    </div>
+                  </a>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="flex flex-col items-center justify-center py-6 text-muted-foreground">
+              <Calendar className="h-8 w-8 mb-2 opacity-30" />
+              <p className="text-xs">No upcoming deadlines in the next 14 days</p>
+            </div>
+          )}
+          {calendarEvents.length > 8 && (
+            <p className="text-center text-[10px] text-muted-foreground mt-3">
+              +{calendarEvents.length - 8} more events
+            </p>
+          )}
+        </div>
+
+        {/* Add Event Modal */}
+        {showAddEvent && (
+          <AddEventModal
+            onClose={() => setShowAddEvent(false)}
+            onCreated={() => {
+              setShowAddEvent(false);
+              fetchAll();
+            }}
+          />
+        )}
 
         {/* Second Row — Pipeline + Finance */}
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">

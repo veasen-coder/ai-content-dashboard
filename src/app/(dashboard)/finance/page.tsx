@@ -1237,6 +1237,13 @@ export default function FinancePage() {
             </button>
           </div>
           <div className="flex items-center gap-3">
+            <Link
+              href="/finance/metrics"
+              className="flex items-center gap-2 rounded-lg border border-[#7C3AED]/30 bg-[#7C3AED]/10 px-3 py-2 text-sm font-medium text-[#7C3AED] transition-colors hover:bg-[#7C3AED]/20"
+            >
+              <TrendingUp className="h-4 w-4" />
+              Business Metrics
+            </Link>
             <button
               onClick={fetchData}
               disabled={refreshing}
