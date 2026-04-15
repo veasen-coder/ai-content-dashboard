@@ -22,6 +22,10 @@ import {
   FileSpreadsheet,
   Copy,
   ClipboardCheck,
+  Bell,
+  BellDot,
+  MessageSquare,
+  Reply,
 } from "lucide-react";
 import Link from "next/link";
 import { toast } from "sonner";
@@ -40,6 +44,7 @@ interface Lead {
   subject: string;
   emailBody: string;
   status: "draft" | "selected" | "sending" | "sent" | "failed";
+  threadId?: string;
 }
 
 interface HistoryRow {
@@ -55,6 +60,17 @@ interface HistoryRow {
   status: string;
   sentAt: string;
   createdAt: string;
+  threadId: string;
+}
+
+interface ThreadReply {
+  id: string;
+  from: string;
+  to: string;
+  subject: string;
+  date: string;
+  snippet: string;
+  body: string;
 }
 
 // --------------- Constants ---------------
@@ -74,7 +90,7 @@ const NICHES = [
   "Construction / Renovation",
 ];
 
-const COUNTRIES = ["Malaysia"];
+const COUNTRIES = ["Malaysia", "Singapore", "Indonesia", "Thailand", "Philippines", "Vietnam", "India", "United States", "United Kingdom", "Australia"];
 
 const MALAYSIAN_STATES = [
   "All States",
@@ -134,16 +150,12 @@ function parseCSV(text: string): string[][] {
       }
     }
   }
-  // last row
   row.push(current.trim());
   if (row.some((c) => c !== "")) rows.push(row);
   return rows;
 }
 
-// Column header matching — flexible to handle various naming conventions
-function matchColumn(
-  header: string
-): keyof Lead | null {
+function matchColumn(header: string): keyof Lead | null {
   const h = header.toLowerCase().replace(/[^a-z0-9]/g, "");
   if (h.includes("businessname") || h.includes("business") || h.includes("company") || h === "name") return "businessName";
   if (h === "niche" || h.includes("industry") || h.includes("category")) return "niche";
@@ -156,32 +168,38 @@ function matchColumn(
   return null;
 }
 
-// --------------- Prompt Script ---------------
+// --------------- Prompt Generator ---------------
 
-const PROMPT_SCRIPT = `You are a lead research specialist for Flogen AI, a Malaysian AI automation company that sells WhatsApp AI agents, automation workflows, and AI customer service systems to SMEs.
+function generatePrompt(promptNiche: string, promptCountry: string, promptState: string, promptCount: number): string {
+  const location = promptState && promptState !== "All States" ? `${promptState}, ${promptCountry}` : promptCountry;
 
-Your task: Generate [NUMBER] realistic potential client leads for the "[NICHE]" industry in [LOCATION].
+  return `You are a lead research specialist for Flogen AI, a Malaysian AI automation company that sells WhatsApp AI agents, automation workflows, and AI customer service systems to SMEs.
 
-For EACH lead, provide the following as a table or CSV format with these exact column headers:
-Business Name | Niche | Country | State | Phone | Email | Subject | Email Body
+Your task: Generate ${promptCount} realistic potential client leads for the "${promptNiche}" industry in ${location}.
+
+For EACH lead, provide the following as a CSV format with these exact column headers:
+Business Name,Niche,Country,State,Phone,Email,Subject,Email Body
 
 Rules for each field:
-- Business Name: Realistic Malaysian SME name
-- Niche: The industry/niche
-- Country: Malaysia (or specified country)
-- State: The state/city
-- Phone: Realistic Malaysian phone number (format: 01X-XXXX XXXX)
+- Business Name: Realistic SME name in ${location}
+- Niche: "${promptNiche}"
+- Country: "${promptCountry}"
+- State: The state/city in ${location}
+- Phone: Realistic phone number for ${promptCountry} (${promptCountry === "Malaysia" ? "format: 01X-XXXX XXXX" : "local format"})
 - Email: Realistic business email (use common formats like info@, hello@, admin@ with the business domain)
 - Subject: A personalised cold email subject line specific to this business (NOT generic)
 - Email Body: A complete cold email (150-200 words) that:
   * Opens with something specific about their business type
   * Identifies one pain point they likely face (slow responses, missed messages, manual work)
   * Explains how Flogen AI solves it in one sentence
-  * Includes social proof (e.g. "We've helped F&B businesses reduce response time by 80%")
+  * Includes social proof (e.g. "We've helped ${promptNiche} businesses reduce response time by 80%")
   * Soft CTA: "Would you be open to a quick 15-min call this week?"
   * Sign off as: Haikal, Founder — Flogen AI | flogen.team@gmail.com | +60 11-7557 4966
 
-IMPORTANT: Output as a CSV file format with the headers above. Each row is one lead. Use double quotes around fields that contain commas or newlines.`;
+IMPORTANT: Output ONLY as a valid CSV format. First row must be the headers. Each subsequent row is one lead. Use double quotes around fields that contain commas or newlines. Do NOT include any explanation, markdown, or code fences — just the raw CSV data.
+
+After generating the CSV, please also provide the data as a downloadable CSV file artifact so the user can directly download and upload it.`;
+}
 
 // --------------- Main Page ---------------
 
@@ -193,11 +211,18 @@ export default function LeadResearchPage() {
   const [leadCount, setLeadCount] = useState(5);
   const [researching, setResearching] = useState(false);
 
-  // File upload
+  // Upload modal
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
+  const [showUploadModal, setShowUploadModal] = useState(false);
   const [showPromptScript, setShowPromptScript] = useState(false);
   const [promptCopied, setPromptCopied] = useState(false);
+
+  // Prompt selectors (separate from main form)
+  const [promptNiche, setPromptNiche] = useState("");
+  const [promptCountry, setPromptCountry] = useState("Malaysia");
+  const [promptState, setPromptState] = useState("All States");
+  const [promptCount, setPromptCount] = useState(10);
 
   // Step 2: Leads table
   const [leads, setLeads] = useState<Lead[]>([]);
@@ -212,6 +237,12 @@ export default function LeadResearchPage() {
   const [history, setHistory] = useState<HistoryRow[]>([]);
   const [showHistory, setShowHistory] = useState(false);
   const [loadingHistory, setLoadingHistory] = useState(false);
+
+  // Reply tracking
+  const [replyData, setReplyData] = useState<Record<string, ThreadReply[]>>({});
+  const [loadingReplies, setLoadingReplies] = useState<Record<string, boolean>>({});
+  const [expandedHistoryLead, setExpandedHistoryLead] = useState<string | null>(null);
+  const [replyCounts, setReplyCounts] = useState<Record<string, number>>({});
 
   // ---- Research ----
   async function handleResearch() {
@@ -282,7 +313,6 @@ export default function LeadResearchPage() {
         const text = await file.text();
         rows = parseCSV(text);
       } else if (file.name.endsWith(".xlsx") || file.name.endsWith(".xls")) {
-        // Dynamically load SheetJS from CDN at runtime
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         let XLSX = (window as any).XLSX;
         if (!XLSX) {
@@ -316,7 +346,6 @@ export default function LeadResearchPage() {
         return;
       }
 
-      // Map headers
       const headers = rows[0];
       const columnMap: Record<number, keyof Lead> = {};
       headers.forEach((h, i) => {
@@ -324,42 +353,42 @@ export default function LeadResearchPage() {
         if (mapped) columnMap[i] = mapped;
       });
 
-      // Require at least businessName or email
       const hasBusiness = Object.values(columnMap).includes("businessName");
       const hasEmail = Object.values(columnMap).includes("email");
 
       if (!hasBusiness && !hasEmail) {
-        toast.error(
-          "Could not find 'Business Name' or 'Email' columns. Please check your headers."
-        );
+        toast.error("Could not find 'Business Name' or 'Email' columns. Please check your headers.");
         setUploading(false);
         return;
       }
 
-      // Parse data rows
-      const parsed: Lead[] = rows.slice(1).map((row, i) => {
-        const lead: Partial<Lead> = {};
-        Object.entries(columnMap).forEach(([colIdx, field]) => {
-          const val = row[parseInt(colIdx)] || "";
-          (lead as Record<string, string>)[field] = val;
-        });
+      const parsed: Lead[] = rows
+        .slice(1)
+        .map((row, i) => {
+          const lead: Partial<Lead> = {};
+          Object.entries(columnMap).forEach(([colIdx, field]) => {
+            const val = row[parseInt(colIdx)] || "";
+            (lead as Record<string, string>)[field] = val;
+          });
 
-        return {
-          id: `${batchId}_${i}`,
-          batchId,
-          businessName: lead.businessName || "",
-          niche: lead.niche || niche || "Uploaded",
-          country: lead.country || country,
-          state: lead.state || state === "All States" ? "" : state,
-          phone: lead.phone || "",
-          email: lead.email || "",
-          subject: lead.subject || "",
-          emailBody: lead.emailBody || "",
-          status: "draft" as const,
-        };
-      }).filter((l) => l.businessName || l.email); // Remove empty rows
+          return {
+            id: `${batchId}_${i}`,
+            batchId,
+            businessName: lead.businessName || "",
+            niche: lead.niche || niche || "Uploaded",
+            country: lead.country || country,
+            state: lead.state || (state === "All States" ? "" : state),
+            phone: lead.phone || "",
+            email: lead.email || "",
+            subject: lead.subject || "",
+            emailBody: lead.emailBody || "",
+            status: "draft" as const,
+          };
+        })
+        .filter((l) => l.businessName || l.email);
 
       setLeads(parsed);
+      setShowUploadModal(false);
       toast.success(`Imported ${parsed.length} leads from ${file.name}`);
     } catch (err) {
       console.error("File parse error:", err);
@@ -377,11 +406,13 @@ export default function LeadResearchPage() {
   }
 
   function copyPromptScript() {
-    const customized = PROMPT_SCRIPT
-      .replace("[NUMBER]", String(leadCount))
-      .replace("[NICHE]", niche || "[YOUR NICHE]")
-      .replace("[LOCATION]", state && state !== "All States" ? `${state}, ${country}` : country);
-    navigator.clipboard.writeText(customized);
+    const prompt = generatePrompt(
+      promptNiche || "[YOUR NICHE]",
+      promptCountry,
+      promptState,
+      promptCount
+    );
+    navigator.clipboard.writeText(prompt);
     setPromptCopied(true);
     toast.success("Prompt copied to clipboard!");
     setTimeout(() => setPromptCopied(false), 2000);
@@ -418,7 +449,6 @@ export default function LeadResearchPage() {
     );
   }
 
-  // ---- Edit fields inline ----
   function updateLead(id: string, field: keyof Lead, value: string) {
     setLeads((prev) =>
       prev.map((l) => (l.id === id ? { ...l, [field]: value } : l))
@@ -437,12 +467,12 @@ export default function LeadResearchPage() {
     const progress: Record<string, string> = {};
     let successCount = 0;
     let failCount = 0;
+    const threadIds: Record<string, string> = {};
 
     for (const lead of selected) {
       progress[lead.id] = "sending";
       setSendProgress({ ...progress });
 
-      // Update status to sending
       setLeads((prev) =>
         prev.map((l) =>
           l.id === lead.id ? { ...l, status: "sending" as const } : l
@@ -462,11 +492,15 @@ export default function LeadResearchPage() {
         });
 
         if (res.ok) {
+          const result = await res.json();
           progress[lead.id] = "sent";
+          threadIds[lead.id] = result.threadId || "";
           successCount++;
           setLeads((prev) =>
             prev.map((l) =>
-              l.id === lead.id ? { ...l, status: "sent" as const } : l
+              l.id === lead.id
+                ? { ...l, status: "sent" as const, threadId: result.threadId }
+                : l
             )
           );
         } else {
@@ -491,7 +525,7 @@ export default function LeadResearchPage() {
       setSendProgress({ ...progress });
     }
 
-    // Log sent leads to Google Sheets
+    // Log sent leads to Google Sheets (now with threadId)
     const sentLeads = leads
       .filter((l) => progress[l.id] === "sent")
       .map((l) => ({
@@ -506,6 +540,7 @@ export default function LeadResearchPage() {
         emailBody: l.emailBody,
         status: "sent",
         sentAt: new Date().toISOString().split("T")[0],
+        threadId: threadIds[l.id] || "",
       }));
 
     if (sentLeads.length > 0) {
@@ -532,23 +567,22 @@ export default function LeadResearchPage() {
       const res = await fetch("/api/google/sheets/leads");
       if (res.ok) {
         const data = await res.json();
-        const rows: HistoryRow[] = (data.rows || []).map(
-          (r: string[]) => ({
-            batchId: r[0] || "",
-            businessName: r[1] || "",
-            niche: r[2] || "",
-            country: r[3] || "",
-            state: r[4] || "",
-            phone: r[5] || "",
-            email: r[6] || "",
-            subject: r[7] || "",
-            emailBody: r[8] || "",
-            status: r[9] || "",
-            sentAt: r[10] || "",
-            createdAt: r[11] || "",
-          })
-        );
-        setHistory(rows.reverse()); // Most recent first
+        const rows: HistoryRow[] = (data.rows || []).map((r: string[]) => ({
+          batchId: r[0] || "",
+          businessName: r[1] || "",
+          niche: r[2] || "",
+          country: r[3] || "",
+          state: r[4] || "",
+          phone: r[5] || "",
+          email: r[6] || "",
+          subject: r[7] || "",
+          emailBody: r[8] || "",
+          status: r[9] || "",
+          sentAt: r[10] || "",
+          createdAt: r[11] || "",
+          threadId: r[12] || "",
+        }));
+        setHistory(rows.reverse());
       }
     } catch {
       // silent
@@ -561,12 +595,66 @@ export default function LeadResearchPage() {
     fetchHistory();
   }, [fetchHistory]);
 
+  // ---- Reply Tracking ----
+  async function fetchReplies(threadId: string, leadKey: string) {
+    if (!threadId) return;
+    setLoadingReplies((prev) => ({ ...prev, [leadKey]: true }));
+
+    try {
+      const res = await fetch(`/api/gmail/thread?threadId=${threadId}`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.hasReplies) {
+          setReplyData((prev) => ({ ...prev, [leadKey]: data.replies }));
+          setReplyCounts((prev) => ({
+            ...prev,
+            [leadKey]: data.replies.length,
+          }));
+        } else {
+          setReplyData((prev) => ({ ...prev, [leadKey]: [] }));
+          setReplyCounts((prev) => ({ ...prev, [leadKey]: 0 }));
+        }
+      }
+    } catch {
+      toast.error("Failed to check replies");
+    } finally {
+      setLoadingReplies((prev) => ({ ...prev, [leadKey]: false }));
+    }
+  }
+
+  async function checkAllReplies() {
+    const leadsWithThreads = history.filter((h) => h.threadId);
+    if (leadsWithThreads.length === 0) {
+      toast("No sent emails with thread tracking");
+      return;
+    }
+
+    toast.info(`Checking replies for ${leadsWithThreads.length} emails...`);
+
+    for (const lead of leadsWithThreads) {
+      const key = `${lead.batchId}_${lead.email}`;
+      await fetchReplies(lead.threadId, key);
+    }
+
+    const totalReplies = Object.values(replyCounts).reduce(
+      (sum, c) => sum + c,
+      0
+    );
+    if (totalReplies > 0) {
+      toast.success(`Found ${totalReplies} replies!`);
+    } else {
+      toast("No replies yet");
+    }
+  }
+
   // ---- Computed ----
-  const selectedCount = leads.filter(
-    (l) => l.status === "selected"
-  ).length;
+  const selectedCount = leads.filter((l) => l.status === "selected").length;
   const sentCount = leads.filter((l) => l.status === "sent").length;
-  // Group history by batch
+  const totalReplies = Object.values(replyCounts).reduce(
+    (sum, c) => sum + c,
+    0
+  );
+
   const historyBatches = history.reduce(
     (acc, row) => {
       if (!acc[row.batchId]) {
@@ -649,7 +737,7 @@ export default function LeadResearchPage() {
                 disabled
                 className="w-full rounded-lg border border-[#1E1E1E] bg-[#0A0A0A] px-3 py-2.5 text-sm text-foreground opacity-60 [color-scheme:dark]"
               >
-                {COUNTRIES.map((c) => (
+                {["Malaysia"].map((c) => (
                   <option key={c} value={c}>
                     {c}
                   </option>
@@ -693,148 +781,265 @@ export default function LeadResearchPage() {
               </select>
             </div>
 
-            {/* Search button */}
-            <button
-              onClick={handleResearch}
-              disabled={!niche || researching}
-              className="flex items-center gap-2 rounded-lg bg-emerald-600 px-5 py-2.5 text-sm font-medium text-white hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-            >
-              {researching ? (
-                <>
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  Researching...
-                </>
-              ) : (
-                <>
-                  <Sparkles className="h-4 w-4" />
-                  Find Leads
-                </>
-              )}
-            </button>
+            {/* Buttons */}
+            <div className="flex items-center gap-2">
+              <button
+                onClick={handleResearch}
+                disabled={!niche || researching}
+                className="flex items-center gap-2 rounded-lg bg-emerald-600 px-5 py-2.5 text-sm font-medium text-white hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                {researching ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Researching...
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="h-4 w-4" />
+                    Find Leads
+                  </>
+                )}
+              </button>
+
+              <button
+                onClick={() => setShowUploadModal(true)}
+                className="flex items-center gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-2.5 text-sm font-medium text-amber-400 hover:bg-amber-500/20 transition-colors"
+                title="Upload CSV or XLSX file"
+              >
+                <Upload className="h-4 w-4" />
+                Upload
+              </button>
+            </div>
           </div>
         </div>
 
-        {/* ============ OR: Upload File ============ */}
-        <div className="rounded-xl border border-[#1E1E1E] bg-[#111111] p-5">
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-2">
-              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-amber-500/15">
-                <Upload className="h-4 w-4 text-amber-400" />
-              </div>
-              <div>
-                <h2 className="text-sm font-semibold">
-                  Or — Upload CSV / XLSX
-                </h2>
-                <p className="text-[10px] text-muted-foreground">
-                  Import leads from a spreadsheet to skip AI generation and save
-                  API costs
-                </p>
-              </div>
-            </div>
-            <button
-              onClick={() => setShowPromptScript(!showPromptScript)}
-              className="flex items-center gap-1.5 rounded-lg border border-violet-500/30 bg-violet-500/10 px-3 py-1.5 text-xs font-medium text-violet-400 hover:bg-violet-500/20 transition-colors"
-            >
-              <FileSpreadsheet className="h-3.5 w-3.5" />
-              Prompt Script
-            </button>
-          </div>
-
-          {/* Prompt Script Panel */}
-          {showPromptScript && (
-            <div className="mb-4 rounded-lg border border-violet-500/20 bg-violet-500/5 p-4">
-              <div className="flex items-center justify-between mb-2">
-                <h3 className="text-xs font-semibold text-violet-400">
-                  Reusable Prompt — Copy &amp; paste into ChatGPT / Claude
-                </h3>
+        {/* ============ UPLOAD MODAL ============ */}
+        {showUploadModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+            <div className="w-full max-w-2xl mx-4 rounded-xl border border-[#1E1E1E] bg-[#111111] shadow-2xl">
+              {/* Modal Header */}
+              <div className="flex items-center justify-between border-b border-[#1E1E1E] px-6 py-4">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-amber-500/15">
+                    <Upload className="h-5 w-5 text-amber-400" />
+                  </div>
+                  <div>
+                    <h2 className="text-base font-semibold">
+                      Upload Leads File
+                    </h2>
+                    <p className="text-xs text-muted-foreground">
+                      Import CSV or XLSX to skip AI generation
+                    </p>
+                  </div>
+                </div>
                 <button
-                  onClick={copyPromptScript}
-                  className="flex items-center gap-1.5 rounded-md bg-violet-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-violet-700 transition-colors"
+                  onClick={() => {
+                    setShowUploadModal(false);
+                    setShowPromptScript(false);
+                  }}
+                  className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground hover:bg-[#1E1E1E] hover:text-foreground transition-colors"
                 >
-                  {promptCopied ? (
-                    <>
-                      <ClipboardCheck className="h-3.5 w-3.5" />
-                      Copied!
-                    </>
-                  ) : (
-                    <>
-                      <Copy className="h-3.5 w-3.5" />
-                      Copy Prompt
-                    </>
-                  )}
+                  <X className="h-4 w-4" />
                 </button>
               </div>
-              <p className="text-[10px] text-muted-foreground mb-3">
-                This prompt will auto-fill with your selected niche, location
-                &amp; lead count. Run it in ChatGPT or Claude, then download the
-                output as CSV and upload below.
-              </p>
-              <pre className="max-h-[200px] overflow-y-auto rounded-lg border border-[#1E1E1E] bg-[#0A0A0A] p-3 text-[11px] text-muted-foreground font-mono leading-relaxed whitespace-pre-wrap">
-                {PROMPT_SCRIPT.replace("[NUMBER]", String(leadCount))
-                  .replace("[NICHE]", niche || "[YOUR NICHE]")
-                  .replace(
-                    "[LOCATION]",
-                    state && state !== "All States"
-                      ? `${state}, ${country}`
-                      : country
+
+              {/* Modal Body */}
+              <div className="px-6 py-5 space-y-4 max-h-[70vh] overflow-y-auto">
+                {/* Prompt Script Toggle */}
+                <button
+                  onClick={() => setShowPromptScript(!showPromptScript)}
+                  className="flex w-full items-center justify-between rounded-lg border border-violet-500/20 bg-violet-500/5 px-4 py-3 text-left transition-colors hover:bg-violet-500/10"
+                >
+                  <div className="flex items-center gap-2">
+                    <FileSpreadsheet className="h-4 w-4 text-violet-400" />
+                    <span className="text-sm font-medium text-violet-400">
+                      Get Prompt Script
+                    </span>
+                    <span className="text-[10px] text-muted-foreground">
+                      — Use ChatGPT / Claude to generate leads for free
+                    </span>
+                  </div>
+                  {showPromptScript ? (
+                    <ChevronUp className="h-4 w-4 text-violet-400" />
+                  ) : (
+                    <ChevronDown className="h-4 w-4 text-violet-400" />
                   )}
-              </pre>
-            </div>
-          )}
+                </button>
 
-          {/* Drop zone */}
-          <div
-            onDragOver={(e) => e.preventDefault()}
-            onDrop={handleDrop}
-            className="relative flex flex-col items-center justify-center gap-3 rounded-lg border-2 border-dashed border-[#2E2E2E] bg-[#0A0A0A] px-6 py-8 transition-colors hover:border-amber-500/40 hover:bg-amber-500/5"
-          >
-            {uploading ? (
-              <Loader2 className="h-8 w-8 animate-spin text-amber-400" />
-            ) : (
-              <FileSpreadsheet className="h-8 w-8 text-muted-foreground" />
-            )}
-            <div className="text-center">
-              <p className="text-sm text-muted-foreground">
-                {uploading
-                  ? "Parsing file..."
-                  : "Drag & drop a CSV or XLSX file here"}
-              </p>
-              <p className="mt-1 text-[10px] text-muted-foreground/60">
-                Required columns: Business Name, Email · Optional: Niche,
-                Country, State, Phone, Subject, Email Body
-              </p>
-            </div>
-            {!uploading && (
-              <button
-                onClick={() => fileInputRef.current?.click()}
-                className="mt-1 rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-2 text-xs font-medium text-amber-400 hover:bg-amber-500/20 transition-colors"
-              >
-                Browse Files
-              </button>
-            )}
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept=".csv,.xlsx,.xls,.txt"
-              onChange={(e) => {
-                const file = e.target.files?.[0];
-                if (file) handleFileUpload(file);
-              }}
-              className="hidden"
-            />
-          </div>
+                {/* Prompt Script Panel */}
+                {showPromptScript && (
+                  <div className="rounded-lg border border-violet-500/20 bg-violet-500/5 p-4 space-y-4">
+                    {/* Prompt Selectors */}
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-1 block">
+                          Niche
+                        </label>
+                        <select
+                          value={promptNiche}
+                          onChange={(e) => setPromptNiche(e.target.value)}
+                          className="w-full rounded-lg border border-[#1E1E1E] bg-[#0A0A0A] px-2.5 py-2 text-xs text-foreground focus:border-violet-500 focus:outline-none [color-scheme:dark]"
+                        >
+                          <option value="">Select niche...</option>
+                          {NICHES.map((n) => (
+                            <option key={n} value={n}>
+                              {n}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-1 block">
+                          Country
+                        </label>
+                        <select
+                          value={promptCountry}
+                          onChange={(e) => setPromptCountry(e.target.value)}
+                          className="w-full rounded-lg border border-[#1E1E1E] bg-[#0A0A0A] px-2.5 py-2 text-xs text-foreground focus:border-violet-500 focus:outline-none [color-scheme:dark]"
+                        >
+                          {COUNTRIES.map((c) => (
+                            <option key={c} value={c}>
+                              {c}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-1 block">
+                          State / Region
+                        </label>
+                        <select
+                          value={promptState}
+                          onChange={(e) => setPromptState(e.target.value)}
+                          className="w-full rounded-lg border border-[#1E1E1E] bg-[#0A0A0A] px-2.5 py-2 text-xs text-foreground focus:border-violet-500 focus:outline-none [color-scheme:dark]"
+                        >
+                          {MALAYSIAN_STATES.map((s) => (
+                            <option key={s} value={s}>
+                              {s}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-1 block">
+                          Number of Leads
+                        </label>
+                        <select
+                          value={promptCount}
+                          onChange={(e) =>
+                            setPromptCount(parseInt(e.target.value))
+                          }
+                          className="w-full rounded-lg border border-[#1E1E1E] bg-[#0A0A0A] px-2.5 py-2 text-xs text-foreground focus:border-violet-500 focus:outline-none [color-scheme:dark]"
+                        >
+                          {[5, 10, 15, 20, 25, 30, 50].map((n) => (
+                            <option key={n} value={n}>
+                              {n} leads
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
 
-          {/* Format hint */}
-          <div className="mt-3 flex items-start gap-2 text-[10px] text-muted-foreground/60">
-            <AlertCircle className="h-3 w-3 mt-0.5 shrink-0" />
-            <span>
-              CSV/XLSX should have headers in the first row. Column names are
-              matched flexibly — e.g. &quot;Business Name&quot;,
-              &quot;Company&quot;, &quot;Name&quot; all work. Fields without a
-              matching column will be left empty for you to fill in.
-            </span>
+                    {/* Generated Prompt Preview */}
+                    <pre className="max-h-[180px] overflow-y-auto rounded-lg border border-[#1E1E1E] bg-[#0A0A0A] p-3 text-[10px] text-muted-foreground font-mono leading-relaxed whitespace-pre-wrap">
+                      {generatePrompt(
+                        promptNiche || "[YOUR NICHE]",
+                        promptCountry,
+                        promptState,
+                        promptCount
+                      )}
+                    </pre>
+
+                    {/* Copy Button */}
+                    <div className="flex items-center justify-between">
+                      <p className="text-[10px] text-muted-foreground">
+                        Copy this prompt → Paste into ChatGPT or Claude →
+                        Download CSV → Upload below
+                      </p>
+                      <button
+                        onClick={copyPromptScript}
+                        className="flex items-center gap-1.5 rounded-md bg-violet-600 px-4 py-2 text-xs font-medium text-white hover:bg-violet-700 transition-colors"
+                      >
+                        {promptCopied ? (
+                          <>
+                            <ClipboardCheck className="h-3.5 w-3.5" />
+                            Copied!
+                          </>
+                        ) : (
+                          <>
+                            <Copy className="h-3.5 w-3.5" />
+                            Copy Prompt
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Divider */}
+                <div className="flex items-center gap-3">
+                  <div className="h-px flex-1 bg-[#1E1E1E]" />
+                  <span className="text-[10px] font-medium text-muted-foreground">
+                    UPLOAD FILE
+                  </span>
+                  <div className="h-px flex-1 bg-[#1E1E1E]" />
+                </div>
+
+                {/* Drop zone */}
+                <div
+                  onDragOver={(e) => e.preventDefault()}
+                  onDrop={handleDrop}
+                  className="relative flex flex-col items-center justify-center gap-3 rounded-lg border-2 border-dashed border-[#2E2E2E] bg-[#0A0A0A] px-6 py-10 transition-colors hover:border-amber-500/40 hover:bg-amber-500/5"
+                >
+                  {uploading ? (
+                    <Loader2 className="h-10 w-10 animate-spin text-amber-400" />
+                  ) : (
+                    <FileSpreadsheet className="h-10 w-10 text-muted-foreground" />
+                  )}
+                  <div className="text-center">
+                    <p className="text-sm text-muted-foreground">
+                      {uploading
+                        ? "Parsing file..."
+                        : "Drag & drop a CSV or XLSX file here"}
+                    </p>
+                    <p className="mt-1.5 text-[10px] text-muted-foreground/60">
+                      Required columns: Business Name, Email · Optional: Niche,
+                      Country, State, Phone, Subject, Email Body
+                    </p>
+                  </div>
+                  {!uploading && (
+                    <button
+                      onClick={() => fileInputRef.current?.click()}
+                      className="mt-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-5 py-2.5 text-sm font-medium text-amber-400 hover:bg-amber-500/20 transition-colors"
+                    >
+                      Browse Files
+                    </button>
+                  )}
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept=".csv,.xlsx,.xls,.txt"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) handleFileUpload(file);
+                    }}
+                    className="hidden"
+                  />
+                </div>
+
+                {/* Hint */}
+                <div className="flex items-start gap-2 text-[10px] text-muted-foreground/60">
+                  <AlertCircle className="h-3 w-3 mt-0.5 shrink-0" />
+                  <span>
+                    Column names are matched flexibly — &quot;Business
+                    Name&quot;, &quot;Company&quot;, &quot;Name&quot; all work.
+                    Empty fields can be filled in after upload.
+                  </span>
+                </div>
+              </div>
+            </div>
           </div>
-        </div>
+        )}
 
         {/* ============ STEP 2: Review & Select ============ */}
         {leads.length > 0 && (
@@ -849,8 +1054,8 @@ export default function LeadResearchPage() {
                     Step 2 — Review & Select
                   </h2>
                   <p className="text-[10px] text-muted-foreground">
-                    {leads.length} leads found · Click to expand and edit
-                    email drafts
+                    {leads.length} leads found · Click to expand and edit email
+                    drafts
                   </p>
                 </div>
               </div>
@@ -883,7 +1088,6 @@ export default function LeadResearchPage() {
 
                 return (
                   <div key={lead.id}>
-                    {/* Row */}
                     <div
                       className={`grid grid-cols-1 md:grid-cols-[40px_1fr_120px_100px_1fr_80px] gap-2 items-center px-3 py-3 cursor-pointer transition-colors ${
                         isExpanded
@@ -894,7 +1098,6 @@ export default function LeadResearchPage() {
                         setExpandedId(isExpanded ? null : lead.id)
                       }
                     >
-                      {/* Checkbox */}
                       <div
                         onClick={(e) => {
                           e.stopPropagation();
@@ -922,7 +1125,6 @@ export default function LeadResearchPage() {
                         </div>
                       </div>
 
-                      {/* Business name */}
                       <div className="flex items-center gap-2 min-w-0">
                         <span className="text-sm font-medium truncate">
                           {lead.businessName}
@@ -934,22 +1136,15 @@ export default function LeadResearchPage() {
                         )}
                       </div>
 
-                      {/* Niche */}
                       <span className="text-xs text-muted-foreground truncate hidden md:block">
                         {lead.niche}
                       </span>
-
-                      {/* State */}
                       <span className="text-xs text-muted-foreground hidden md:block">
                         {lead.state}
                       </span>
-
-                      {/* Email */}
                       <span className="text-xs text-muted-foreground truncate hidden md:block font-mono">
                         {lead.email}
                       </span>
-
-                      {/* Status */}
                       <span
                         className={`text-[10px] font-semibold uppercase hidden md:block ${
                           isSent
@@ -967,10 +1162,8 @@ export default function LeadResearchPage() {
                       </span>
                     </div>
 
-                    {/* Expanded Detail */}
                     {isExpanded && (
                       <div className="bg-[#0A0A0A] px-4 pb-4 pt-1 space-y-3 border-t border-[#1E1E1E]/50">
-                        {/* Contact info */}
                         <div className="flex flex-wrap gap-4 text-xs">
                           <div className="flex items-center gap-1.5 text-muted-foreground">
                             <Mail className="h-3 w-3" />
@@ -1002,7 +1195,6 @@ export default function LeadResearchPage() {
                           </div>
                         </div>
 
-                        {/* Email draft */}
                         <div className="space-y-2">
                           <label className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
                             Email Subject
@@ -1023,11 +1215,7 @@ export default function LeadResearchPage() {
                           <textarea
                             value={lead.emailBody}
                             onChange={(e) =>
-                              updateLead(
-                                lead.id,
-                                "emailBody",
-                                e.target.value
-                              )
+                              updateLead(lead.id, "emailBody", e.target.value)
                             }
                             rows={8}
                             className="w-full rounded-lg border border-[#1E1E1E] bg-[#111111] px-3 py-2 text-sm text-foreground focus:border-emerald-500 focus:outline-none resize-y font-mono leading-relaxed"
@@ -1083,7 +1271,6 @@ export default function LeadResearchPage() {
               </button>
             </div>
 
-            {/* Send progress */}
             {Object.keys(sendProgress).length > 0 && (
               <div className="mt-4 space-y-1.5">
                 {leads
@@ -1140,6 +1327,12 @@ export default function LeadResearchPage() {
               <span className="text-[10px] text-muted-foreground">
                 ({history.length} emails sent)
               </span>
+              {totalReplies > 0 && (
+                <span className="flex items-center gap-1 rounded-full bg-blue-500/15 px-2 py-0.5 text-[10px] font-bold text-blue-400">
+                  <BellDot className="h-3 w-3" />
+                  {totalReplies} {totalReplies === 1 ? "reply" : "replies"}
+                </span>
+              )}
             </div>
             {showHistory ? (
               <ChevronUp className="h-4 w-4 text-muted-foreground" />
@@ -1150,6 +1343,17 @@ export default function LeadResearchPage() {
 
           {showHistory && (
             <div className="mt-4">
+              {/* Check Replies Button */}
+              <div className="mb-3 flex items-center justify-end">
+                <button
+                  onClick={checkAllReplies}
+                  className="flex items-center gap-1.5 rounded-lg border border-blue-500/30 bg-blue-500/10 px-3 py-1.5 text-xs font-medium text-blue-400 hover:bg-blue-500/20 transition-colors"
+                >
+                  <Bell className="h-3.5 w-3.5" />
+                  Check for Replies
+                </button>
+              </div>
+
               {loadingHistory ? (
                 <div className="flex items-center justify-center py-8">
                   <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
@@ -1182,20 +1386,118 @@ export default function LeadResearchPage() {
                         </div>
                       </div>
                       <div className="space-y-1">
-                        {batch.leads.map((l, i) => (
-                          <div
-                            key={i}
-                            className="flex items-center gap-2 text-[11px]"
-                          >
-                            <CheckCircle2 className="h-2.5 w-2.5 text-emerald-400 shrink-0" />
-                            <span className="font-medium truncate flex-1">
-                              {l.businessName}
-                            </span>
-                            <span className="font-mono text-muted-foreground/60 truncate">
-                              {l.email}
-                            </span>
-                          </div>
-                        ))}
+                        {batch.leads.map((l, i) => {
+                          const leadKey = `${l.batchId}_${l.email}`;
+                          const isExpandedHistory =
+                            expandedHistoryLead === leadKey;
+                          const replies = replyData[leadKey];
+                          const replyCount = replyCounts[leadKey] || 0;
+                          const isLoadingReply =
+                            loadingReplies[leadKey] || false;
+
+                          return (
+                            <div key={i}>
+                              <div
+                                className={`flex items-center gap-2 text-[11px] rounded-md px-2 py-1.5 cursor-pointer transition-colors ${
+                                  isExpandedHistory
+                                    ? "bg-[#111111]"
+                                    : "hover:bg-[#111111]/50"
+                                }`}
+                                onClick={() => {
+                                  if (isExpandedHistory) {
+                                    setExpandedHistoryLead(null);
+                                  } else {
+                                    setExpandedHistoryLead(leadKey);
+                                    if (
+                                      l.threadId &&
+                                      !replyData[leadKey]
+                                    ) {
+                                      fetchReplies(l.threadId, leadKey);
+                                    }
+                                  }
+                                }}
+                              >
+                                <CheckCircle2 className="h-2.5 w-2.5 text-emerald-400 shrink-0" />
+                                <span className="font-medium truncate flex-1">
+                                  {l.businessName}
+                                </span>
+                                <span className="font-mono text-muted-foreground/60 truncate">
+                                  {l.email}
+                                </span>
+                                {/* Reply indicator */}
+                                {replyCount > 0 ? (
+                                  <span className="flex items-center gap-1 rounded-full bg-blue-500/15 px-1.5 py-0.5 text-[9px] font-bold text-blue-400 shrink-0">
+                                    <Reply className="h-2.5 w-2.5" />
+                                    {replyCount}
+                                  </span>
+                                ) : l.threadId ? (
+                                  <MessageSquare className="h-3 w-3 text-muted-foreground/30 shrink-0" />
+                                ) : null}
+                              </div>
+
+                              {/* Expanded: Show replies */}
+                              {isExpandedHistory && (
+                                <div className="ml-6 mt-1 mb-2 space-y-2">
+                                  {/* Sent email summary */}
+                                  <div className="rounded-lg border border-[#1E1E1E] bg-[#111111] p-3">
+                                    <div className="flex items-center gap-2 text-[10px] text-muted-foreground mb-1">
+                                      <Send className="h-3 w-3 text-violet-400" />
+                                      <span className="font-semibold text-violet-400">
+                                        Sent
+                                      </span>
+                                      <span>· {l.sentAt}</span>
+                                    </div>
+                                    <p className="text-[10px] font-semibold text-foreground">
+                                      {l.subject}
+                                    </p>
+                                    <p className="text-[10px] text-muted-foreground mt-1 line-clamp-2">
+                                      {l.emailBody}
+                                    </p>
+                                  </div>
+
+                                  {/* Replies */}
+                                  {isLoadingReply ? (
+                                    <div className="flex items-center gap-2 py-2 text-[10px] text-muted-foreground">
+                                      <Loader2 className="h-3 w-3 animate-spin" />
+                                      Checking for replies...
+                                    </div>
+                                  ) : replies && replies.length > 0 ? (
+                                    replies.map((reply) => (
+                                      <div
+                                        key={reply.id}
+                                        className="rounded-lg border border-blue-500/20 bg-blue-500/5 p-3"
+                                      >
+                                        <div className="flex items-center gap-2 text-[10px] text-muted-foreground mb-1">
+                                          <Reply className="h-3 w-3 text-blue-400" />
+                                          <span className="font-semibold text-blue-400">
+                                            Reply
+                                          </span>
+                                          <span className="truncate">
+                                            from {reply.from}
+                                          </span>
+                                          <span className="ml-auto shrink-0">
+                                            {reply.date}
+                                          </span>
+                                        </div>
+                                        <p className="text-[11px] text-foreground whitespace-pre-wrap leading-relaxed">
+                                          {reply.body || reply.snippet}
+                                        </p>
+                                      </div>
+                                    ))
+                                  ) : l.threadId ? (
+                                    <p className="text-[10px] text-muted-foreground/50 py-1">
+                                      No replies yet
+                                    </p>
+                                  ) : (
+                                    <p className="text-[10px] text-muted-foreground/50 py-1">
+                                      No thread tracking (sent before update)
+                                    </p>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
                       </div>
                     </div>
                   ))}

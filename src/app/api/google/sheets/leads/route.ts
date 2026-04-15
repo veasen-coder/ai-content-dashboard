@@ -99,7 +99,7 @@ export async function POST(request: NextRequest) {
     // Ensure the Leads tab exists with headers
     await ensureLeadsTab(sheetId, accessToken);
 
-    // Build rows: Batch ID | Business Name | Niche | Country | State | Phone | Email | Subject | Email Body | Status | Sent At | Created At
+    // Build rows: Batch ID | Business Name | Niche | Country | State | Phone | Email | Subject | Email Body | Status | Sent At | Created At | Thread ID
     const rows = leads.map(
       (lead: {
         batchId: string;
@@ -113,6 +113,7 @@ export async function POST(request: NextRequest) {
         emailBody: string;
         status: string;
         sentAt: string;
+        threadId?: string;
       }) => [
         lead.batchId || "",
         lead.businessName || "",
@@ -126,11 +127,12 @@ export async function POST(request: NextRequest) {
         lead.status || "draft",
         lead.sentAt || "",
         new Date().toISOString().split("T")[0],
+        lead.threadId || "",
       ]
     );
 
     const appendRes = await fetch(
-      `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/${encodeURIComponent(SHEET_NAME)}!A:L:append?valueInputOption=USER_ENTERED`,
+      `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/${encodeURIComponent(SHEET_NAME)}!A:M:append?valueInputOption=USER_ENTERED`,
       {
         method: "POST",
         headers: {
@@ -179,6 +181,7 @@ function getHeaders() {
     "Status",
     "Sent At",
     "Created At",
+    "Thread ID",
   ];
 }
 
@@ -209,7 +212,7 @@ async function createLeadsTab(
 
   // Add headers
   await fetch(
-    `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/${encodeURIComponent(SHEET_NAME)}!A1:L1?valueInputOption=USER_ENTERED`,
+    `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/${encodeURIComponent(SHEET_NAME)}!A1:M1?valueInputOption=USER_ENTERED`,
     {
       method: "PUT",
       headers: {
