@@ -144,12 +144,35 @@ async function fetchDashboardContext() {
   return results;
 }
 
+// --------------- ClickUp team members ---------------
+
+const CLICKUP_MEMBERS: Record<string, number> = {
+  "way hann": 107691573,
+  "wayhann": 107691573,
+  "wh": 107691573,
+  "veasen": 107691572,
+  "veasen teh": 107691572,
+  "vt": 107691572,
+  "flogen": 306772193,
+};
+
+function resolveAssignees(names: string[]): number[] {
+  const ids: number[] = [];
+  for (const name of names) {
+    const key = name.toLowerCase().trim();
+    if (CLICKUP_MEMBERS[key]) {
+      ids.push(CLICKUP_MEMBERS[key]);
+    }
+  }
+  return ids;
+}
+
 // --------------- Tool definitions ---------------
 
 const TOOLS = [
   {
     name: "create_task",
-    description: "Create a new task in ClickUp. Use when user wants to add a task, to-do, or action item.",
+    description: "Create a new task in ClickUp. Use when user wants to add a task, to-do, or action item. ALWAYS assign to relevant team members.",
     input_schema: {
       type: "object" as const,
       properties: {
@@ -158,6 +181,7 @@ const TOOLS = [
         priority: { type: "number" as const, description: "1=urgent, 2=high, 3=normal, 4=low (optional)" },
         due_date: { type: "string" as const, description: "Due date YYYY-MM-DD (optional)" },
         tags: { type: "array" as const, items: { type: "string" as const }, description: "Tags (optional)" },
+        assignees: { type: "array" as const, items: { type: "string" as const }, description: "Team member names to assign: 'Way Hann', 'Veasen', 'Flogen'" },
       },
       required: ["name"],
     },
@@ -217,7 +241,7 @@ const TOOLS = [
   },
   {
     name: "create_calendar_event",
-    description: "Create a task in ClickUp with a due date to act as a calendar event / meeting / schedule entry.",
+    description: "Create a task in ClickUp with a due date to act as a calendar event / meeting / schedule entry. ALWAYS assign to relevant team members.",
     input_schema: {
       type: "object" as const,
       properties: {
@@ -226,6 +250,7 @@ const TOOLS = [
         date: { type: "string" as const, description: "Date in YYYY-MM-DD format" },
         time: { type: "string" as const, description: "Time in HH:MM 24h format (optional)" },
         tags: { type: "array" as const, items: { type: "string" as const }, description: "Tags like 'meeting', 'call' (optional)" },
+        assignees: { type: "array" as const, items: { type: "string" as const }, description: "Team member names to assign: 'Way Hann', 'Veasen', 'Flogen'" },
       },
       required: ["name", "date"],
     },
@@ -276,6 +301,10 @@ async function executeTool(name: string, input: Record<string, unknown>): Promis
           body.due_date_time = false;
         }
         if (input.tags) body.tags = input.tags;
+        if (input.assignees) {
+          const ids = resolveAssignees(input.assignees as string[]);
+          if (ids.length > 0) body.assignees = ids;
+        }
 
         const res = await fetch(`https://api.clickup.com/api/v2/list/${listId}/task`, {
           method: "POST",
@@ -350,6 +379,10 @@ async function executeTool(name: string, input: Record<string, unknown>): Promis
           due_date_time: !!input.time,
           tags: [...((input.tags as string[]) || []), "calendar"],
         };
+        if (input.assignees) {
+          const ids = resolveAssignees(input.assignees as string[]);
+          if (ids.length > 0) body.assignees = ids;
+        }
 
         const res = await fetch(`https://api.clickup.com/api/v2/list/${listId}/task`, {
           method: "POST",
@@ -450,14 +483,19 @@ ${finance.slice(0, 10).map((f) => `- ${f.date} [${f.type}] ${f.description}: RM$
 📁 RESOURCES — ${resources.length} items
 ${resources.slice(0, 10).map((r) => `- [${r.category}] ${r.title}${r.description ? `: ${r.description}` : ""}`).join("\n") || "None"}
 
+👥 TEAM MEMBERS (ClickUp)
+- **Way Hann** (ID: 107691573) — wayhann2004@gmail.com
+- **Veasen Teh** (ID: 107691572) — veasen2004@gmail.com
+- **Flogen** (ID: 306772193) — flogen.team@gmail.com
+
 ═══ CAPABILITIES ═══
 
 You can take these actions with tools:
-1. **create_task** — Add tasks to ClickUp
+1. **create_task** — Add tasks to ClickUp (with assignees, priority, due date, tags)
 2. **add_client** — Add new clients/leads to CRM
 3. **update_client** — Update existing client details (rename, change stage, etc.) — use the [id:...] from client list above
 4. **add_finance_entry** — Log income/expense
-5. **create_calendar_event** — Schedule meetings/events (creates ClickUp task with due date+time)
+5. **create_calendar_event** — Schedule meetings/events with assignees (creates ClickUp task with due date+time)
 6. **send_email** — Send emails via Gmail (ALWAYS show draft first)
 7. **get_fresh_data** — Refresh dashboard data mid-conversation
 
@@ -466,6 +504,7 @@ You can take these actions with tools:
 - Be the strategic brain. Proactively spot issues and suggest improvements.
 - When updating a client, look up their ID from the dashboard data above. Don't ask the user for UUIDs.
 - For calendar events, always include the date and time. Use the create_calendar_event tool.
+- **ALWAYS assign tasks and calendar events to relevant team members.** If the user mentions names, assign those people. If creating a meeting, assign all attendees. If unclear, assign to Veasen by default.
 - When sending emails, ALWAYS show the draft and get confirmation first.
 - Use RM prefix for monetary values.
 - Be concise but thorough. Use headers, bullets, and emojis for readability.
