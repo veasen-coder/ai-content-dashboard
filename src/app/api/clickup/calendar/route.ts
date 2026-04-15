@@ -24,19 +24,29 @@ export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const days = parseInt(searchParams.get("days") || "14");
+    const fromParam = searchParams.get("from"); // ms timestamp
+    const toParam = searchParams.get("to"); // ms timestamp
+    const includeClosed = searchParams.get("include_closed") === "true";
 
-    const now = Date.now();
-    const futureMs = now + days * 24 * 60 * 60 * 1000;
+    let fromMs: number;
+    let toMs: number;
+
+    if (fromParam && toParam) {
+      fromMs = parseInt(fromParam);
+      toMs = parseInt(toParam);
+    } else {
+      fromMs = Date.now() - 86400000; // include today
+      toMs = Date.now() + days * 24 * 60 * 60 * 1000;
+    }
 
     // Fetch tasks with due dates from ClickUp
-    // Use date_done_gt to filter for upcoming tasks
     const url = new URL(
       `https://api.clickup.com/api/v2/list/${listId}/task`
     );
-    url.searchParams.set("include_closed", "false");
+    url.searchParams.set("include_closed", includeClosed ? "true" : "false");
     url.searchParams.set("subtasks", "true");
-    url.searchParams.set("due_date_gt", String(now - 86400000)); // include today
-    url.searchParams.set("due_date_lt", String(futureMs));
+    url.searchParams.set("due_date_gt", String(fromMs));
+    url.searchParams.set("due_date_lt", String(toMs));
     url.searchParams.set("order_by", "due_date");
 
     const res = await fetch(url.toString(), {
