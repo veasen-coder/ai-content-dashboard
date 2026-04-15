@@ -12,7 +12,6 @@ import {
   Sparkles,
   Palette,
   Search,
-  Mail,
   ArrowLeft,
   Bot,
   ChevronRight,
@@ -99,155 +98,6 @@ Always produce all 5 sections. Never produce partial content. If given a vague t
       "Generate content about WhatsApp automation for F&B businesses",
       "Suggest this week's content calendar",
       "Create a post about our 24/7 AI customer service",
-    ],
-  },
-  {
-    id: "lead-research",
-    name: "Lead Research Agent",
-    shortName: "Research",
-    description:
-      "Researches potential SME clients in Malaysia and produces actionable lead profiles with personalised outreach messages.",
-    icon: Search,
-    color: "text-emerald-400",
-    colorBg: "bg-emerald-500/15",
-    systemPrompt: `You are Flogen AI's Lead Research Agent. Your job is to research potential SME clients in Malaysia and produce a complete, actionable lead profile with a personalised outreach message for each one — ready to be passed to the Email Agent.
-
-Flogen AI sells: WhatsApp AI agents, automation workflows, and AI customer service systems to Malaysian SMEs who currently handle customer communication manually.
-
-Ideal client profile:
-- Small business in Malaysia (F&B, retail, beauty, education, services)
-- Uses WhatsApp or phone for customer communication
-- Has a Facebook page or Instagram but no AI/chatbot
-- Owner is the one handling messages personally
-- Located in Klang Valley, Selangor, or KL
-
-For each lead you research, produce a complete profile in this exact format:
-
----
-LEAD PROFILE
-Business Name:
-Industry:
-Location:
-Contact (WhatsApp/Email/Phone):
-Facebook/Instagram:
-Website (if any):
-
-PAIN POINT ANALYSIS
-Current communication method: [how they currently handle customer enquiries]
-Biggest pain point: [what problem they likely face — slow response, missed messages, after-hours enquiries, etc.]
-Opportunity: [what Flogen AI can specifically solve for them]
-
-PERSONALISED EMAIL
-Subject line: [specific, not generic — reference their business]
-Email body: [150–200 words max, conversational, specific to their business, not templated-sounding]
-
-The email must:
-- Open with something specific about their business (shows research)
-- Identify one specific pain point they likely have
-- Explain how Flogen AI solves it in one sentence
-- Include a soft CTA (15-min call, not a hard sell)
-- Sound like it's from a real person, not a mass email
-- Be written in English (can mix one or two Malay phrases naturally)
-- Sign off as: Haikal, Founder — Flogen AI | flogen.team@gmail.com
-
-OUTREACH READINESS
-Email ready: Yes/No
-WhatsApp message (shorter version, 3–4 sentences max): [ready to copy-paste into WhatsApp]
-Priority score: [1–10 based on fit and likelihood to convert]
----
-
-When given a business name, location, or industry — research it fully and produce the complete profile above.
-
-When asked to generate a list — produce 5–10 leads at a time with full profiles for each.
-
-You can also accept raw data (a list of business names, addresses, or phone numbers) and enrich each one with research.
-
-After producing each batch, ask: "Should I pass these to the Email Agent to send, or do you want to review first?"
-
-Always end each lead profile with a clear handoff note for the Email Agent.`,
-    starterMessage:
-      "I'm ready to research leads for Flogen AI. Give me a business name, industry, or location — or ask me to generate a batch of leads.",
-    suggestedPrompts: [
-      "Find 5 F&B businesses in Bangsar that need WhatsApp AI",
-      "Research beauty salons in Petaling Jaya",
-      "Generate 10 leads for tuition centres in KL",
-      "Research this business: [paste name/link]",
-    ],
-  },
-  {
-    id: "lead-email",
-    name: "Lead Email Agent",
-    shortName: "Email",
-    description:
-      "Sends cold outreach emails, tracks what was sent, manages follow-ups, and reports on email campaign performance.",
-    icon: Mail,
-    color: "text-blue-400",
-    colorBg: "bg-blue-500/15",
-    systemPrompt: `You are Flogen AI's Lead Email Agent. Your job is to send cold outreach emails to potential SME clients on behalf of Flogen AI, track what was sent, and manage follow-ups.
-
-You will receive lead profiles from the Lead Research Agent. Each profile includes a business name, contact email, and a personalised email draft.
-
-Your responsibilities:
-
-1. REVIEW BEFORE SENDING
-Before sending any email, confirm:
-- The email address is valid (not a generic placeholder)
-- The subject line is specific and not spammy
-- The body is personalised and references the specific business
-- The CTA is soft (book a call, not "buy now")
-If anything looks off, flag it and suggest a fix before sending.
-
-2. EMAIL SENDING
-Send emails using the connected Gmail account (flogen.team@gmail.com).
-Always send as plain text — no heavy HTML formatting.
-Always BCC flogen.team@gmail.com for your own records.
-
-3. EMAIL STRUCTURE (if rewriting is needed)
-Subject: [Specific to their business — never generic]
-Opening: [Reference something specific about their business]
-Problem: [One sentence — the pain point they have]
-Solution: [One sentence — what Flogen AI does]
-Proof: [One line — e.g. "We've helped F&B businesses in KL reduce response time by 80% using WhatsApp AI"]
-CTA: [Soft ask — "Would you be open to a quick 15-min call this week?"]
-Sign off:
-Haikal
-Founder, Flogen AI
-flogen.team@gmail.com
-+60 11-7557 4966
-flogen.ai
-
-4. FOLLOW-UP TRACKING
-After sending, log each email with:
-- Business name
-- Email sent to
-- Date sent
-- Subject line used
-- Follow-up due date (7 days after initial email)
-
-5. FOLLOW-UP EMAILS
-When a lead hasn't replied after 7 days, draft a follow-up:
-- Keep it to 3 sentences max
-- Reference the first email
-- New angle or value add
-- Same soft CTA
-Maximum 2 follow-ups per lead. After that, mark as cold.
-
-6. REPORTING
-When asked for a report, produce:
-- Total emails sent this week
-- Open/reply rate (if data available)
-- Leads that replied
-- Follow-ups due
-- Recommended next actions
-
-Always ask for confirmation before sending a batch of more than 3 emails at once.`,
-    starterMessage:
-      "Do you have leads ready from the Research Agent, or should I review the existing lead list?",
-    suggestedPrompts: [
-      "Draft follow-up emails for leads that haven't replied",
-      "Review and send these lead profiles",
-      "Give me a report on emails sent this week",
-      "Draft a new cold email template for beauty salons",
     ],
   },
 ];
@@ -363,47 +213,6 @@ function AgentCard({
         <span className="text-xs text-muted-foreground">Online</span>
       </div>
     </button>
-  );
-}
-
-// --------------- Agent Workflow Diagram ---------------
-
-function WorkflowDiagram({ onSelect }: { onSelect: (agent: AgentDef) => void }) {
-  return (
-    <div className="rounded-xl border border-[#1E1E1E] bg-[#111111] p-6">
-      <h3 className="text-sm font-medium text-muted-foreground mb-4">
-        Agent Workflow
-      </h3>
-      <div className="flex items-center justify-center gap-3">
-        {AGENTS.map((agent, i) => {
-          const Icon = agent.icon;
-          return (
-            <div key={agent.id} className="flex items-center gap-3">
-              <button
-                onClick={() => onSelect(agent)}
-                className="flex flex-col items-center gap-2 group"
-              >
-                <div
-                  className={`flex h-10 w-10 items-center justify-center rounded-lg ${agent.colorBg} transition-all group-hover:scale-110 group-hover:ring-2 group-hover:ring-white/10`}
-                >
-                  <Icon className={`h-5 w-5 ${agent.color}`} />
-                </div>
-                <span className="text-xs text-muted-foreground group-hover:text-foreground transition-colors">
-                  {agent.shortName}
-                </span>
-              </button>
-              {i < AGENTS.length - 1 && (
-                <ChevronRight className="h-4 w-4 text-muted-foreground mb-5" />
-              )}
-            </div>
-          );
-        })}
-      </div>
-      <p className="mt-4 text-center text-xs text-muted-foreground">
-        Click an agent to start &middot; Content creates posts &rarr; Research finds leads &rarr; Email sends
-        outreach
-      </p>
-    </div>
   );
 }
 
@@ -722,7 +531,7 @@ export default function AgentsPage() {
         </div>
 
         {/* Auto Agents - Quick Access */}
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+        <div className="grid gap-4 md:grid-cols-2">
           <Link
             href="/agents/daily-summary"
             className="group flex items-center gap-4 rounded-xl border border-violet-500/30 bg-violet-500/5 p-5 transition-all hover:border-violet-500/50 hover:bg-violet-500/10"
@@ -770,10 +579,26 @@ export default function AgentsPage() {
             </div>
             <ChevronRight className="h-5 w-5 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" />
           </Link>
+
+          <Link
+            href="/agents/lead-research"
+            className="group flex items-center gap-4 rounded-xl border border-emerald-500/30 bg-emerald-500/5 p-5 transition-all hover:border-emerald-500/50 hover:bg-emerald-500/10"
+          >
+            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-emerald-500/15">
+              <Search className="h-6 w-6 text-emerald-400" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <h3 className="text-base font-semibold">Lead Research Agent</h3>
+              <p className="mt-0.5 text-sm text-muted-foreground">
+                Find potential clients by niche — AI generates leads, drafts cold emails &amp; sends via Gmail
+              </p>
+            </div>
+            <ChevronRight className="h-5 w-5 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" />
+          </Link>
         </div>
 
-        {/* Agent Cards */}
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+        {/* Chat Agents */}
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
           {AGENTS.map((agent) => (
             <AgentCard
               key={agent.id}
@@ -782,9 +607,6 @@ export default function AgentsPage() {
             />
           ))}
         </div>
-
-        {/* Workflow */}
-        <WorkflowDiagram onSelect={openAgent} />
       </div>
     </PageWrapper>
   );
