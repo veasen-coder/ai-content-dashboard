@@ -400,11 +400,18 @@ export default function ImageDumpPage() {
         // Create one main task with action items as subtasks
         if (group.action_items.length > 0) {
           const contactName = group.contacts[0]?.name || "Unknown";
+          // Extract clean business brand from contact's business field
+          // e.g. "Banyan Tree Spa KL - Assistant Director..." → "Banyan Tree Spa KL"
+          const rawBusiness = group.contacts[0]?.business || "";
+          const businessBrand =
+            rawBusiness.split(" - ")[0].split(",")[0].trim() ||
+            contactName;
+          const taskName = `[LEADS] ${businessBrand} - ${group.label} ( Image Dump )`;
           const mainTaskRes = await fetch("/api/clickup/create", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
-              name: `[Image Dump] ${group.label}`,
+              name: taskName,
               description: `Contact: ${contactName}\nCategory: ${group.category}\nLead Potential: ${group.lead_potential}\n\n${group.conversation_summary}\n\nAction Items:\n${group.action_items.map((a) => `• ${a}`).join("\n")}`,
               status: "to do",
               priority:
