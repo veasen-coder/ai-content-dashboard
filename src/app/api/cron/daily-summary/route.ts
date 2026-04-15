@@ -15,11 +15,14 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
-    const res = await fetch(`${baseUrl}/api/agents/daily-summary`, {
+    // Use VERCEL_URL (auto-set by Vercel) or fallback to APP_URL
+    const host = process.env.VERCEL_URL
+      ? `https://${process.env.VERCEL_URL}`
+      : process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+    const res = await fetch(`${host}/api/agents/daily-summary`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ baseUrl }),
+      body: JSON.stringify({ baseUrl: host }),
     });
 
     const data = await res.json();
