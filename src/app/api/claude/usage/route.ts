@@ -42,7 +42,7 @@ export async function GET(request: NextRequest) {
     } else if (budgetRows && budgetRows.length > 0) {
       const raw = budgetRows[0].budget_usd;
       const parsed = parseFloat(String(raw));
-      console.log("Budget debug:", { raw, type: typeof raw, parsed, isNaN: isNaN(parsed), row: JSON.stringify(budgetRows[0]) });
+      console.log("Budget debug:", { raw, type: typeof raw, parsed, isNaN: isNaN(parsed), row: JSON.stringify(budgetRows[0]), supaUrl: process.env.NEXT_PUBLIC_SUPABASE_URL });
       if (!isNaN(parsed) && parsed > 0) {
         budget = parsed;
       }
