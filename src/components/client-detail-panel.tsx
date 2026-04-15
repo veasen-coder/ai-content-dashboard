@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { DemoScriptSection } from "./demo-script-section";
+import { ClientProgressSection } from "./client-progress-section";
 import {
   getClientStatus,
   STATUS_TONE_CLASSES,
@@ -326,6 +327,19 @@ export function ClientDetailPanel({
               </p>
             )}
           </section>
+
+          {/* Progress Updates (image dump per client) */}
+          <ClientProgressSection
+            client={{
+              id: client.id,
+              name: client.name,
+              business: client.business,
+              stage: client.stage,
+              ai_summary: client.ai_summary,
+              notes: client.notes,
+              close_probability: client.close_probability,
+            }}
+          />
 
           {/* Demo Script section */}
           {shouldShowDemoButton(client.stage) && (

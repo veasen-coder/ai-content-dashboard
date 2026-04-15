@@ -3,13 +3,27 @@ import { createServerSupabaseClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
 
-export async function GET() {
+// Query params:
+//   ?client_id=<uuid>  → dumps for that client only
+//   ?client_id=none    → global dumps (client_id IS NULL)  — used by image-summary
+//   (no param)         → all dumps (legacy / admin)
+export async function GET(request: NextRequest) {
   try {
     const supabase = createServerSupabaseClient();
-    const { data, error } = await supabase
+    const clientIdParam = request.nextUrl.searchParams.get("client_id");
+
+    let query = supabase
       .from("image_dumps")
       .select("*")
       .order("created_at", { ascending: false });
+
+    if (clientIdParam === "none") {
+      query = query.is("client_id", null);
+    } else if (clientIdParam) {
+      query = query.eq("client_id", clientIdParam);
+    }
+
+    const { data, error } = await query;
 
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 500 });
@@ -35,6 +49,7 @@ export async function POST(request: NextRequest) {
         title: body.title || null,
         notes: body.notes || null,
         status: "pending",
+        client_id: body.client_id || null,
       })
       .select()
       .single();

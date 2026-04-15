@@ -180,9 +180,22 @@ export interface ImageDump {
   title: string | null;
   notes: string | null;
   status: ImageDumpStatus;
-  analysis_result: AnalysisResult | null;
+  analysis_result: AnalysisResult | ProgressUpdate | null;
+  client_id: string | null;
   created_at: string;
   updated_at: string;
+}
+
+// Progress update — used when image_dump is client-scoped (client_id IS NOT NULL)
+export interface ProgressUpdate {
+  kind: "progress_update";
+  summary: string;
+  key_points: string[];
+  next_actions: string[];
+  sentiment: "positive" | "neutral" | "negative";
+  stage_suggestion?: ClientStage | null;
+  close_probability_suggestion?: number | null;
+  raw_extract?: string;
 }
 
 export interface ImageDumpItem {

@@ -134,10 +134,10 @@ export default function ImageDumpPage() {
 
   const activeDump = dumps.find((d) => d.id === activeDumpId) || null;
 
-  // ─── Fetch dumps ──────────────────────────────────────────
+  // ─── Fetch dumps (global only — client-scoped dumps live on client pages) ──
   const fetchDumps = useCallback(async () => {
     try {
-      const res = await fetch("/api/supabase/image-dumps");
+      const res = await fetch("/api/supabase/image-dumps?client_id=none");
       if (res.ok) {
         const data = await res.json();
         setDumps(data);
@@ -485,7 +485,7 @@ export default function ImageDumpPage() {
   ) {
     if (!activeDump?.analysis_result) return;
 
-    const result = { ...activeDump.analysis_result };
+    const result = { ...(activeDump.analysis_result as AnalysisResult) };
     const group = result.groups.find((g) => g.id === groupId);
     if (!group) return;
 
@@ -631,7 +631,7 @@ export default function ImageDumpPage() {
   async function handleUndoGroup(groupId: string) {
     if (!activeDump?.analysis_result) return;
 
-    const result = { ...activeDump.analysis_result };
+    const result = { ...(activeDump.analysis_result as AnalysisResult) };
     const group = result.groups.find((g) => g.id === groupId) as
       | (AnalysisGroup & { created_ids?: { clientId?: string; taskIds: string[] } })
       | undefined;
@@ -1042,7 +1042,7 @@ export default function ImageDumpPage() {
               )}
 
               {/* Analysis groups */}
-              {activeDump.analysis_result?.groups?.map((group) => (
+              {(activeDump.analysis_result as AnalysisResult | null)?.groups?.map((group) => (
                 <GroupCard
                   key={group.id}
                   group={group}
@@ -1094,13 +1094,13 @@ export default function ImageDumpPage() {
                 />
               ))}
 
-              {activeDump.analysis_result?.raw_notes && (
+              {(activeDump.analysis_result as AnalysisResult | null)?.raw_notes && (
                 <div className="rounded-xl border border-[#1E1E1E] bg-[#0A0A0A] p-4">
                   <p className="mb-1 text-xs font-medium text-muted-foreground">
                     AI Notes
                   </p>
                   <p className="text-sm">
-                    {activeDump.analysis_result.raw_notes}
+                    {(activeDump.analysis_result as AnalysisResult).raw_notes}
                   </p>
                 </div>
               )}
