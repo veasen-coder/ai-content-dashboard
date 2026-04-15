@@ -31,13 +31,19 @@ export async function GET(request: NextRequest) {
 
   try {
     // Get budget
-    const { data: budgetData } = await supabase
+    const { data: budgetData, error: budgetError } = await supabase
       .from("claude_budget")
       .select("budget_usd")
       .eq("id", 1)
       .single();
 
-    const budget = parseFloat(budgetData?.budget_usd) || 50;
+    if (budgetError) {
+      console.error("Budget fetch error:", budgetError.message, budgetError.code);
+    }
+
+    const rawBudget = budgetData?.budget_usd;
+    const budget = rawBudget !== null && rawBudget !== undefined ? parseFloat(String(rawBudget)) : 50;
+    console.log("Budget debug:", { rawBudget, parsed: budget, budgetData, budgetError: budgetError?.message });
 
     // Get total spend (all time)
     const { data: allTimeData } = await supabase
