@@ -40,9 +40,13 @@ export async function GET(request: NextRequest) {
     if (budgetError) {
       console.error("Budget fetch error:", budgetError.message);
     } else if (budgetRows && budgetRows.length > 0) {
-      budget = parseFloat(String(budgetRows[0].budget_usd)) || 50;
+      const raw = budgetRows[0].budget_usd;
+      const parsed = parseFloat(String(raw));
+      console.log("Budget debug:", { raw, type: typeof raw, parsed, isNaN: isNaN(parsed), row: JSON.stringify(budgetRows[0]) });
+      if (!isNaN(parsed) && parsed > 0) {
+        budget = parsed;
+      }
     }
-    console.log("Budget:", budget, "raw:", budgetRows);
 
     // Get total spend (all time)
     const { data: allTimeData } = await supabase
