@@ -305,14 +305,20 @@ async function executeTool(name: string, input: Record<string, unknown>): Promis
         }
         if (input.tags) body.tags = input.tags;
         body.assignees = resolveAssignees(input.assignees as string[] | undefined);
+        console.log("ClickUp create_task payload:", JSON.stringify({ assignees: body.assignees, name: body.name }));
 
         const res = await fetch(`https://api.clickup.com/api/v2/list/${listId}/task`, {
           method: "POST",
           headers: { Authorization: apiKey, "Content-Type": "application/json" },
           body: JSON.stringify(body),
         });
-        if (!res.ok) return JSON.stringify({ error: "Failed to create task", status: res.status });
+        if (!res.ok) {
+          const errText = await res.text();
+          console.error("ClickUp create_task error:", res.status, errText);
+          return JSON.stringify({ error: "Failed to create task", status: res.status });
+        }
         const data = await res.json();
+        console.log("ClickUp create_task response assignees:", JSON.stringify(data.assignees));
         return JSON.stringify({ success: true, task_id: data.id, name: data.name, url: data.url, assignees: body.assignees });
       }
 
@@ -380,13 +386,18 @@ async function executeTool(name: string, input: Record<string, unknown>): Promis
           tags: [...((input.tags as string[]) || []), "calendar"],
           assignees: resolveAssignees(input.assignees as string[] | undefined),
         };
+        console.log("ClickUp calendar_event payload:", JSON.stringify({ assignees: body.assignees, name: body.name }));
 
         const res = await fetch(`https://api.clickup.com/api/v2/list/${listId}/task`, {
           method: "POST",
           headers: { Authorization: apiKey, "Content-Type": "application/json" },
           body: JSON.stringify(body),
         });
-        if (!res.ok) return JSON.stringify({ error: "Failed to create calendar event" });
+        if (!res.ok) {
+          const errText = await res.text();
+          console.error("ClickUp calendar_event error:", res.status, errText);
+          return JSON.stringify({ error: "Failed to create calendar event" });
+        }
         const data = await res.json();
         return JSON.stringify({ success: true, task_id: data.id, name: data.name, url: data.url, due_date: input.date, time: input.time || "all day" });
       }
