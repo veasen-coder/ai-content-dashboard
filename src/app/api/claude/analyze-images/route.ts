@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { logClaudeUsage } from "@/lib/claude-usage";
 
 export const maxDuration = 60;
 
@@ -101,6 +102,15 @@ Each task should be a short, actionable phrase under 12 words. If you're unsure 
 
     const data = await res.json();
     const rawText = data.content?.[0]?.text || "";
+
+    if (data.usage) {
+      logClaudeUsage({
+        endpoint: "/api/claude/analyze-images",
+        model: "claude-sonnet-4-20250514",
+        input_tokens: data.usage.input_tokens || 0,
+        output_tokens: data.usage.output_tokens || 0,
+      });
+    }
 
     // Strip markdown code fences if present
     let jsonStr = rawText.trim();

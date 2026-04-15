@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { logClaudeUsage } from "@/lib/claude-usage";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -249,6 +250,15 @@ Analyze this data and produce today's daily briefing.`;
 
     const claudeData = await claudeRes.json();
     const text = claudeData.content?.[0]?.text || "";
+
+    if (claudeData.usage) {
+      logClaudeUsage({
+        endpoint: "/api/agents/daily-summary",
+        model: "claude-sonnet-4-20250514",
+        input_tokens: claudeData.usage.input_tokens || 0,
+        output_tokens: claudeData.usage.output_tokens || 0,
+      });
+    }
 
     // 3. Parse the JSON response
     let summary;

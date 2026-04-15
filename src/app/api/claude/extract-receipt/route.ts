@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { logClaudeUsage } from "@/lib/claude-usage";
 
 export const dynamic = "force-dynamic";
 
@@ -85,6 +86,15 @@ If you cannot determine a field with confidence, make your best guess based on c
 
     const data = await res.json();
     const text = data.content?.[0]?.text || "";
+
+    if (data.usage) {
+      logClaudeUsage({
+        endpoint: "/api/claude/extract-receipt",
+        model: "claude-sonnet-4-20250514",
+        input_tokens: data.usage.input_tokens || 0,
+        output_tokens: data.usage.output_tokens || 0,
+      });
+    }
 
     // Parse the JSON response from Claude
     try {

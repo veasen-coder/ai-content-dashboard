@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { logClaudeUsage } from "@/lib/claude-usage";
 
 export const maxDuration = 30;
 
@@ -80,6 +81,15 @@ Return ONLY valid JSON (no markdown, no code fences) in this exact shape:
 
     const data = await res.json();
     const rawText = data.content?.[0]?.text || "";
+
+    if (data.usage) {
+      logClaudeUsage({
+        endpoint: "/api/claude/more-tasks",
+        model: "claude-sonnet-4-20250514",
+        input_tokens: data.usage.input_tokens || 0,
+        output_tokens: data.usage.output_tokens || 0,
+      });
+    }
 
     let jsonStr = rawText.trim();
     if (jsonStr.startsWith("```")) {

@@ -1,4 +1,5 @@
 import { NextRequest } from "next/server";
+import { logClaudeUsage } from "@/lib/claude-usage";
 
 export async function POST(request: NextRequest) {
   const apiKey = process.env.ANTHROPIC_API_KEY;
@@ -40,8 +41,53 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // Stream the response
-    return new Response(res.body, {
+    // Pipe through a transform stream that logs usage from the final event
+    let inputTokens = 0;
+    let outputTokens = 0;
+    const usedModel = model;
+
+    const transformStream = new TransformStream({
+      transform(chunk, controller) {
+        controller.enqueue(chunk);
+
+        // Try to parse SSE events to capture usage
+        try {
+          const text = new TextDecoder().decode(chunk);
+          const lines = text.split("\n");
+          for (const line of lines) {
+            if (line.startsWith("data: ")) {
+              const data = line.slice(6).trim();
+              if (data && data !== "[DONE]") {
+                const parsed = JSON.parse(data);
+                // message_start has input token count
+                if (parsed.type === "message_start" && parsed.message?.usage) {
+                  inputTokens = parsed.message.usage.input_tokens || 0;
+                }
+                // message_delta has output token count
+                if (parsed.type === "message_delta" && parsed.usage) {
+                  outputTokens = parsed.usage.output_tokens || 0;
+                }
+              }
+            }
+          }
+        } catch {
+          // Parsing SSE is best-effort for logging
+        }
+      },
+      flush() {
+        // Log usage after stream completes
+        if (inputTokens > 0 || outputTokens > 0) {
+          logClaudeUsage({
+            endpoint: "/api/claude/chat",
+            model: usedModel,
+            input_tokens: inputTokens,
+            output_tokens: outputTokens,
+          });
+        }
+      },
+    });
+
+    return new Response(res.body!.pipeThrough(transformStream), {
       headers: {
         "Content-Type": "text/event-stream",
         "Cache-Control": "no-cache",

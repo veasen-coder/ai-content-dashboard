@@ -8,6 +8,7 @@ import { useRouter } from "next/navigation";
 interface TopbarProps {
   title: string;
   lastSynced?: string | null;
+  headerExtra?: React.ReactNode;
 }
 
 const SEARCH_ITEMS = [
@@ -22,7 +23,7 @@ const SEARCH_ITEMS = [
   { label: "Settings", href: "/settings" },
 ];
 
-export function Topbar({ title, lastSynced }: TopbarProps) {
+export function Topbar({ title, lastSynced, headerExtra }: TopbarProps) {
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [notifOpen, setNotifOpen] = useState(false);
@@ -82,6 +83,7 @@ export function Topbar({ title, lastSynced }: TopbarProps) {
         )}
 
         <div className="flex items-center gap-2">
+          {headerExtra}
           <button
             onClick={() => setSearchOpen(true)}
             className="flex h-9 w-9 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-[#1E1E1E] hover:text-foreground"

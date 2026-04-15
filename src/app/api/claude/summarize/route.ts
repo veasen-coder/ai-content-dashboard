@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { logClaudeUsage } from "@/lib/claude-usage";
 
 export async function POST(request: NextRequest) {
   const apiKey = process.env.ANTHROPIC_API_KEY;
@@ -48,6 +49,16 @@ export async function POST(request: NextRequest) {
 
     const data = await res.json();
     const summary = data.content?.[0]?.text || "Unable to generate summary";
+
+    // Log usage
+    if (data.usage) {
+      logClaudeUsage({
+        endpoint: "/api/claude/summarize",
+        model: "claude-sonnet-4-20250514",
+        input_tokens: data.usage.input_tokens || 0,
+        output_tokens: data.usage.output_tokens || 0,
+      });
+    }
 
     return NextResponse.json({ summary });
   } catch {
