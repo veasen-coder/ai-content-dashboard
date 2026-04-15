@@ -159,6 +159,7 @@ export interface AnalysisGroup {
   conversation_summary: string;
   sentiment: "positive" | "neutral" | "negative";
   action_items: string[];
+  additional_suggestions?: string[];
   lead_potential: "high" | "medium" | "low" | "none";
   lead_reasoning: string;
   category: string;

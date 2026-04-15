@@ -47,6 +47,7 @@ export async function POST(request: NextRequest) {
       "conversation_summary": "Brief summary of the conversation",
       "sentiment": "positive" | "neutral" | "negative",
       "action_items": ["Follow up on pricing", "Send proposal"],
+      "additional_suggestions": ["Research their industry", "Prepare case studies"],
       "lead_potential": "high" | "medium" | "low" | "none",
       "lead_reasoning": "Why this is/isn't a good lead",
       "category": "whatsapp" | "instagram_dm" | "facebook" | "email" | "other",
@@ -56,7 +57,13 @@ export async function POST(request: NextRequest) {
   "raw_notes": "Overall assessment of all screenshots"
 }
 
-Group related screenshots together (e.g. multiple screenshots from same conversation). For each group extract: contacts with all available info, conversation summary, sentiment, actionable tasks, and lead potential. If you're unsure about anything, add clarifying questions.`,
+Group related screenshots together (e.g. multiple screenshots from same conversation). For each group extract: contacts with all available info, conversation summary, sentiment, and lead potential.
+
+For tasks, provide TWO separate lists per group:
+- "action_items": 5-6 primary tasks that are most likely to be needed (e.g. immediate follow-ups, specific asks from the conversation, direct next steps). These should be high-confidence, essential tasks.
+- "additional_suggestions": 4-5 supplementary tasks that could also add value but are less certain (e.g. nice-to-have research, optional outreach, related prep work). Think of these as "you might also want to..." options.
+
+Each task should be a short, actionable phrase under 12 words. If you're unsure about anything, add clarifying questions.`,
     };
 
     const res = await fetch("https://api.anthropic.com/v1/messages", {

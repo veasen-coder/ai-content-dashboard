@@ -11,6 +11,7 @@ import {
   X,
   Loader2,
   ChevronRight,
+  ChevronDown,
   Phone,
   Mail,
   Building2,
@@ -20,6 +21,9 @@ import {
   CheckCircle2,
   XCircle,
   Clock,
+  Plus,
+  CheckSquare,
+  Square,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
@@ -327,7 +331,8 @@ export default function ImageDumpPage() {
   // ─── Approve / Reject group ───────────────────────────────
   async function handleGroupAction(
     groupId: string,
-    action: "approved" | "rejected"
+    action: "approved" | "rejected",
+    finalTasks?: string[]
   ) {
     if (!activeDump?.analysis_result) return;
 
@@ -336,6 +341,11 @@ export default function ImageDumpPage() {
     if (!group) return;
 
     group.approval_status = action;
+
+    // Override action_items with user-edited task list for approval
+    if (action === "approved" && finalTasks) {
+      group.action_items = finalTasks;
+    }
 
     // If approved, create lead + tasks and store IDs for undo
     if (action === "approved") {
@@ -830,7 +840,7 @@ export default function ImageDumpPage() {
                   group={group}
                   onUndo={() => handleUndoGroup(group.id)}
                   dumpStatus={activeDump.status}
-                  onApprove={() => handleGroupAction(group.id, "approved")}
+                  onApprove={(finalTasks) => handleGroupAction(group.id, "approved", finalTasks)}
                   onReject={() => handleGroupAction(group.id, "rejected")}
                   onAnswer={async (answers) => {
                     if (!activeDump) return;
@@ -907,13 +917,75 @@ function GroupCard({
 }: {
   group: AnalysisGroup;
   dumpStatus: string;
-  onApprove: () => void;
+  onApprove: (finalTasks: string[]) => void;
   onReject: () => void;
   onAnswer: (answers: string) => void;
   onUndo: () => void;
 }) {
   const isDecided = group.approval_status !== "pending";
   const [answers, setAnswers] = useState("");
+
+  // Editable task list state
+  const [suggested, setSuggested] = useState<string[]>(group.action_items || []);
+  const [selectedSuggested, setSelectedSuggested] = useState<Set<number>>(
+    () => new Set((group.action_items || []).map((_, i) => i))
+  );
+  const [additional, setAdditional] = useState<string[]>(
+    group.additional_suggestions || []
+  );
+  const [addedExtras, setAddedExtras] = useState<string[]>([]);
+  const [newTaskInput, setNewTaskInput] = useState("");
+  const [showAdditional, setShowAdditional] = useState(true);
+
+  function toggleSuggested(i: number) {
+    setSelectedSuggested((prev) => {
+      const next = new Set(prev);
+      if (next.has(i)) next.delete(i);
+      else next.add(i);
+      return next;
+    });
+  }
+
+  function removeSuggested(i: number) {
+    setSuggested((prev) => prev.filter((_, idx) => idx !== i));
+    // Rebuild selected indices (since array shifts)
+    setSelectedSuggested((prev) => {
+      const next = new Set<number>();
+      prev.forEach((idx) => {
+        if (idx < i) next.add(idx);
+        else if (idx > i) next.add(idx - 1);
+      });
+      return next;
+    });
+  }
+
+  function addFromAdditional(i: number) {
+    const task = additional[i];
+    setAddedExtras((prev) => [...prev, task]);
+    setAdditional((prev) => prev.filter((_, idx) => idx !== i));
+  }
+
+  function removeAdditional(i: number) {
+    setAdditional((prev) => prev.filter((_, idx) => idx !== i));
+  }
+
+  function removeExtra(i: number) {
+    setAddedExtras((prev) => prev.filter((_, idx) => idx !== i));
+  }
+
+  function addCustomTask() {
+    const trimmed = newTaskInput.trim();
+    if (!trimmed) return;
+    setAddedExtras((prev) => [...prev, trimmed]);
+    setNewTaskInput("");
+  }
+
+  function getFinalTasks(): string[] {
+    const chosenSuggested = suggested.filter((_, i) => selectedSuggested.has(i));
+    return [...chosenSuggested, ...addedExtras];
+  }
+
+  const totalSelected = selectedSuggested.size + addedExtras.length;
 
   return (
     <div
@@ -1015,24 +1087,170 @@ function GroupCard({
         </p>
       </div>
 
-      {/* Action Items */}
-      {group.action_items.length > 0 && (
-        <div>
-          <p className="text-xs font-medium text-muted-foreground">
-            Action Items
-          </p>
-          <ul className="mt-1 space-y-1">
-            {group.action_items.map((item, i) => (
-              <li
-                key={i}
-                className="flex items-start gap-2 text-sm"
+      {/* Tasks (editable before approval) */}
+      {!isDecided ? (
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <p className="text-xs font-medium text-muted-foreground">
+              Tasks to create ({totalSelected} selected)
+            </p>
+          </div>
+
+          {/* Suggested tasks (pre-selected) */}
+          {suggested.length > 0 && (
+            <div className="space-y-1.5">
+              {suggested.map((item, i) => {
+                const checked = selectedSuggested.has(i);
+                return (
+                  <div
+                    key={i}
+                    className={cn(
+                      "group/task flex items-start gap-2 rounded-lg border border-[#1E1E1E] bg-[#111111] px-3 py-2 transition-colors",
+                      checked ? "border-primary/30 bg-primary/5" : ""
+                    )}
+                  >
+                    <button
+                      onClick={() => toggleSuggested(i)}
+                      className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center text-muted-foreground transition-colors hover:text-foreground"
+                    >
+                      {checked ? (
+                        <CheckSquare className="h-4 w-4 text-primary" />
+                      ) : (
+                        <Square className="h-4 w-4" />
+                      )}
+                    </button>
+                    <span
+                      className={cn(
+                        "flex-1 text-sm",
+                        checked ? "text-foreground" : "text-muted-foreground line-through"
+                      )}
+                    >
+                      {item}
+                    </span>
+                    <button
+                      onClick={() => removeSuggested(i)}
+                      className="shrink-0 opacity-0 transition-opacity hover:text-red-400 group-hover/task:opacity-100"
+                      title="Remove task"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {/* User-added extras */}
+          {addedExtras.length > 0 && (
+            <div className="space-y-1.5">
+              {addedExtras.map((item, i) => (
+                <div
+                  key={`extra-${i}`}
+                  className="group/task flex items-start gap-2 rounded-lg border border-emerald-500/30 bg-emerald-500/5 px-3 py-2"
+                >
+                  <CheckSquare className="mt-0.5 h-4 w-4 shrink-0 text-emerald-400" />
+                  <span className="flex-1 text-sm text-foreground">{item}</span>
+                  <button
+                    onClick={() => removeExtra(i)}
+                    className="shrink-0 opacity-0 transition-opacity hover:text-red-400 group-hover/task:opacity-100"
+                    title="Remove task"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Add custom task input */}
+          <div className="flex items-center gap-2">
+            <input
+              type="text"
+              value={newTaskInput}
+              onChange={(e) => setNewTaskInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  addCustomTask();
+                }
+              }}
+              placeholder="Add your own task..."
+              className="flex-1 rounded-lg border border-[#1E1E1E] bg-[#0A0A0A] px-3 py-2 text-sm outline-none transition-colors focus:border-primary placeholder:text-muted-foreground"
+            />
+            <button
+              onClick={addCustomTask}
+              disabled={!newTaskInput.trim()}
+              className="flex h-9 items-center gap-1 rounded-lg border border-[#1E1E1E] bg-[#111111] px-3 text-sm text-muted-foreground transition-colors hover:bg-[#1E1E1E] hover:text-foreground disabled:opacity-40"
+            >
+              <Plus className="h-3.5 w-3.5" />
+              Add
+            </button>
+          </div>
+
+          {/* Additional AI suggestions (collapsible) */}
+          {additional.length > 0 && (
+            <div className="rounded-lg border border-[#1E1E1E] bg-[#0A0A0A]">
+              <button
+                onClick={() => setShowAdditional(!showAdditional)}
+                className="flex w-full items-center gap-2 px-3 py-2 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
               >
-                <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-primary" />
-                {item}
-              </li>
-            ))}
-          </ul>
+                {showAdditional ? (
+                  <ChevronDown className="h-3.5 w-3.5" />
+                ) : (
+                  <ChevronRight className="h-3.5 w-3.5" />
+                )}
+                <Sparkles className="h-3 w-3 text-primary/60" />
+                Additional AI suggestions ({additional.length})
+              </button>
+              {showAdditional && (
+                <div className="space-y-1 border-t border-[#1E1E1E] p-2">
+                  {additional.map((item, i) => (
+                    <div
+                      key={`add-${i}`}
+                      className="group/task flex items-center gap-2 rounded px-2 py-1.5 transition-colors hover:bg-[#111111]"
+                    >
+                      <span className="flex-1 text-sm text-muted-foreground">
+                        {item}
+                      </span>
+                      <button
+                        onClick={() => addFromAdditional(i)}
+                        className="flex shrink-0 items-center gap-1 rounded-md bg-primary/10 px-2 py-1 text-xs font-medium text-primary opacity-0 transition-opacity hover:bg-primary/20 group-hover/task:opacity-100"
+                        title="Add to tasks"
+                      >
+                        <Plus className="h-3 w-3" />
+                        Add
+                      </button>
+                      <button
+                        onClick={() => removeAdditional(i)}
+                        className="shrink-0 opacity-0 transition-opacity hover:text-red-400 group-hover/task:opacity-100"
+                        title="Dismiss"
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
         </div>
+      ) : (
+        /* Read-only view after decision */
+        group.action_items.length > 0 && (
+          <div>
+            <p className="text-xs font-medium text-muted-foreground">
+              Action Items
+            </p>
+            <ul className="mt-1 space-y-1">
+              {group.action_items.map((item, i) => (
+                <li key={i} className="flex items-start gap-2 text-sm">
+                  <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-primary" />
+                  {item}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )
       )}
 
       {/* Clarifying Questions */}
@@ -1072,11 +1290,12 @@ function GroupCard({
       {!isDecided && (dumpStatus === "reviewed" || dumpStatus === "partial") && (
         <div className="flex items-center gap-3 border-t border-[#1E1E1E] pt-4">
           <button
-            onClick={onApprove}
-            className="flex items-center gap-1.5 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-emerald-700"
+            onClick={() => onApprove(getFinalTasks())}
+            disabled={totalSelected === 0}
+            className="flex items-center gap-1.5 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-40"
           >
             <Check className="h-4 w-4" />
-            Approve & Create Lead
+            Approve & Create Lead{totalSelected > 0 ? ` + ${totalSelected} task${totalSelected === 1 ? "" : "s"}` : ""}
           </button>
           <button
             onClick={onReject}
