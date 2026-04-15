@@ -20,6 +20,11 @@ import {
   ArrowRight,
 } from "lucide-react";
 import { toast } from "sonner";
+import { ClientDetailPanel } from "@/components/client-detail-panel";
+import {
+  getClientStatus,
+  STATUS_TONE_CLASSES,
+} from "@/lib/client-status";
 
 // --------------- Types ---------------
 
@@ -31,6 +36,7 @@ interface Client {
   phone: string | null;
   stage: string;
   notes: string | null;
+  ai_summary: string | null;
   industry: string | null;
   source: string | null;
   deal_value: string | null;
@@ -80,20 +86,6 @@ const SOURCES = [
   "Other",
 ];
 
-const INDUSTRY_COLORS: Record<string, string> = {
-  "F&B": "#EF4444",
-  "Real Estate": "#3B82F6",
-  "Hair & Beauty": "#EC4899",
-  Healthcare: "#10B981",
-  Education: "#8B5CF6",
-  "E-commerce": "#F59E0B",
-  Finance: "#6366F1",
-  Tech: "#06B6D4",
-  Retail: "#F97316",
-  Hospitality: "#14B8A6",
-  Other: "#6B7280",
-};
-
 // --------------- Helpers ---------------
 
 function timeAgo(dateStr: string): string {
@@ -118,42 +110,47 @@ function getNextStage(
   return undefined;
 }
 
-function getPrevStage(
-  currentStage: string
-): (typeof STAGES)[number] | undefined {
-  const idx = STAGES.findIndex((s) => s.key === currentStage);
-  if (idx > 0) return STAGES[idx - 1];
-  return undefined;
-}
-
 // --------------- Client Card ---------------
 
 function ClientCard({
   client,
   onClick,
   onMove,
-  onProbChange,
   onDelete,
+  hasDemoScript,
 }: {
   client: Client;
   onClick: () => void;
   onMove: (newStage: string) => void;
   onProbChange: (prob: number) => void;
   onDelete: () => void;
+  hasDemoScript: boolean;
 }) {
   const [confirmDel, setConfirmDel] = useState(false);
   const isClosed = client.stage === "closed";
   const nextStage = getNextStage(client.stage);
-  const prevStage = getPrevStage(client.stage);
   const isStalled = client.status === "stalled";
-  const isActive = client.status === "active";
+
+  const status = getClientStatus({
+    stage: client.stage,
+    has_ai_summary: !!client.ai_summary,
+    has_demo_script: hasDemoScript,
+    close_probability: client.close_probability,
+    status: client.status,
+  });
 
   return (
-    <div className="group relative rounded-xl border border-[#1E1E1E] bg-[#0A0A0A] p-4 transition-all hover:border-[#333]">
+    <div
+      onClick={onClick}
+      className="group relative cursor-pointer rounded-xl border border-[#1E1E1E] bg-[#0A0A0A] p-3 transition-all hover:border-primary/40 hover:bg-[#0F0F0F]"
+    >
       {/* Delete button — top right */}
       {!confirmDel ? (
         <button
-          onClick={(e) => { e.stopPropagation(); setConfirmDel(true); }}
+          onClick={(e) => {
+            e.stopPropagation();
+            setConfirmDel(true);
+          }}
           className="absolute right-2 top-2 rounded-md p-1 text-muted-foreground/0 transition-all group-hover:text-muted-foreground hover:!bg-red-500/20 hover:!text-red-400"
           title="Delete client"
         >
@@ -162,13 +159,20 @@ function ClientCard({
       ) : (
         <div className="absolute right-2 top-2 flex items-center gap-1">
           <button
-            onClick={(e) => { e.stopPropagation(); onDelete(); setConfirmDel(false); }}
+            onClick={(e) => {
+              e.stopPropagation();
+              onDelete();
+              setConfirmDel(false);
+            }}
             className="rounded-md bg-red-500/20 px-2 py-0.5 text-[10px] font-semibold text-red-400 hover:bg-red-500/30 transition-colors"
           >
             Delete
           </button>
           <button
-            onClick={(e) => { e.stopPropagation(); setConfirmDel(false); }}
+            onClick={(e) => {
+              e.stopPropagation();
+              setConfirmDel(false);
+            }}
             className="rounded-md bg-[#1E1E1E] px-2 py-0.5 text-[10px] font-medium text-muted-foreground hover:text-foreground transition-colors"
           >
             Cancel
@@ -177,125 +181,68 @@ function ClientCard({
       )}
 
       {/* Header — Name + alert */}
-      <div className="mb-2 flex items-start justify-between gap-2 pr-6">
-        <h4
-          onClick={onClick}
-          className="cursor-pointer text-sm font-semibold text-foreground leading-tight hover:text-primary transition-colors"
-        >
+      <div className="mb-1.5 flex items-start justify-between gap-2 pr-6">
+        <h4 className="text-sm font-semibold text-foreground leading-tight truncate">
           {client.name}
         </h4>
         {isStalled && (
-          <AlertTriangle className="h-4 w-4 shrink-0 text-[#F59E0B]" />
+          <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-[#F59E0B]" />
         )}
       </div>
 
-      {/* Tags — Industry + Source */}
-      <div className="mb-2 flex flex-wrap gap-1.5">
-        {client.industry && (
-          <span
-            className="rounded-md px-2 py-0.5 text-[10px] font-semibold text-white"
-            style={{
-              backgroundColor: INDUSTRY_COLORS[client.industry] || "#6B7280",
-            }}
-          >
-            {client.industry}
-          </span>
-        )}
-        {client.source && (
-          <span className="rounded-md border border-[#333] px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
-            via {client.source}
-          </span>
-        )}
+      {/* Business — secondary line */}
+      {client.business && (
+        <p className="mb-2 truncate text-[11px] text-muted-foreground">
+          {client.business}
+        </p>
+      )}
+
+      {/* Smart status badge */}
+      <div className="mb-2">
+        <span
+          className={`inline-block rounded-md px-2 py-0.5 text-[10px] font-semibold ${STATUS_TONE_CLASSES[status.tone]}`}
+        >
+          {status.label}
+        </span>
       </div>
 
-      {/* Time + Status */}
-      <div className="mb-3 flex items-center gap-2">
+      {/* Short AI summary — single line with ellipsis */}
+      {client.ai_summary ? (
+        <p className="mb-2 text-[11px] text-muted-foreground/80 leading-relaxed line-clamp-2">
+          {client.ai_summary}
+        </p>
+      ) : client.notes ? (
+        <p className="mb-2 text-[11px] text-muted-foreground/50 italic leading-relaxed line-clamp-1">
+          Click to generate AI summary
+        </p>
+      ) : null}
+
+      {/* Footer — time + deal value + arrow */}
+      <div className="flex items-center justify-between pt-1.5 border-t border-[#1E1E1E]">
         <span className="text-[10px] text-muted-foreground/60">
           {timeAgo(client.created_at)}
         </span>
-        {isStalled && (
-          <span className="rounded-md bg-[#F59E0B]/10 px-1.5 py-0.5 text-[10px] font-semibold text-[#F59E0B]">
-            Stalled ⚠
+        {client.deal_value && !isClosed && (
+          <span className="text-[11px] font-mono font-semibold text-primary truncate ml-2">
+            {client.deal_value}
           </span>
         )}
-        {isActive && client.stage !== "lead" && !isClosed && (
-          <span className="rounded-md bg-[#10B981]/10 px-1.5 py-0.5 text-[10px] font-semibold text-[#10B981]">
-            Active
-          </span>
+        {isClosed && (
+          <CheckCircle2 className="h-3.5 w-3.5 text-[#10B981]" />
         )}
       </div>
 
-      {/* Deal Value */}
-      {!isClosed && (
-        <p className="mb-2 text-sm font-semibold text-primary font-mono">
-          {client.deal_value || "—"}
-        </p>
-      )}
-
-      {/* Close Probability */}
-      {!isClosed && (
-        <div className="mb-3 flex items-center gap-2">
-          <span className="text-xs text-muted-foreground">Close prob:</span>
-          <input
-            type="number"
-            min={0}
-            max={100}
-            value={client.close_probability ?? 0}
-            onChange={(e) => {
-              const v = Math.max(0, Math.min(100, Number(e.target.value)));
-              onProbChange(v);
-            }}
-            className="w-14 rounded-md border border-[#1E1E1E] bg-[#111111] px-2 py-1 text-xs font-mono text-foreground outline-none focus:border-primary text-center"
-          />
-          <span className="text-xs text-muted-foreground">%</span>
-        </div>
-      )}
-
-      {/* Notes */}
-      {client.notes && (
-        <p className="mb-3 text-xs text-muted-foreground leading-relaxed">
-          {client.notes}
-        </p>
-      )}
-
-      {/* Closed state */}
-      {isClosed && (
-        <div className="mb-2 space-y-2">
-          <div className="flex items-center gap-1.5 text-[#10B981]">
-            <CheckCircle2 className="h-4 w-4" />
-            <span className="text-xs font-semibold">
-              Closed — paid client
-            </span>
-          </div>
-          <button
-            onClick={onClick}
-            className="flex w-full items-center justify-center gap-1.5 rounded-lg bg-[#10B981]/10 py-2 text-xs font-semibold text-[#10B981] transition-colors hover:bg-[#10B981]/20"
-          >
-            <CheckCircle2 className="h-3.5 w-3.5" />
-            Onboarding Checklist
-            <ArrowRight className="h-3 w-3" />
-          </button>
-        </div>
-      )}
-
-      {/* Move button */}
+      {/* Quick move button — only visible on hover */}
       {!isClosed && nextStage && (
         <button
-          onClick={() => onMove(nextStage.key)}
-          className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-[#1E1E1E] py-2 text-xs font-medium text-muted-foreground transition-colors hover:border-primary/30 hover:text-foreground"
+          onClick={(e) => {
+            e.stopPropagation();
+            onMove(nextStage.key);
+          }}
+          className="mt-2 flex w-full items-center justify-center gap-1 rounded-md border border-[#1E1E1E] py-1 text-[10px] font-medium text-muted-foreground/70 opacity-0 transition-all group-hover:opacity-100 hover:border-primary/30 hover:text-foreground"
         >
-          Move to {nextStage.label}
-          <ArrowRight className="h-3 w-3" />
-        </button>
-      )}
-
-      {/* Back to previous stage */}
-      {!isClosed && prevStage && (
-        <button
-          onClick={() => onMove(prevStage.key)}
-          className="mt-1 flex w-full items-center justify-center gap-1 py-1 text-[10px] text-muted-foreground/50 transition-colors hover:text-muted-foreground"
-        >
-          ← Back to {prevStage.label}
+          → {nextStage.label}
+          <ArrowRight className="h-2.5 w-2.5" />
         </button>
       )}
     </div>
@@ -791,144 +738,6 @@ function ClientModal({ isOpen, onClose, onSaved, client }: ClientModalProps) {
   );
 }
 
-// --------------- Client Detail (Read-Only) Modal ---------------
-
-function ClientDetailModal({
-  client,
-  onClose,
-  onEdit,
-}: {
-  client: Client;
-  onClose: () => void;
-  onEdit: () => void;
-}) {
-  const stageInfo = STAGE_MAP[client.stage];
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
-      <div
-        className="absolute inset-0 bg-black/60 backdrop-blur-sm"
-        onClick={onClose}
-      />
-      <div className="relative z-10 w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-xl border border-[#1E1E1E] bg-[#111111] shadow-2xl">
-        {/* Header */}
-        <div className="flex items-center justify-between border-b border-[#1E1E1E] px-5 py-4">
-          <h2 className="text-base font-semibold">{client.name}</h2>
-          <button
-            onClick={onClose}
-            className="flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-[#1E1E1E] hover:text-foreground"
-          >
-            <X className="h-4 w-4" />
-          </button>
-        </div>
-
-        <div className="p-5 space-y-4">
-          {/* Tags */}
-          <div className="flex flex-wrap gap-2">
-            {stageInfo && (
-              <span
-                className="rounded-md px-2.5 py-1 text-xs font-semibold text-white"
-                style={{ backgroundColor: stageInfo.color }}
-              >
-                {stageInfo.label}
-              </span>
-            )}
-            {client.industry && (
-              <span
-                className="rounded-md px-2.5 py-1 text-xs font-semibold text-white"
-                style={{ backgroundColor: INDUSTRY_COLORS[client.industry] || "#6B7280" }}
-              >
-                {client.industry}
-              </span>
-            )}
-            {client.status && (
-              <span
-                className={`rounded-md px-2.5 py-1 text-xs font-semibold ${
-                  client.status === "stalled"
-                    ? "bg-[#F59E0B]/15 text-[#F59E0B]"
-                    : "bg-[#10B981]/15 text-[#10B981]"
-                }`}
-              >
-                {client.status === "stalled" ? "Stalled" : "Active"}
-              </span>
-            )}
-          </div>
-
-          {/* Details Grid */}
-          <div className="grid grid-cols-2 gap-4">
-            {client.business && (
-              <div>
-                <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">Business</p>
-                <p className="text-sm flex items-center gap-1.5"><Building2 className="h-3.5 w-3.5 text-muted-foreground" />{client.business}</p>
-              </div>
-            )}
-            {client.email && (
-              <div>
-                <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">Email</p>
-                <p className="text-sm flex items-center gap-1.5"><Mail className="h-3.5 w-3.5 text-muted-foreground" />{client.email}</p>
-              </div>
-            )}
-            {client.phone && (
-              <div>
-                <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">Phone</p>
-                <p className="text-sm flex items-center gap-1.5"><Phone className="h-3.5 w-3.5 text-muted-foreground" />{client.phone}</p>
-              </div>
-            )}
-            {client.source && (
-              <div>
-                <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">Source</p>
-                <p className="text-sm">{client.source}</p>
-              </div>
-            )}
-            {client.deal_value && (
-              <div>
-                <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">Deal Value</p>
-                <p className="text-sm font-semibold font-mono text-primary">{client.deal_value}</p>
-              </div>
-            )}
-            {client.close_probability != null && (
-              <div>
-                <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">Close Probability</p>
-                <p className="text-sm font-mono">{client.close_probability}%</p>
-              </div>
-            )}
-          </div>
-
-          {/* Notes */}
-          {client.notes && (
-            <div>
-              <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">Notes</p>
-              <p className="text-sm text-muted-foreground leading-relaxed whitespace-pre-wrap">{client.notes}</p>
-            </div>
-          )}
-
-          {/* Timestamps */}
-          <div className="flex gap-4 text-[10px] text-muted-foreground/60 pt-2 border-t border-[#1E1E1E]">
-            <span>Created {timeAgo(client.created_at)}</span>
-            {client.updated_at && <span>Updated {timeAgo(client.updated_at)}</span>}
-          </div>
-
-          {/* Actions */}
-          <div className="flex gap-2 pt-2">
-            <button
-              onClick={onEdit}
-              className="flex-1 rounded-lg bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
-            >
-              Edit Client
-            </button>
-            <button
-              onClick={onClose}
-              className="rounded-lg border border-[#1E1E1E] px-4 py-2.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-[#1E1E1E] hover:text-foreground"
-            >
-              Close
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 // --------------- Main Page ---------------
 
 export default function ClientsPage() {
@@ -941,6 +750,9 @@ export default function ClientsPage() {
   const [showModal, setShowModal] = useState(false);
   const [selectedClient, setSelectedClient] = useState<Client | null>(null);
   const [viewingClient, setViewingClient] = useState<Client | null>(null);
+  const [demoScriptClientIds, setDemoScriptClientIds] = useState<Set<string>>(
+    new Set()
+  );
 
   const fetchClients = useCallback(async () => {
     try {
@@ -959,11 +771,27 @@ export default function ClientsPage() {
     }
   }, []);
 
+  // Fetch which clients have demo scripts (for status computation on cards)
+  const fetchDemoScriptIds = useCallback(async () => {
+    try {
+      const res = await fetch("/api/supabase/demo-scripts");
+      if (!res.ok) return;
+      const data: { client_id: string }[] = await res.json();
+      setDemoScriptClientIds(new Set(data.map((d) => d.client_id)));
+    } catch {
+      // silent — not critical
+    }
+  }, []);
+
   useEffect(() => {
     fetchClients();
-    const interval = setInterval(fetchClients, 2 * 60 * 1000);
+    fetchDemoScriptIds();
+    const interval = setInterval(() => {
+      fetchClients();
+      fetchDemoScriptIds();
+    }, 2 * 60 * 1000);
     return () => clearInterval(interval);
-  }, [fetchClients]);
+  }, [fetchClients, fetchDemoScriptIds]);
 
   // Inline update helper
   async function updateClient(id: string, fields: Record<string, unknown>) {
@@ -1137,6 +965,7 @@ export default function ClientsPage() {
                         <ClientCard
                           key={client.id}
                           client={client}
+                          hasDemoScript={demoScriptClientIds.has(client.id)}
                           onClick={() => {
                             setViewingClient(client);
                           }}
@@ -1172,12 +1001,23 @@ export default function ClientsPage() {
         )}
       </div>
 
-      {/* Client Detail (Read-Only) Modal */}
+      {/* Client Detail Slide-over (with Demo Generator) */}
       {viewingClient && (
-        <ClientDetailModal
+        <ClientDetailPanel
           client={viewingClient}
-          onClose={() => setViewingClient(null)}
-          onEdit={() => {
+          hasDemoScript={demoScriptClientIds.has(viewingClient.id)}
+          onClose={() => {
+            setViewingClient(null);
+            // Refresh demo script map after panel closes (might have created one)
+            fetchDemoScriptIds();
+          }}
+          onUpdate={(updated) => {
+            setViewingClient(updated);
+            setClients((prev) =>
+              prev.map((c) => (c.id === updated.id ? updated : c))
+            );
+          }}
+          onOpenFullEdit={() => {
             setSelectedClient(viewingClient);
             setViewingClient(null);
             setShowModal(true);

@@ -1,16 +1,10 @@
 // Client types
 export type ClientStage =
   | "lead"
-  | "book_call"
-  | "call"
-  | "thank_you"
-  | "meeting_minutes"
-  | "demo"
-  | "follow_up"
-  | "closing"
-  | "onboarding"
-  | "active"
-  | "churned";
+  | "contacted"
+  | "demo_sent"
+  | "negotiation"
+  | "closed";
 
 export interface Client {
   id: string;
@@ -20,7 +14,64 @@ export interface Client {
   phone: string | null;
   stage: ClientStage;
   notes: string | null;
+  ai_summary: string | null;
+  industry: string | null;
+  source: string | null;
+  deal_value: string | null;
+  close_probability: number | null;
+  status: string | null;
   onboarding_checklist: OnboardingChecklist | null;
+  created_at: string;
+  updated_at: string;
+}
+
+// Demo Script types
+export interface PitchSlide {
+  slide_number: number;
+  type:
+    | "title"
+    | "problem"
+    | "solution"
+    | "why_us"
+    | "demo_intro"
+    | "features"
+    | "case_study"
+    | "pricing"
+    | "objections"
+    | "close"
+    | "next_steps";
+  title: string;
+  subtitle?: string;
+  bullets: string[];
+  speaker_notes: string;
+  visual_suggestion?: string;
+}
+
+export interface DemoScenario {
+  title: string;
+  description: string;
+  trigger: string;
+}
+
+export interface DemoScriptContent {
+  pitch_deck: {
+    client_name: string;
+    business_name: string;
+    slides: PitchSlide[];
+  };
+  demo_html: string;
+  scenarios_covered: DemoScenario[];
+  presenter_notes: string;
+}
+
+export interface DemoScript {
+  id: string;
+  client_id: string;
+  duration_minutes: number;
+  focus: string | null;
+  tone: string | null;
+  content: DemoScriptContent;
+  generated_via: "api" | "paste_bridge";
   created_at: string;
   updated_at: string;
 }
