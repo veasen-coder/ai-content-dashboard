@@ -30,20 +30,19 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    // Get budget
-    const { data: budgetData, error: budgetError } = await supabase
+    // Get budget — use .limit(1) instead of .single() which can fail silently
+    const { data: budgetRows, error: budgetError } = await supabase
       .from("claude_budget")
       .select("budget_usd")
-      .eq("id", 1)
-      .single();
+      .limit(1);
 
+    let budget = 50;
     if (budgetError) {
-      console.error("Budget fetch error:", budgetError.message, budgetError.code);
+      console.error("Budget fetch error:", budgetError.message);
+    } else if (budgetRows && budgetRows.length > 0) {
+      budget = parseFloat(String(budgetRows[0].budget_usd)) || 50;
     }
-
-    const rawBudget = budgetData?.budget_usd;
-    const budget = rawBudget !== null && rawBudget !== undefined ? parseFloat(String(rawBudget)) : 50;
-    console.log("Budget debug:", { rawBudget, parsed: budget, budgetData, budgetError: budgetError?.message });
+    console.log("Budget:", budget, "raw:", budgetRows);
 
     // Get total spend (all time)
     const { data: allTimeData } = await supabase
