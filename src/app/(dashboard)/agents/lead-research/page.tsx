@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { PageWrapper } from "@/components/layout/page-wrapper";
 import {
   Search,
@@ -18,6 +18,10 @@ import {
   AlertCircle,
   CheckCircle2,
   Sparkles,
+  Upload,
+  FileSpreadsheet,
+  Copy,
+  ClipboardCheck,
 } from "lucide-react";
 import Link from "next/link";
 import { toast } from "sonner";
@@ -92,6 +96,93 @@ const MALAYSIAN_STATES = [
   "Labuan",
 ];
 
+// --------------- CSV Parser ---------------
+
+function parseCSV(text: string): string[][] {
+  const rows: string[][] = [];
+  let current = "";
+  let inQuotes = false;
+  let row: string[] = [];
+
+  for (let i = 0; i < text.length; i++) {
+    const char = text[i];
+    const next = text[i + 1];
+
+    if (inQuotes) {
+      if (char === '"' && next === '"') {
+        current += '"';
+        i++;
+      } else if (char === '"') {
+        inQuotes = false;
+      } else {
+        current += char;
+      }
+    } else {
+      if (char === '"') {
+        inQuotes = true;
+      } else if (char === ",") {
+        row.push(current.trim());
+        current = "";
+      } else if (char === "\n" || (char === "\r" && next === "\n")) {
+        row.push(current.trim());
+        if (row.some((c) => c !== "")) rows.push(row);
+        row = [];
+        current = "";
+        if (char === "\r") i++;
+      } else {
+        current += char;
+      }
+    }
+  }
+  // last row
+  row.push(current.trim());
+  if (row.some((c) => c !== "")) rows.push(row);
+  return rows;
+}
+
+// Column header matching — flexible to handle various naming conventions
+function matchColumn(
+  header: string
+): keyof Lead | null {
+  const h = header.toLowerCase().replace(/[^a-z0-9]/g, "");
+  if (h.includes("businessname") || h.includes("business") || h.includes("company") || h === "name") return "businessName";
+  if (h === "niche" || h.includes("industry") || h.includes("category")) return "niche";
+  if (h === "country") return "country";
+  if (h === "state" || h.includes("city") || h.includes("location") || h.includes("region")) return "state";
+  if (h === "phone" || h.includes("phonenumber") || h.includes("whatsapp") || h.includes("mobile") || h.includes("contact")) return "phone";
+  if (h === "email" || h.includes("emailaddress")) return "email";
+  if (h === "subject" || h.includes("subjectline") || h.includes("emailsubject")) return "subject";
+  if (h.includes("emailbody") || h.includes("body") || h.includes("message") || h.includes("draft")) return "emailBody";
+  return null;
+}
+
+// --------------- Prompt Script ---------------
+
+const PROMPT_SCRIPT = `You are a lead research specialist for Flogen AI, a Malaysian AI automation company that sells WhatsApp AI agents, automation workflows, and AI customer service systems to SMEs.
+
+Your task: Generate [NUMBER] realistic potential client leads for the "[NICHE]" industry in [LOCATION].
+
+For EACH lead, provide the following as a table or CSV format with these exact column headers:
+Business Name | Niche | Country | State | Phone | Email | Subject | Email Body
+
+Rules for each field:
+- Business Name: Realistic Malaysian SME name
+- Niche: The industry/niche
+- Country: Malaysia (or specified country)
+- State: The state/city
+- Phone: Realistic Malaysian phone number (format: 01X-XXXX XXXX)
+- Email: Realistic business email (use common formats like info@, hello@, admin@ with the business domain)
+- Subject: A personalised cold email subject line specific to this business (NOT generic)
+- Email Body: A complete cold email (150-200 words) that:
+  * Opens with something specific about their business type
+  * Identifies one pain point they likely face (slow responses, missed messages, manual work)
+  * Explains how Flogen AI solves it in one sentence
+  * Includes social proof (e.g. "We've helped F&B businesses reduce response time by 80%")
+  * Soft CTA: "Would you be open to a quick 15-min call this week?"
+  * Sign off as: Haikal, Founder — Flogen AI | flogen.team@gmail.com | +60 11-7557 4966
+
+IMPORTANT: Output as a CSV file format with the headers above. Each row is one lead. Use double quotes around fields that contain commas or newlines.`;
+
 // --------------- Main Page ---------------
 
 export default function LeadResearchPage() {
@@ -101,6 +192,12 @@ export default function LeadResearchPage() {
   const [state, setState] = useState("All States");
   const [leadCount, setLeadCount] = useState(5);
   const [researching, setResearching] = useState(false);
+
+  // File upload
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [uploading, setUploading] = useState(false);
+  const [showPromptScript, setShowPromptScript] = useState(false);
+  const [promptCopied, setPromptCopied] = useState(false);
 
   // Step 2: Leads table
   const [leads, setLeads] = useState<Lead[]>([]);
@@ -169,6 +266,125 @@ export default function LeadResearchPage() {
     } finally {
       setResearching(false);
     }
+  }
+
+  // ---- File Upload ----
+  async function handleFileUpload(file: File) {
+    setUploading(true);
+    setLeads([]);
+    setExpandedId(null);
+
+    try {
+      const batchId = `upload_${Date.now()}_${file.name.replace(/\.[^.]+$/, "").toLowerCase().replace(/\s+/g, "_")}`;
+      let rows: string[][] = [];
+
+      if (file.name.endsWith(".csv") || file.name.endsWith(".txt")) {
+        const text = await file.text();
+        rows = parseCSV(text);
+      } else if (file.name.endsWith(".xlsx") || file.name.endsWith(".xls")) {
+        // Dynamically load SheetJS from CDN at runtime
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        let XLSX = (window as any).XLSX;
+        if (!XLSX) {
+          await new Promise<void>((resolve, reject) => {
+            const script = document.createElement("script");
+            script.src = "https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js";
+            script.onload = () => resolve();
+            script.onerror = () => reject(new Error("Failed to load XLSX library"));
+            document.head.appendChild(script);
+          });
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          XLSX = (window as any).XLSX;
+        }
+        const buffer = await file.arrayBuffer();
+        const workbook = XLSX.read(buffer, { type: "array" });
+        const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+        const data: string[][] = XLSX.utils.sheet_to_json(firstSheet, {
+          header: 1,
+          defval: "",
+        });
+        rows = data;
+      } else {
+        toast.error("Unsupported file type. Use CSV or XLSX.");
+        setUploading(false);
+        return;
+      }
+
+      if (rows.length < 2) {
+        toast.error("File is empty or has no data rows");
+        setUploading(false);
+        return;
+      }
+
+      // Map headers
+      const headers = rows[0];
+      const columnMap: Record<number, keyof Lead> = {};
+      headers.forEach((h, i) => {
+        const mapped = matchColumn(h);
+        if (mapped) columnMap[i] = mapped;
+      });
+
+      // Require at least businessName or email
+      const hasBusiness = Object.values(columnMap).includes("businessName");
+      const hasEmail = Object.values(columnMap).includes("email");
+
+      if (!hasBusiness && !hasEmail) {
+        toast.error(
+          "Could not find 'Business Name' or 'Email' columns. Please check your headers."
+        );
+        setUploading(false);
+        return;
+      }
+
+      // Parse data rows
+      const parsed: Lead[] = rows.slice(1).map((row, i) => {
+        const lead: Partial<Lead> = {};
+        Object.entries(columnMap).forEach(([colIdx, field]) => {
+          const val = row[parseInt(colIdx)] || "";
+          (lead as Record<string, string>)[field] = val;
+        });
+
+        return {
+          id: `${batchId}_${i}`,
+          batchId,
+          businessName: lead.businessName || "",
+          niche: lead.niche || niche || "Uploaded",
+          country: lead.country || country,
+          state: lead.state || state === "All States" ? "" : state,
+          phone: lead.phone || "",
+          email: lead.email || "",
+          subject: lead.subject || "",
+          emailBody: lead.emailBody || "",
+          status: "draft" as const,
+        };
+      }).filter((l) => l.businessName || l.email); // Remove empty rows
+
+      setLeads(parsed);
+      toast.success(`Imported ${parsed.length} leads from ${file.name}`);
+    } catch (err) {
+      console.error("File parse error:", err);
+      toast.error("Failed to parse file. Make sure it has the correct format.");
+    } finally {
+      setUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  }
+
+  function handleDrop(e: React.DragEvent) {
+    e.preventDefault();
+    const file = e.dataTransfer.files[0];
+    if (file) handleFileUpload(file);
+  }
+
+  function copyPromptScript() {
+    const customized = PROMPT_SCRIPT
+      .replace("[NUMBER]", String(leadCount))
+      .replace("[NICHE]", niche || "[YOUR NICHE]")
+      .replace("[LOCATION]", state && state !== "All States" ? `${state}, ${country}` : country);
+    navigator.clipboard.writeText(customized);
+    setPromptCopied(true);
+    toast.success("Prompt copied to clipboard!");
+    setTimeout(() => setPromptCopied(false), 2000);
   }
 
   // ---- Select/Deselect ----
@@ -495,6 +711,128 @@ export default function LeadResearchPage() {
                 </>
               )}
             </button>
+          </div>
+        </div>
+
+        {/* ============ OR: Upload File ============ */}
+        <div className="rounded-xl border border-[#1E1E1E] bg-[#111111] p-5">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2">
+              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-amber-500/15">
+                <Upload className="h-4 w-4 text-amber-400" />
+              </div>
+              <div>
+                <h2 className="text-sm font-semibold">
+                  Or — Upload CSV / XLSX
+                </h2>
+                <p className="text-[10px] text-muted-foreground">
+                  Import leads from a spreadsheet to skip AI generation and save
+                  API costs
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={() => setShowPromptScript(!showPromptScript)}
+              className="flex items-center gap-1.5 rounded-lg border border-violet-500/30 bg-violet-500/10 px-3 py-1.5 text-xs font-medium text-violet-400 hover:bg-violet-500/20 transition-colors"
+            >
+              <FileSpreadsheet className="h-3.5 w-3.5" />
+              Prompt Script
+            </button>
+          </div>
+
+          {/* Prompt Script Panel */}
+          {showPromptScript && (
+            <div className="mb-4 rounded-lg border border-violet-500/20 bg-violet-500/5 p-4">
+              <div className="flex items-center justify-between mb-2">
+                <h3 className="text-xs font-semibold text-violet-400">
+                  Reusable Prompt — Copy &amp; paste into ChatGPT / Claude
+                </h3>
+                <button
+                  onClick={copyPromptScript}
+                  className="flex items-center gap-1.5 rounded-md bg-violet-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-violet-700 transition-colors"
+                >
+                  {promptCopied ? (
+                    <>
+                      <ClipboardCheck className="h-3.5 w-3.5" />
+                      Copied!
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="h-3.5 w-3.5" />
+                      Copy Prompt
+                    </>
+                  )}
+                </button>
+              </div>
+              <p className="text-[10px] text-muted-foreground mb-3">
+                This prompt will auto-fill with your selected niche, location
+                &amp; lead count. Run it in ChatGPT or Claude, then download the
+                output as CSV and upload below.
+              </p>
+              <pre className="max-h-[200px] overflow-y-auto rounded-lg border border-[#1E1E1E] bg-[#0A0A0A] p-3 text-[11px] text-muted-foreground font-mono leading-relaxed whitespace-pre-wrap">
+                {PROMPT_SCRIPT.replace("[NUMBER]", String(leadCount))
+                  .replace("[NICHE]", niche || "[YOUR NICHE]")
+                  .replace(
+                    "[LOCATION]",
+                    state && state !== "All States"
+                      ? `${state}, ${country}`
+                      : country
+                  )}
+              </pre>
+            </div>
+          )}
+
+          {/* Drop zone */}
+          <div
+            onDragOver={(e) => e.preventDefault()}
+            onDrop={handleDrop}
+            className="relative flex flex-col items-center justify-center gap-3 rounded-lg border-2 border-dashed border-[#2E2E2E] bg-[#0A0A0A] px-6 py-8 transition-colors hover:border-amber-500/40 hover:bg-amber-500/5"
+          >
+            {uploading ? (
+              <Loader2 className="h-8 w-8 animate-spin text-amber-400" />
+            ) : (
+              <FileSpreadsheet className="h-8 w-8 text-muted-foreground" />
+            )}
+            <div className="text-center">
+              <p className="text-sm text-muted-foreground">
+                {uploading
+                  ? "Parsing file..."
+                  : "Drag & drop a CSV or XLSX file here"}
+              </p>
+              <p className="mt-1 text-[10px] text-muted-foreground/60">
+                Required columns: Business Name, Email · Optional: Niche,
+                Country, State, Phone, Subject, Email Body
+              </p>
+            </div>
+            {!uploading && (
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                className="mt-1 rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-2 text-xs font-medium text-amber-400 hover:bg-amber-500/20 transition-colors"
+              >
+                Browse Files
+              </button>
+            )}
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".csv,.xlsx,.xls,.txt"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) handleFileUpload(file);
+              }}
+              className="hidden"
+            />
+          </div>
+
+          {/* Format hint */}
+          <div className="mt-3 flex items-start gap-2 text-[10px] text-muted-foreground/60">
+            <AlertCircle className="h-3 w-3 mt-0.5 shrink-0" />
+            <span>
+              CSV/XLSX should have headers in the first row. Column names are
+              matched flexibly — e.g. &quot;Business Name&quot;,
+              &quot;Company&quot;, &quot;Name&quot; all work. Fields without a
+              matching column will be left empty for you to fill in.
+            </span>
           </div>
         </div>
 
