@@ -46,6 +46,9 @@ export function getClientStatus(ctx: Ctx): StatusBadge {
     case "closed":
       return { label: "Closed — Won", tone: "success" };
 
+    case "active":
+      return { label: "Active Client", tone: "success" };
+
     default:
       return { label: ctx.stage, tone: "neutral" };
   }

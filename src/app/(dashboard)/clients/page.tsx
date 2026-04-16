@@ -323,10 +323,12 @@ function OnboardingCard({
   client,
   onToggleItem,
   onCompleteOnboarding,
+  onSendBack,
 }: {
   client: Client;
   onToggleItem: (clientId: string, itemKey: string, checked: boolean) => void;
   onCompleteOnboarding: (clientId: string) => void;
+  onSendBack: (clientId: string) => void;
 }) {
   const checklist = getChecklist(client);
   const entries = Object.entries(checklist);
@@ -411,16 +413,25 @@ function OnboardingCard({
         ))}
       </div>
 
-      {/* Complete onboarding button */}
-      {allDone && (
+      {/* Action buttons */}
+      <div className="mt-4 flex gap-2">
         <button
-          onClick={() => onCompleteOnboarding(client.id)}
-          className="mt-4 flex w-full items-center justify-center gap-2 rounded-lg bg-[#10B981] px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-[#059669]"
+          onClick={() => onSendBack(client.id)}
+          className="flex flex-1 items-center justify-center gap-2 rounded-lg border border-[#1E1E1E] px-4 py-2.5 text-sm font-medium text-[#6B7280] transition-colors hover:bg-[#1A1A1A] hover:text-[#F5F5F5]"
         >
-          <CheckCircle2 className="h-4 w-4" />
-          Complete Onboarding
+          <ArrowRight className="h-4 w-4 rotate-180" />
+          Send Back
         </button>
-      )}
+        {allDone && (
+          <button
+            onClick={() => onCompleteOnboarding(client.id)}
+            className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-[#10B981] px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-[#059669]"
+          >
+            <CheckCircle2 className="h-4 w-4" />
+            Complete Onboarding
+          </button>
+        )}
+      </div>
     </div>
   );
 }
@@ -1214,7 +1225,58 @@ export default function ClientsPage() {
     const client = clients.find((c) => c.id === clientId);
     if (!client) return;
 
-    toast.success(`${client.name} onboarding completed!`);
+    // Move to "active" stage — removes from Onboarding and Leads, shows in Clients tab
+    setClients((prev) =>
+      prev.map((c) =>
+        c.id === clientId ? { ...c, stage: "active" } : c
+      )
+    );
+
+    try {
+      const res = await fetch("/api/supabase/clients", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: clientId, stage: "active" }),
+      });
+      if (!res.ok) throw new Error("Update failed");
+      toast.success(`${client.name} onboarding completed! Moved to Clients.`);
+    } catch {
+      // Revert
+      setClients((prev) =>
+        prev.map((c) =>
+          c.id === clientId ? { ...c, stage: "closed" } : c
+        )
+      );
+      toast.error("Failed to complete onboarding");
+    }
+  }
+
+  async function sendBackToLeads(clientId: string) {
+    const client = clients.find((c) => c.id === clientId);
+    if (!client) return;
+
+    setClients((prev) =>
+      prev.map((c) =>
+        c.id === clientId ? { ...c, stage: "negotiation", onboarding_checklist: null } : c
+      )
+    );
+
+    try {
+      const res = await fetch("/api/supabase/clients", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: clientId, stage: "negotiation", onboarding_checklist: null }),
+      });
+      if (!res.ok) throw new Error("Update failed");
+      toast.success(`${client.name} sent back to Negotiation`);
+    } catch {
+      setClients((prev) =>
+        prev.map((c) =>
+          c.id === clientId ? { ...c, stage: "closed", onboarding_checklist: client.onboarding_checklist } : c
+        )
+      );
+      toast.error("Failed to move client");
+    }
   }
 
   // Filter
@@ -1233,6 +1295,8 @@ export default function ClientsPage() {
     stageGroups.set(s.key, []);
   }
   for (const client of filtered) {
+    // Skip "active" clients — they only show in the Clients tab
+    if (client.stage === "active") continue;
     const group = stageGroups.get(client.stage);
     if (group) {
       group.push(client);
@@ -1243,12 +1307,9 @@ export default function ClientsPage() {
 
   // Onboarding clients (closed stage only)
   const onboardingClients = filtered.filter((c) => c.stage === "closed");
+  const activeClients = filtered.filter((c) => c.stage === "active");
 
   const totalClients = filtered.length;
-
-  const activeClients = filtered.filter(
-    (c) => c.stage === "closed" && c.status !== "stalled"
-  );
 
   // MRR calculation for "Clients" tab — parse monthly values from closed clients
   const totalMRR = activeClients.reduce((sum, c) => {
@@ -1696,6 +1757,7 @@ export default function ClientsPage() {
                       client={client}
                       onToggleItem={toggleOnboardingItem}
                       onCompleteOnboarding={completeOnboarding}
+                      onSendBack={sendBackToLeads}
                     />
                   ))
                 )}
