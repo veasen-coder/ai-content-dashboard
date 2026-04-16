@@ -1261,8 +1261,8 @@ export default function ClientsPage() {
     <div className="inline-flex rounded-lg border border-[#1E1E1E] bg-[#111111] p-1">
       {([
         { key: "leads" as const, label: "Leads" },
-        { key: "clients" as const, label: "Clients", count: activeClients.length },
         { key: "onboarding" as const, label: "Onboarding", count: onboardingClients.length },
+        { key: "clients" as const, label: "Clients", count: activeClients.length },
       ]).map((tab) => (
         <button
           key={tab.key}
