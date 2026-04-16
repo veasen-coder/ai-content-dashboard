@@ -4,7 +4,7 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
 // This endpoint is called by Vercel Cron every day at 8 AM MYT (0:00 UTC)
-// It triggers the daily summary agent to analyze the dashboard and save results
+// It imports and calls the daily summary handler directly (no self-referencing HTTP)
 export async function GET(request: NextRequest) {
   // Verify cron secret to prevent unauthorized calls
   const authHeader = request.headers.get("authorization");
@@ -15,19 +15,12 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    // Use VERCEL_URL (auto-set by Vercel) or fallback to APP_URL
-    const host = process.env.VERCEL_URL
-      ? `https://${process.env.VERCEL_URL}`
-      : process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
-    const res = await fetch(`${host}/api/agents/daily-summary`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ baseUrl: host }),
-    });
+    // Import the POST handler directly instead of making an HTTP call to ourselves
+    const { POST } = await import("@/app/api/agents/daily-summary/route");
+    const response = await POST();
+    const data = await response.json();
 
-    const data = await res.json();
-
-    if (!res.ok) {
+    if (response.status !== 200) {
       return NextResponse.json({ error: data.error || "Agent failed" }, { status: 500 });
     }
 
@@ -35,6 +28,7 @@ export async function GET(request: NextRequest) {
       success: true,
       message: "Daily summary generated and saved to Google Sheets",
       date: data.date,
+      sent_to_clickup: data.sent_to_clickup,
     });
   } catch (e) {
     return NextResponse.json({ error: (e as Error).message }, { status: 500 });

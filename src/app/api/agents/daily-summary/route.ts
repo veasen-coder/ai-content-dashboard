@@ -1,5 +1,6 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { logClaudeUsage } from "@/lib/claude-usage";
+import { createServerSupabaseClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -96,49 +97,70 @@ async function sendToClickUpChat(message: string) {
   }
 }
 
-async function fetchDashboardData(baseUrl: string) {
+async function fetchDashboardData() {
+  const supabase = createServerSupabaseClient();
   const results: Record<string, unknown> = {};
 
-  // Fetch ClickUp tasks
+  // Fetch ClickUp tasks directly
   try {
-    const res = await fetch(`${baseUrl}/api/clickup/tasks`);
-    if (res.ok) {
-      const data = await res.json();
-      results.tasks = data.tasks || [];
+    const apiKey = process.env.CLICKUP_API_KEY;
+    const listId = process.env.CLICKUP_LIST_ID_TASKS;
+    if (apiKey && listId) {
+      const res = await fetch(
+        `https://api.clickup.com/api/v2/list/${listId}/task?include_closed=false&subtasks=true`,
+        { headers: { Authorization: apiKey }, cache: "no-store" }
+      );
+      if (res.ok) {
+        const data = await res.json();
+        results.tasks = (data.tasks || []).map((t: Record<string, unknown>) => ({
+          id: t.id,
+          name: t.name,
+          status: (t.status as Record<string, unknown>)?.status || "unknown",
+          priority: (t.priority as Record<string, unknown>)?.priority || null,
+          due_date: t.due_date ? new Date(Number(t.due_date)).toISOString().split("T")[0] : null,
+          assignees: ((t.assignees || []) as Array<Record<string, unknown>>).map((a) => a.username),
+          tags: ((t.tags || []) as Array<Record<string, unknown>>).map((tag) => tag.name),
+        }));
+      }
     }
   } catch {
     results.tasks = [];
   }
 
-  // Fetch clients
+  // Fetch clients from Supabase directly
   try {
-    const res = await fetch(`${baseUrl}/api/supabase/clients`);
-    if (res.ok) {
-      results.clients = await res.json();
-    }
+    const { data } = await supabase
+      .from("clients")
+      .select("id, name, business, stage, deal_value, notes, created_at")
+      .order("created_at", { ascending: false });
+    results.clients = data || [];
   } catch {
     results.clients = [];
   }
 
-  // Fetch finance (current month)
+  // Fetch finance (current month) from Supabase directly
   try {
     const now = new Date();
     const month = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
-    const res = await fetch(`${baseUrl}/api/supabase/finance?month=${month}`);
-    if (res.ok) {
-      results.finance = await res.json();
-    }
+    const { data } = await supabase
+      .from("finance_entries")
+      .select("id, type, category, description, amount, currency, date")
+      .gte("date", `${month}-01`)
+      .order("date", { ascending: false });
+    results.finance = data || [];
   } catch {
     results.finance = [];
   }
 
-  // Fetch recent content ideas
+  // Fetch content ideas from Supabase directly
   try {
-    const res = await fetch(`${baseUrl}/api/agents/content-ideas?limit=10&status=new`);
-    if (res.ok) {
-      const data = await res.json();
-      results.contentIdeas = data.ideas || [];
-    }
+    const { data } = await supabase
+      .from("content_ideas")
+      .select("id, topic, status, created_at")
+      .eq("status", "new")
+      .order("created_at", { ascending: false })
+      .limit(10);
+    results.contentIdeas = data || [];
   } catch {
     results.contentIdeas = [];
   }
@@ -183,7 +205,7 @@ Rules:
 - Today's date is provided — use it to calculate what's overdue or upcoming.`;
 
 // POST: Generate daily summary
-export async function POST(request: NextRequest) {
+export async function POST() {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) {
     return NextResponse.json({ error: "Anthropic API not configured" }, { status: 503 });
@@ -195,11 +217,8 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const body = await request.json().catch(() => ({}));
-    const baseUrl = body.baseUrl || process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
-
-    // 1. Gather all dashboard data
-    const dashboardData = await fetchDashboardData(baseUrl);
+    // 1. Gather all dashboard data (direct DB queries, no self-referencing HTTP)
+    const dashboardData = await fetchDashboardData();
 
     const today = new Date();
     const dateStr = today.toLocaleDateString("en-GB", {
