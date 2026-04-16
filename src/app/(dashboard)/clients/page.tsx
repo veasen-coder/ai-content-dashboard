@@ -18,6 +18,10 @@ import {
   AlertTriangle,
   CheckCircle2,
   ArrowRight,
+  Clock,
+  Target,
+  TrendingUp,
+  DollarSign,
 } from "lucide-react";
 import { toast } from "sonner";
 import { ClientDetailPanel } from "@/components/client-detail-panel";
@@ -110,6 +114,125 @@ function getNextStage(
   return undefined;
 }
 
+function daysSinceContact(dateStr: string | null): number {
+  if (!dateStr) return 0;
+  const now = new Date();
+  const date = new Date(dateStr);
+  return Math.floor((now.getTime() - date.getTime()) / (1000 * 60 * 60 * 24));
+}
+
+function contactBadgeColor(days: number): string {
+  if (days < 7) return "bg-[#10B981]/15 text-[#10B981]";
+  if (days <= 14) return "bg-[#F59E0B]/15 text-[#F59E0B]";
+  return "bg-[#EF4444]/15 text-[#EF4444]";
+}
+
+const NEXT_ACTION_MAP: Record<string, string> = {
+  lead: "Send intro message",
+  contacted: "Schedule demo",
+  demo_sent: "Follow up on demo",
+  negotiation: "Send proposal",
+  closed: "Start onboarding",
+};
+
+function parseDealValueNumber(val: string | null): number {
+  if (!val) return 0;
+  const cleaned = val.replace(/[^0-9.]/g, "");
+  return parseFloat(cleaned) || 0;
+}
+
+function formatMYR(value: number): string {
+  return new Intl.NumberFormat("en-MY", {
+    style: "currency",
+    currency: "MYR",
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  }).format(value);
+}
+
+// --------------- Pipeline Summary Stats ---------------
+
+function PipelineSummaryStats({ clients }: { clients: Client[] }) {
+  const nonClosed = clients.filter((c) => c.stage !== "closed");
+  const closed = clients.filter((c) => c.stage === "closed");
+
+  const totalPipelineValue = nonClosed.reduce(
+    (sum, c) => sum + parseDealValueNumber(c.deal_value),
+    0
+  );
+
+  const weightedForecast = nonClosed.reduce(
+    (sum, c) =>
+      sum +
+      (parseDealValueNumber(c.deal_value) * (c.close_probability || 0)) / 100,
+    0
+  );
+
+  const conversionRate =
+    clients.length > 0
+      ? Math.round((closed.length / clients.length) * 100)
+      : 0;
+
+  const allValues = clients
+    .map((c) => parseDealValueNumber(c.deal_value))
+    .filter((v) => v > 0);
+  const avgDealSize =
+    allValues.length > 0
+      ? allValues.reduce((a, b) => a + b, 0) / allValues.length
+      : 0;
+
+  const stats = [
+    {
+      label: "Pipeline Value",
+      value: formatMYR(totalPipelineValue),
+      icon: DollarSign,
+      color: "#7C3AED",
+    },
+    {
+      label: "Weighted Forecast",
+      value: formatMYR(weightedForecast),
+      icon: Target,
+      color: "#3B82F6",
+    },
+    {
+      label: "Conversion Rate",
+      value: `${conversionRate}%`,
+      icon: TrendingUp,
+      color: "#10B981",
+    },
+    {
+      label: "Avg Deal Size",
+      value: formatMYR(avgDealSize),
+      icon: DollarSign,
+      color: "#F59E0B",
+    },
+  ];
+
+  return (
+    <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+      {stats.map((s) => (
+        <div
+          key={s.label}
+          className="rounded-xl border border-[#1E1E1E] bg-[#111111] p-4"
+        >
+          <div className="mb-2 flex items-center gap-2">
+            <s.icon
+              className="h-4 w-4"
+              style={{ color: s.color }}
+            />
+            <span className="text-[11px] uppercase tracking-wider text-[#6B7280]">
+              {s.label}
+            </span>
+          </div>
+          <p className="text-lg font-bold font-mono text-[#F5F5F5]">
+            {s.value}
+          </p>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 // --------------- Client Card ---------------
 
 function ClientCard({
@@ -197,14 +320,32 @@ function ClientCard({
         </p>
       )}
 
-      {/* Smart status badge */}
-      <div className="mb-2">
+      {/* Smart status badge + days since contact */}
+      <div className="mb-2 flex items-center gap-1.5 flex-wrap">
         <span
           className={`inline-block rounded-md px-2 py-0.5 text-[10px] font-semibold ${STATUS_TONE_CLASSES[status.tone]}`}
         >
           {status.label}
         </span>
+        {(() => {
+          const days = daysSinceContact(client.updated_at || client.created_at);
+          return (
+            <span
+              className={`inline-flex items-center gap-0.5 rounded-md px-1.5 py-0.5 text-[10px] font-medium ${contactBadgeColor(days)}`}
+            >
+              <Clock className="h-2.5 w-2.5" />
+              {days}d ago
+            </span>
+          );
+        })()}
       </div>
+
+      {/* Next action prompt */}
+      {NEXT_ACTION_MAP[client.stage] && (
+        <p className="mb-2 text-[10px] italic text-[#6B7280]">
+          {NEXT_ACTION_MAP[client.stage]}
+        </p>
+      )}
 
       {/* Short AI summary — single line with ellipsis */}
       {client.ai_summary ? (
@@ -861,6 +1002,11 @@ export default function ClientsPage() {
   return (
     <PageWrapper title="Client Pipeline" lastSynced={lastFetched}>
       <div className="space-y-4">
+        {/* Pipeline Summary Stats */}
+        {!loading && !error && filtered.length > 0 && (
+          <PipelineSummaryStats clients={filtered} />
+        )}
+
         {/* Pipeline Progress */}
         {!loading && !error && (
           <PipelineProgress stageGroups={stageGroups} />

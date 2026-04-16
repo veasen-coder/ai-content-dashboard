@@ -21,6 +21,8 @@ import {
   Square,
   Loader2,
   ListPlus,
+  Filter,
+  ArrowUpDown,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -1239,6 +1241,8 @@ export default function TasksPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
+  const [filterPriority, setFilterPriority] = useState("all");
+  const [sortBy, setSortBy] = useState("default");
   const [refreshing, setRefreshing] = useState(false);
   const [lastFetched, setLastFetched] = useState<string | null>(null);
   const [showAddModal, setShowAddModal] = useState(false);
@@ -1446,8 +1450,8 @@ export default function TasksPage() {
     }
   }
 
-  // Filter
-  const filtered = search
+  // Filter by search
+  const searchFiltered = search
     ? topLevel.filter((t) => {
         const q = search.toLowerCase();
         if (t.name.toLowerCase().includes(q)) return true;
@@ -1455,6 +1459,39 @@ export default function TasksPage() {
         return children.some((c) => c.name.toLowerCase().includes(q));
       })
     : topLevel;
+
+  // Filter by priority
+  const filtered = filterPriority === "all"
+    ? searchFiltered
+    : searchFiltered.filter((t) => t.priority?.priority?.toLowerCase() === filterPriority);
+
+  // Sort helper
+  const PRIORITY_SORT_ORDER: Record<string, number> = {
+    urgent: 1,
+    high: 2,
+    normal: 3,
+    low: 4,
+  };
+
+  function sortTasks(taskList: Task[]): Task[] {
+    if (sortBy === "default") return taskList;
+    return [...taskList].sort((a, b) => {
+      if (sortBy === "priority") {
+        const pa = PRIORITY_SORT_ORDER[a.priority?.priority?.toLowerCase() || ""] || 5;
+        const pb = PRIORITY_SORT_ORDER[b.priority?.priority?.toLowerCase() || ""] || 5;
+        return pa - pb;
+      }
+      if (sortBy === "due_date") {
+        const da = a.due_date ? Number(a.due_date) : Infinity;
+        const db = b.due_date ? Number(b.due_date) : Infinity;
+        return da - db;
+      }
+      if (sortBy === "name") {
+        return a.name.localeCompare(b.name);
+      }
+      return 0;
+    });
+  }
 
   // Group by status (case-insensitive)
   const statusMap = new Map<string, StatusGroup>();
@@ -1483,9 +1520,12 @@ export default function TasksPage() {
     }
   }
 
-  const sorted = Array.from(statusMap.values()).sort(
-    (a, b) => getStatusOrder(a.status) - getStatusOrder(b.status)
-  );
+  const sorted = Array.from(statusMap.values())
+    .sort((a, b) => getStatusOrder(a.status) - getStatusOrder(b.status))
+    .map((group) => ({
+      ...group,
+      tasks: sortTasks(group.tasks),
+    }));
 
   // Flat ordered IDs for shift-select
   const flatIds: string[] = [];
@@ -1518,6 +1558,35 @@ export default function TasksPage() {
               placeholder="Search tasks..."
               className="w-full rounded-lg border border-[#1E1E1E] bg-[#111111] py-2 pl-9 pr-3 text-sm outline-none focus:border-primary"
             />
+          </div>
+          <div className="relative">
+            <Filter className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+            <select
+              value={filterPriority}
+              onChange={(e) => setFilterPriority(e.target.value)}
+              className="appearance-none rounded-lg border border-[#1E1E1E] bg-[#0A0A0A] py-2 pl-9 pr-8 text-sm outline-none focus:border-primary cursor-pointer text-foreground"
+            >
+              <option value="all">All Priorities</option>
+              <option value="urgent">Urgent</option>
+              <option value="high">High</option>
+              <option value="normal">Normal</option>
+              <option value="low">Low</option>
+            </select>
+            <ChevronDown className="absolute right-2 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+          </div>
+          <div className="relative">
+            <ArrowUpDown className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+            <select
+              value={sortBy}
+              onChange={(e) => setSortBy(e.target.value)}
+              className="appearance-none rounded-lg border border-[#1E1E1E] bg-[#0A0A0A] py-2 pl-9 pr-8 text-sm outline-none focus:border-primary cursor-pointer text-foreground"
+            >
+              <option value="default">Sort: Default</option>
+              <option value="priority">Sort: Priority</option>
+              <option value="due_date">Sort: Due Date</option>
+              <option value="name">Sort: Name (A-Z)</option>
+            </select>
+            <ChevronDown className="absolute right-2 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground pointer-events-none" />
           </div>
           <button
             onClick={fetchTasks}
