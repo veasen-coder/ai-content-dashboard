@@ -25,7 +25,7 @@ export default function DashboardLayout({
         <div className="flex items-center justify-end border-b border-[#1E1E1E] bg-[#0A0A0A] px-4 py-2">
           <ClaudeBalance />
         </div>
-        <div className="flex-1 overflow-hidden">{children}</div>
+        <div className="flex-1 overflow-auto">{children}</div>
       </div>
     </div>
   );
