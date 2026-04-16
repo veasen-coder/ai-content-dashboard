@@ -22,6 +22,9 @@ import {
   Target,
   TrendingUp,
   DollarSign,
+  CheckCircle,
+  Circle,
+  BarChart3,
 } from "lucide-react";
 import { toast } from "sonner";
 import { ClientDetailPanel } from "@/components/client-detail-panel";
@@ -90,6 +93,16 @@ const SOURCES = [
   "Other",
 ];
 
+const DEFAULT_ONBOARDING_CHECKLIST: Record<string, boolean> = {
+  "Contract Signed": false,
+  "Payment Received": false,
+  "Access Granted": false,
+  "Kickoff Call Scheduled": false,
+  "Kickoff Call Completed": false,
+  "Assets Received": false,
+  "Project Setup Done": false,
+};
+
 // --------------- Helpers ---------------
 
 function timeAgo(dateStr: string): string {
@@ -148,6 +161,17 @@ function formatMYR(value: number): string {
     minimumFractionDigits: 0,
     maximumFractionDigits: 0,
   }).format(value);
+}
+
+function getChecklist(client: Client): Record<string, boolean> {
+  return client.onboarding_checklist ?? { ...DEFAULT_ONBOARDING_CHECKLIST };
+}
+
+function getChecklistProgress(checklist: Record<string, boolean>): number {
+  const items = Object.values(checklist);
+  if (items.length === 0) return 0;
+  const done = items.filter(Boolean).length;
+  return Math.round((done / items.length) * 100);
 }
 
 // --------------- Pipeline Summary Stats ---------------
@@ -229,6 +253,174 @@ function PipelineSummaryStats({ clients }: { clients: Client[] }) {
           </p>
         </div>
       ))}
+    </div>
+  );
+}
+
+// --------------- Onboarding Summary Stats ---------------
+
+function OnboardingSummaryStats({ clients }: { clients: Client[] }) {
+  const totalOnboarding = clients.length;
+
+  const completions = clients.map((c) => getChecklistProgress(getChecklist(c)));
+  const avgCompletion =
+    completions.length > 0
+      ? Math.round(completions.reduce((a, b) => a + b, 0) / completions.length)
+      : 0;
+
+  const needsAttention = clients.filter((c) => {
+    const progress = getChecklistProgress(getChecklist(c));
+    const days = daysSinceContact(c.updated_at || c.created_at);
+    return progress < 50 && days > 14;
+  }).length;
+
+  const stats = [
+    {
+      label: "Total Onboarding",
+      value: `${totalOnboarding}`,
+      icon: Users,
+      color: "#7C3AED",
+    },
+    {
+      label: "Avg Completion",
+      value: `${avgCompletion}%`,
+      icon: BarChart3,
+      color: "#3B82F6",
+    },
+    {
+      label: "Needs Attention",
+      value: `${needsAttention}`,
+      icon: AlertTriangle,
+      color: needsAttention > 0 ? "#EF4444" : "#10B981",
+    },
+  ];
+
+  return (
+    <div className="grid grid-cols-3 gap-3">
+      {stats.map((s) => (
+        <div
+          key={s.label}
+          className="rounded-xl border border-[#1E1E1E] bg-[#111111] p-4"
+        >
+          <div className="mb-2 flex items-center gap-2">
+            <s.icon className="h-4 w-4" style={{ color: s.color }} />
+            <span className="text-[11px] uppercase tracking-wider text-[#6B7280]">
+              {s.label}
+            </span>
+          </div>
+          <p className="text-lg font-bold font-mono text-[#F5F5F5]">
+            {s.value}
+          </p>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// --------------- Onboarding Client Card ---------------
+
+function OnboardingCard({
+  client,
+  onToggleItem,
+  onCompleteOnboarding,
+}: {
+  client: Client;
+  onToggleItem: (clientId: string, itemKey: string, checked: boolean) => void;
+  onCompleteOnboarding: (clientId: string) => void;
+}) {
+  const checklist = getChecklist(client);
+  const entries = Object.entries(checklist);
+  const doneCount = entries.filter(([, v]) => v).length;
+  const totalCount = entries.length;
+  const progress = totalCount > 0 ? Math.round((doneCount / totalCount) * 100) : 0;
+  const allDone = doneCount === totalCount && totalCount > 0;
+  const days = daysSinceContact(client.updated_at || client.created_at);
+
+  return (
+    <div className="rounded-xl border border-[#1E1E1E] bg-[#111111] p-5 transition-all hover:border-[#2A2A2A]">
+      {/* Header */}
+      <div className="mb-4 flex items-start justify-between">
+        <div className="min-w-0 flex-1">
+          <h3 className="text-sm font-semibold text-[#F5F5F5] truncate">
+            {client.name}
+          </h3>
+          {client.business && (
+            <p className="mt-0.5 text-[12px] text-[#6B7280] truncate">
+              {client.business}
+            </p>
+          )}
+        </div>
+        <div className="ml-4 flex items-center gap-3 shrink-0">
+          {client.deal_value && (
+            <span className="text-sm font-mono font-semibold text-[#7C3AED]">
+              {client.deal_value}
+            </span>
+          )}
+          <span
+            className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[10px] font-medium ${contactBadgeColor(days)}`}
+          >
+            <Clock className="h-2.5 w-2.5" />
+            {days}d since closed
+          </span>
+        </div>
+      </div>
+
+      {/* Progress bar */}
+      <div className="mb-4">
+        <div className="mb-1.5 flex items-center justify-between">
+          <span className="text-[11px] text-[#6B7280]">Onboarding Progress</span>
+          <span className="text-[11px] font-mono font-semibold text-[#F5F5F5]">
+            {progress}%
+          </span>
+        </div>
+        <div className="h-2 w-full overflow-hidden rounded-full bg-[#1E1E1E]">
+          <div
+            className="h-full rounded-full transition-all duration-300"
+            style={{
+              width: `${progress}%`,
+              backgroundColor: progress === 100 ? "#10B981" : "#7C3AED",
+            }}
+          />
+        </div>
+      </div>
+
+      {/* Checklist */}
+      <div className="space-y-2">
+        {entries.map(([key, done]) => (
+          <button
+            key={key}
+            type="button"
+            onClick={() => onToggleItem(client.id, key, !done)}
+            className="flex w-full items-center gap-2.5 rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-[#1A1A1A]"
+          >
+            {done ? (
+              <CheckCircle className="h-4 w-4 shrink-0 text-[#10B981]" />
+            ) : (
+              <Circle className="h-4 w-4 shrink-0 text-[#6B7280]" />
+            )}
+            <span
+              className={`text-sm ${
+                done
+                  ? "text-[#6B7280] line-through"
+                  : "text-[#F5F5F5]"
+              }`}
+            >
+              {key}
+            </span>
+          </button>
+        ))}
+      </div>
+
+      {/* Complete onboarding button */}
+      {allDone && (
+        <button
+          onClick={() => onCompleteOnboarding(client.id)}
+          className="mt-4 flex w-full items-center justify-center gap-2 rounded-lg bg-[#10B981] px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-[#059669]"
+        >
+          <CheckCircle2 className="h-4 w-4" />
+          Complete Onboarding
+        </button>
+      )}
     </div>
   );
 }
@@ -894,6 +1086,7 @@ export default function ClientsPage() {
   const [demoScriptClientIds, setDemoScriptClientIds] = useState<Set<string>>(
     new Set()
   );
+  const [activeView, setActiveView] = useState<"leads" | "onboarding">("leads");
 
   const fetchClients = useCallback(async () => {
     try {
@@ -973,6 +1166,57 @@ export default function ClientsPage() {
     }
   }
 
+  // Onboarding checklist toggle
+  async function toggleOnboardingItem(
+    clientId: string,
+    itemKey: string,
+    checked: boolean
+  ) {
+    const client = clients.find((c) => c.id === clientId);
+    if (!client) return;
+
+    const currentChecklist = getChecklist(client);
+    const updatedChecklist = { ...currentChecklist, [itemKey]: checked };
+
+    // Optimistic update
+    setClients((prev) =>
+      prev.map((c) =>
+        c.id === clientId
+          ? { ...c, onboarding_checklist: updatedChecklist }
+          : c
+      )
+    );
+
+    try {
+      const res = await fetch("/api/supabase/clients", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: clientId,
+          onboarding_checklist: updatedChecklist,
+        }),
+      });
+      if (!res.ok) throw new Error("Update failed");
+    } catch {
+      // Revert on failure
+      setClients((prev) =>
+        prev.map((c) =>
+          c.id === clientId
+            ? { ...c, onboarding_checklist: client.onboarding_checklist }
+            : c
+        )
+      );
+      toast.error("Failed to update checklist");
+    }
+  }
+
+  async function completeOnboarding(clientId: string) {
+    const client = clients.find((c) => c.id === clientId);
+    if (!client) return;
+
+    toast.success(`${client.name} onboarding completed!`);
+  }
+
   // Filter
   const filtered = search
     ? clients.filter(
@@ -983,7 +1227,7 @@ export default function ClientsPage() {
       )
     : clients;
 
-  // Group by stage
+  // Group by stage (for leads view)
   const stageGroups = new Map<string, Client[]>();
   for (const s of STAGES) {
     stageGroups.set(s.key, []);
@@ -997,153 +1241,281 @@ export default function ClientsPage() {
     }
   }
 
+  // Onboarding clients (closed stage only)
+  const onboardingClients = filtered.filter((c) => c.stage === "closed");
+
   const totalClients = filtered.length;
 
   return (
     <PageWrapper title="Client Pipeline" lastSynced={lastFetched}>
       <div className="space-y-4">
-        {/* Pipeline Summary Stats */}
-        {!loading && !error && filtered.length > 0 && (
-          <PipelineSummaryStats clients={filtered} />
-        )}
-
-        {/* Pipeline Progress */}
-        {!loading && !error && (
-          <PipelineProgress stageGroups={stageGroups} />
-        )}
-
-        {/* Toolbar */}
-        <div className="flex items-center gap-3">
-          <div className="relative max-w-xs flex-1">
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <input
-              type="text"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search clients..."
-              className="w-full rounded-lg border border-[#1E1E1E] bg-[#111111] py-2 pl-9 pr-3 text-sm outline-none focus:border-primary"
-            />
-          </div>
-          <div className="flex items-center gap-1.5 rounded-lg border border-[#1E1E1E] bg-[#111111] px-3 py-2">
-            <Users className="h-4 w-4 text-muted-foreground" />
-            <span className="text-sm font-mono text-muted-foreground">
-              {totalClients}
-            </span>
-          </div>
-          <button
-            onClick={fetchClients}
-            disabled={refreshing}
-            className="flex items-center gap-2 rounded-lg border border-[#1E1E1E] bg-[#111111] px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-[#1A1A1A] hover:text-foreground disabled:opacity-50"
-          >
-            <RefreshCw
-              className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`}
-            />
-            Refresh
-          </button>
-        </div>
-
-        {/* Loading */}
-        {loading && (
-          <div className="flex gap-3 overflow-x-auto pb-4">
-            {STAGES.map((s) => (
-              <div key={s.key} className="min-w-[260px] flex-shrink-0 space-y-2">
-                <div className="h-6 w-24 animate-pulse rounded bg-[#1E1E1E]" />
-                <div className="space-y-2 rounded-xl border border-[#1E1E1E] bg-[#111111] p-2">
-                  {[1, 2].map((j) => (
-                    <div
-                      key={j}
-                      className="h-32 animate-pulse rounded-lg bg-[#1E1E1E]"
-                    />
-                  ))}
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-
-        {/* Error */}
-        {error && !loading && (
-          <div className="flex flex-col items-center justify-center rounded-xl border border-[#1E1E1E] bg-[#111111] py-16">
-            <p className="text-sm text-destructive">{error}</p>
+        {/* View Switcher */}
+        <div className="flex items-center justify-between">
+          <div className="inline-flex rounded-lg border border-[#1E1E1E] bg-[#111111] p-1">
             <button
-              onClick={fetchClients}
-              className="mt-3 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+              onClick={() => setActiveView("leads")}
+              className={`rounded-md px-4 py-1.5 text-sm font-medium transition-all ${
+                activeView === "leads"
+                  ? "bg-[#7C3AED] text-white shadow-sm"
+                  : "text-[#6B7280] hover:text-[#F5F5F5]"
+              }`}
             >
-              Retry
+              Leads
+            </button>
+            <button
+              onClick={() => setActiveView("onboarding")}
+              className={`rounded-md px-4 py-1.5 text-sm font-medium transition-all ${
+                activeView === "onboarding"
+                  ? "bg-[#7C3AED] text-white shadow-sm"
+                  : "text-[#6B7280] hover:text-[#F5F5F5]"
+              }`}
+            >
+              Onboarding
+              {onboardingClients.length > 0 && (
+                <span className="ml-1.5 inline-flex h-5 w-5 items-center justify-center rounded-full bg-white/20 text-[10px] font-bold">
+                  {onboardingClients.length}
+                </span>
+              )}
             </button>
           </div>
-        )}
+        </div>
 
-        {/* Kanban Columns */}
-        {!loading && !error && (
-          <div className="flex gap-3 overflow-x-auto pb-4 pr-4">
-            {STAGES.map((s) => {
-              const stageClients = stageGroups.get(s.key) || [];
-              return (
-                <div
-                  key={s.key}
-                  className="min-w-[260px] w-[260px] flex-shrink-0"
-                >
-                  {/* Stage Header */}
-                  <div className="mb-2 flex items-center gap-2 px-1">
-                    <div
-                      className="h-2.5 w-2.5 rounded-full"
-                      style={{ backgroundColor: s.color }}
-                    />
-                    <h3 className="text-sm font-semibold text-foreground">
-                      {s.label}
-                    </h3>
-                    <span className="text-xs font-mono text-muted-foreground">
-                      {stageClients.length}
-                    </span>
-                  </div>
+        {activeView === "leads" ? (
+          <>
+            {/* Pipeline Summary Stats */}
+            {!loading && !error && filtered.length > 0 && (
+              <PipelineSummaryStats clients={filtered} />
+            )}
 
-                  {/* Column */}
-                  <div className="space-y-3 min-h-[200px]">
-                    {stageClients.length === 0 ? (
-                      <div className="flex items-center justify-center rounded-xl border border-dashed border-[#1E1E1E] py-16">
-                        <p className="text-xs text-muted-foreground/50">
-                          No clients
-                        </p>
-                      </div>
-                    ) : (
-                      stageClients.map((client) => (
-                        <ClientCard
-                          key={client.id}
-                          client={client}
-                          hasDemoScript={demoScriptClientIds.has(client.id)}
-                          onClick={() => {
-                            setViewingClient(client);
-                          }}
-                          onMove={(newStage) => moveClient(client, newStage)}
-                          onProbChange={(prob) =>
-                            updateClient(client.id, {
-                              close_probability: prob,
-                            })
-                          }
-                          onDelete={() => deleteClient(client)}
+            {/* Pipeline Progress */}
+            {!loading && !error && (
+              <PipelineProgress stageGroups={stageGroups} />
+            )}
+
+            {/* Toolbar */}
+            <div className="flex items-center gap-3">
+              <div className="relative max-w-xs flex-1">
+                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <input
+                  type="text"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="Search clients..."
+                  className="w-full rounded-lg border border-[#1E1E1E] bg-[#111111] py-2 pl-9 pr-3 text-sm outline-none focus:border-primary"
+                />
+              </div>
+              <div className="flex items-center gap-1.5 rounded-lg border border-[#1E1E1E] bg-[#111111] px-3 py-2">
+                <Users className="h-4 w-4 text-muted-foreground" />
+                <span className="text-sm font-mono text-muted-foreground">
+                  {totalClients}
+                </span>
+              </div>
+              <button
+                onClick={fetchClients}
+                disabled={refreshing}
+                className="flex items-center gap-2 rounded-lg border border-[#1E1E1E] bg-[#111111] px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-[#1A1A1A] hover:text-foreground disabled:opacity-50"
+              >
+                <RefreshCw
+                  className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`}
+                />
+                Refresh
+              </button>
+            </div>
+
+            {/* Loading */}
+            {loading && (
+              <div className="flex gap-3 overflow-x-auto pb-4">
+                {STAGES.map((s) => (
+                  <div key={s.key} className="min-w-[260px] flex-shrink-0 space-y-2">
+                    <div className="h-6 w-24 animate-pulse rounded bg-[#1E1E1E]" />
+                    <div className="space-y-2 rounded-xl border border-[#1E1E1E] bg-[#111111] p-2">
+                      {[1, 2].map((j) => (
+                        <div
+                          key={j}
+                          className="h-32 animate-pulse rounded-lg bg-[#1E1E1E]"
                         />
-                      ))
-                    )}
-
-                    {/* Add lead button — only on Lead column */}
-                    {s.key === "lead" && (
-                      <button
-                        onClick={() => {
-                          setSelectedClient(null);
-                          setShowModal(true);
-                        }}
-                        className="flex w-full items-center justify-center gap-1.5 rounded-xl border border-dashed border-[#1E1E1E] py-3 text-xs text-muted-foreground transition-colors hover:border-primary/30 hover:text-foreground"
-                      >
-                        <Plus className="h-3.5 w-3.5" />
-                        Add lead
-                      </button>
-                    )}
+                      ))}
+                    </div>
                   </div>
-                </div>
-              );
-            })}
-          </div>
+                ))}
+              </div>
+            )}
+
+            {/* Error */}
+            {error && !loading && (
+              <div className="flex flex-col items-center justify-center rounded-xl border border-[#1E1E1E] bg-[#111111] py-16">
+                <p className="text-sm text-destructive">{error}</p>
+                <button
+                  onClick={fetchClients}
+                  className="mt-3 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+                >
+                  Retry
+                </button>
+              </div>
+            )}
+
+            {/* Kanban Columns */}
+            {!loading && !error && (
+              <div className="flex gap-3 overflow-x-auto pb-4 pr-4">
+                {STAGES.map((s) => {
+                  const stageClients = stageGroups.get(s.key) || [];
+                  return (
+                    <div
+                      key={s.key}
+                      className="min-w-[260px] w-[260px] flex-shrink-0"
+                    >
+                      {/* Stage Header */}
+                      <div className="mb-2 flex items-center gap-2 px-1">
+                        <div
+                          className="h-2.5 w-2.5 rounded-full"
+                          style={{ backgroundColor: s.color }}
+                        />
+                        <h3 className="text-sm font-semibold text-foreground">
+                          {s.label}
+                        </h3>
+                        <span className="text-xs font-mono text-muted-foreground">
+                          {stageClients.length}
+                        </span>
+                      </div>
+
+                      {/* Column */}
+                      <div className="space-y-3 min-h-[200px]">
+                        {stageClients.length === 0 ? (
+                          <div className="flex items-center justify-center rounded-xl border border-dashed border-[#1E1E1E] py-16">
+                            <p className="text-xs text-muted-foreground/50">
+                              No clients
+                            </p>
+                          </div>
+                        ) : (
+                          stageClients.map((client) => (
+                            <ClientCard
+                              key={client.id}
+                              client={client}
+                              hasDemoScript={demoScriptClientIds.has(client.id)}
+                              onClick={() => {
+                                setViewingClient(client);
+                              }}
+                              onMove={(newStage) => moveClient(client, newStage)}
+                              onProbChange={(prob) =>
+                                updateClient(client.id, {
+                                  close_probability: prob,
+                                })
+                              }
+                              onDelete={() => deleteClient(client)}
+                            />
+                          ))
+                        )}
+
+                        {/* Add lead button — only on Lead column */}
+                        {s.key === "lead" && (
+                          <button
+                            onClick={() => {
+                              setSelectedClient(null);
+                              setShowModal(true);
+                            }}
+                            className="flex w-full items-center justify-center gap-1.5 rounded-xl border border-dashed border-[#1E1E1E] py-3 text-xs text-muted-foreground transition-colors hover:border-primary/30 hover:text-foreground"
+                          >
+                            <Plus className="h-3.5 w-3.5" />
+                            Add lead
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </>
+        ) : (
+          <>
+            {/* Onboarding View */}
+
+            {/* Onboarding Summary Stats */}
+            {!loading && !error && (
+              <OnboardingSummaryStats clients={onboardingClients} />
+            )}
+
+            {/* Toolbar */}
+            <div className="flex items-center gap-3">
+              <div className="relative max-w-xs flex-1">
+                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <input
+                  type="text"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="Search onboarding clients..."
+                  className="w-full rounded-lg border border-[#1E1E1E] bg-[#111111] py-2 pl-9 pr-3 text-sm outline-none focus:border-primary"
+                />
+              </div>
+              <div className="flex items-center gap-1.5 rounded-lg border border-[#1E1E1E] bg-[#111111] px-3 py-2">
+                <Users className="h-4 w-4 text-muted-foreground" />
+                <span className="text-sm font-mono text-muted-foreground">
+                  {onboardingClients.length}
+                </span>
+              </div>
+              <button
+                onClick={fetchClients}
+                disabled={refreshing}
+                className="flex items-center gap-2 rounded-lg border border-[#1E1E1E] bg-[#111111] px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-[#1A1A1A] hover:text-foreground disabled:opacity-50"
+              >
+                <RefreshCw
+                  className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`}
+                />
+                Refresh
+              </button>
+            </div>
+
+            {/* Loading */}
+            {loading && (
+              <div className="space-y-3">
+                {[1, 2, 3].map((i) => (
+                  <div
+                    key={i}
+                    className="h-48 animate-pulse rounded-xl border border-[#1E1E1E] bg-[#111111]"
+                  />
+                ))}
+              </div>
+            )}
+
+            {/* Error */}
+            {error && !loading && (
+              <div className="flex flex-col items-center justify-center rounded-xl border border-[#1E1E1E] bg-[#111111] py-16">
+                <p className="text-sm text-destructive">{error}</p>
+                <button
+                  onClick={fetchClients}
+                  className="mt-3 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+                >
+                  Retry
+                </button>
+              </div>
+            )}
+
+            {/* Onboarding Cards */}
+            {!loading && !error && (
+              <div className="space-y-3">
+                {onboardingClients.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-[#1E1E1E] bg-[#111111] py-16">
+                    <CheckCircle2 className="mb-3 h-8 w-8 text-[#6B7280]" />
+                    <p className="text-sm text-[#6B7280]">
+                      No clients in onboarding
+                    </p>
+                    <p className="mt-1 text-xs text-[#6B7280]/60">
+                      Close a deal in the Leads pipeline to start onboarding
+                    </p>
+                  </div>
+                ) : (
+                  onboardingClients.map((client) => (
+                    <OnboardingCard
+                      key={client.id}
+                      client={client}
+                      onToggleItem={toggleOnboardingItem}
+                      onCompleteOnboarding={completeOnboarding}
+                    />
+                  ))
+                )}
+              </div>
+            )}
+          </>
         )}
       </div>
 
