@@ -81,6 +81,68 @@ export async function GET(request: NextRequest) {
   }
 
   try {
+    // Test mode: send a sample message to verify it sends as Flogen AI
+    const isTest = new URL(request.url).searchParams.get("test") === "true";
+    if (isTest) {
+      const testMessage = buildMessage([
+        {
+          client: {
+            id: "test",
+            name: "The Great Haus Sdn Bhd",
+            business: "Interior Design",
+            stage: "negotiation",
+            deal_value: "RM 399,899",
+            status: "stalled",
+            updated_at: null,
+            created_at: new Date(Date.now() - 8 * 86400000).toISOString(),
+          },
+          days: 8,
+        },
+        {
+          client: {
+            id: "test2",
+            name: "Bella Hair Studio",
+            business: null,
+            stage: "demo_sent",
+            deal_value: "RM 1,200/mo",
+            status: "active",
+            updated_at: null,
+            created_at: new Date(Date.now() - 4 * 86400000).toISOString(),
+          },
+          days: 4,
+        },
+        {
+          client: {
+            id: "test3",
+            name: "KL Fresh Bites",
+            business: "F&B",
+            stage: "lead",
+            deal_value: null,
+            status: "active",
+            updated_at: null,
+            created_at: new Date(Date.now() - 2 * 86400000).toISOString(),
+          },
+          days: 2,
+        },
+      ]);
+
+      const testRes = await fetch(
+        `${CLICKUP_V3}/workspaces/${workspaceId}/chat/channels/${CHANNEL_ID}/messages`,
+        {
+          method: "POST",
+          headers: { Authorization: apiKey, "Content-Type": "application/json" },
+          body: JSON.stringify({ content: testMessage }),
+        }
+      );
+
+      if (!testRes.ok) {
+        const err = await testRes.json();
+        return NextResponse.json({ error: `Test failed: ${err.err || testRes.status}` }, { status: 500 });
+      }
+
+      return NextResponse.json({ success: true, message: "Test reminder sent as Flogen AI" });
+    }
+
     // 1. Fetch all active pipeline clients (not closed)
     const supabase = createServerSupabaseClient();
     const { data: clients, error } = await supabase
