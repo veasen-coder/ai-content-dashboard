@@ -1086,7 +1086,7 @@ export default function ClientsPage() {
   const [demoScriptClientIds, setDemoScriptClientIds] = useState<Set<string>>(
     new Set()
   );
-  const [activeView, setActiveView] = useState<"leads" | "onboarding">("leads");
+  const [activeView, setActiveView] = useState<"leads" | "clients" | "onboarding">("leads");
 
   const fetchClients = useCallback(async () => {
     try {
@@ -1246,40 +1246,47 @@ export default function ClientsPage() {
 
   const totalClients = filtered.length;
 
-  return (
-    <PageWrapper title="Client Pipeline" lastSynced={lastFetched}>
-      <div className="space-y-4">
-        {/* View Switcher */}
-        <div className="flex items-center justify-between">
-          <div className="inline-flex rounded-lg border border-[#1E1E1E] bg-[#111111] p-1">
-            <button
-              onClick={() => setActiveView("leads")}
-              className={`rounded-md px-4 py-1.5 text-sm font-medium transition-all ${
-                activeView === "leads"
-                  ? "bg-[#7C3AED] text-white shadow-sm"
-                  : "text-[#6B7280] hover:text-[#F5F5F5]"
-              }`}
-            >
-              Leads
-            </button>
-            <button
-              onClick={() => setActiveView("onboarding")}
-              className={`rounded-md px-4 py-1.5 text-sm font-medium transition-all ${
-                activeView === "onboarding"
-                  ? "bg-[#7C3AED] text-white shadow-sm"
-                  : "text-[#6B7280] hover:text-[#F5F5F5]"
-              }`}
-            >
-              Onboarding
-              {onboardingClients.length > 0 && (
-                <span className="ml-1.5 inline-flex h-5 w-5 items-center justify-center rounded-full bg-white/20 text-[10px] font-bold">
-                  {onboardingClients.length}
-                </span>
-              )}
-            </button>
-          </div>
-        </div>
+  const activeClients = filtered.filter(
+    (c) => c.stage === "closed" && c.status !== "stalled"
+  );
 
+  // MRR calculation for "Clients" tab — parse monthly values from closed clients
+  const totalMRR = activeClients.reduce((sum, c) => {
+    const val = parseDealValueNumber(c.deal_value);
+    // If deal_value contains "/mo" or is a monthly value, use directly
+    return sum + val;
+  }, 0);
+
+  const viewSwitcher = (
+    <div className="inline-flex rounded-lg border border-[#1E1E1E] bg-[#111111] p-1">
+      {([
+        { key: "leads" as const, label: "Leads" },
+        { key: "clients" as const, label: "Clients", count: activeClients.length },
+        { key: "onboarding" as const, label: "Onboarding", count: onboardingClients.length },
+      ]).map((tab) => (
+        <button
+          key={tab.key}
+          onClick={() => setActiveView(tab.key)}
+          className={`rounded-md px-4 py-1.5 text-sm font-medium transition-all ${
+            activeView === tab.key
+              ? "bg-[#7C3AED] text-white shadow-sm"
+              : "text-[#6B7280] hover:text-[#F5F5F5]"
+          }`}
+        >
+          {tab.label}
+          {tab.count !== undefined && tab.count > 0 && (
+            <span className="ml-1.5 inline-flex h-5 min-w-[20px] items-center justify-center rounded-full bg-white/20 px-1 text-[10px] font-bold">
+              {tab.count}
+            </span>
+          )}
+        </button>
+      ))}
+    </div>
+  );
+
+  return (
+    <PageWrapper title="Client Pipeline" lastSynced={lastFetched} headerExtra={viewSwitcher}>
+      <div className="space-y-4">
         {activeView === "leads" ? (
           <>
             {/* Pipeline Summary Stats */}
@@ -1423,6 +1430,185 @@ export default function ClientsPage() {
                     </div>
                   );
                 })}
+              </div>
+            )}
+          </>
+        ) : activeView === "clients" ? (
+          <>
+            {/* Active Clients View */}
+
+            {/* Client Stats */}
+            {!loading && !error && (
+              <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+                <div className="rounded-xl border border-[#1E1E1E] bg-[#111111] p-4">
+                  <div className="mb-2 flex items-center gap-2">
+                    <Users className="h-4 w-4 text-[#7C3AED]" />
+                    <span className="text-[11px] uppercase tracking-wider text-[#6B7280]">
+                      Active Clients
+                    </span>
+                  </div>
+                  <p className="text-lg font-bold font-mono text-[#F5F5F5]">
+                    {activeClients.length}
+                  </p>
+                </div>
+                <div className="rounded-xl border border-[#1E1E1E] bg-[#111111] p-4">
+                  <div className="mb-2 flex items-center gap-2">
+                    <DollarSign className="h-4 w-4 text-[#10B981]" />
+                    <span className="text-[11px] uppercase tracking-wider text-[#6B7280]">
+                      MRR
+                    </span>
+                  </div>
+                  <p className="text-lg font-bold font-mono text-[#10B981]">
+                    {formatMYR(totalMRR)}
+                    <span className="text-xs text-[#6B7280] font-normal ml-1">/mo</span>
+                  </p>
+                </div>
+                <div className="rounded-xl border border-[#1E1E1E] bg-[#111111] p-4">
+                  <div className="mb-2 flex items-center gap-2">
+                    <TrendingUp className="h-4 w-4 text-[#3B82F6]" />
+                    <span className="text-[11px] uppercase tracking-wider text-[#6B7280]">
+                      ARR
+                    </span>
+                  </div>
+                  <p className="text-lg font-bold font-mono text-[#F5F5F5]">
+                    {formatMYR(totalMRR * 12)}
+                    <span className="text-xs text-[#6B7280] font-normal ml-1">/yr</span>
+                  </p>
+                </div>
+                <div className="rounded-xl border border-[#1E1E1E] bg-[#111111] p-4">
+                  <div className="mb-2 flex items-center gap-2">
+                    <DollarSign className="h-4 w-4 text-[#F59E0B]" />
+                    <span className="text-[11px] uppercase tracking-wider text-[#6B7280]">
+                      Avg Revenue / Client
+                    </span>
+                  </div>
+                  <p className="text-lg font-bold font-mono text-[#F5F5F5]">
+                    {activeClients.length > 0
+                      ? formatMYR(totalMRR / activeClients.length)
+                      : "RM 0"}
+                    <span className="text-xs text-[#6B7280] font-normal ml-1">/mo</span>
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* Toolbar */}
+            <div className="flex items-center gap-3">
+              <div className="relative max-w-xs flex-1">
+                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <input
+                  type="text"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="Search clients..."
+                  className="w-full rounded-lg border border-[#1E1E1E] bg-[#111111] py-2 pl-9 pr-3 text-sm outline-none focus:border-primary"
+                />
+              </div>
+              <button
+                onClick={fetchClients}
+                disabled={refreshing}
+                className="flex items-center gap-2 rounded-lg border border-[#1E1E1E] bg-[#111111] px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-[#1A1A1A] hover:text-foreground disabled:opacity-50"
+              >
+                <RefreshCw
+                  className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`}
+                />
+                Refresh
+              </button>
+            </div>
+
+            {/* Loading */}
+            {loading && (
+              <div className="space-y-3">
+                {[1, 2, 3].map((i) => (
+                  <div
+                    key={i}
+                    className="h-24 animate-pulse rounded-xl border border-[#1E1E1E] bg-[#111111]"
+                  />
+                ))}
+              </div>
+            )}
+
+            {/* Error */}
+            {error && !loading && (
+              <div className="flex flex-col items-center justify-center rounded-xl border border-[#1E1E1E] bg-[#111111] py-16">
+                <p className="text-sm text-destructive">{error}</p>
+                <button
+                  onClick={fetchClients}
+                  className="mt-3 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+                >
+                  Retry
+                </button>
+              </div>
+            )}
+
+            {/* Client List */}
+            {!loading && !error && (
+              <div className="space-y-3">
+                {activeClients.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-[#1E1E1E] bg-[#111111] py-16">
+                    <Users className="mb-3 h-8 w-8 text-[#6B7280]" />
+                    <p className="text-sm text-[#6B7280]">No active clients yet</p>
+                    <p className="mt-1 text-xs text-[#6B7280]/60">
+                      Close deals in the Leads pipeline to see them here
+                    </p>
+                  </div>
+                ) : (
+                  activeClients.map((client) => {
+                    const days = daysSinceContact(client.updated_at || client.created_at);
+                    const dealVal = parseDealValueNumber(client.deal_value);
+                    return (
+                      <div
+                        key={client.id}
+                        onClick={() => setViewingClient(client)}
+                        className="group flex cursor-pointer items-center gap-4 rounded-xl border border-[#1E1E1E] bg-[#111111] p-4 transition-all hover:border-primary/40 hover:bg-[#141414]"
+                      >
+                        {/* Avatar */}
+                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#7C3AED]/15 text-sm font-bold text-[#7C3AED]">
+                          {client.name.charAt(0).toUpperCase()}
+                        </div>
+
+                        {/* Info */}
+                        <div className="min-w-0 flex-1">
+                          <h4 className="text-sm font-semibold text-[#F5F5F5] truncate">
+                            {client.name}
+                          </h4>
+                          <div className="mt-0.5 flex items-center gap-2">
+                            {client.business && (
+                              <span className="text-xs text-[#6B7280] truncate">
+                                {client.business}
+                              </span>
+                            )}
+                            {client.industry && (
+                              <span className="rounded border border-[#1E1E1E] px-1.5 py-0.5 text-[10px] text-[#6B7280]">
+                                {client.industry}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Deal Value */}
+                        <div className="text-right shrink-0">
+                          {dealVal > 0 && (
+                            <p className="text-sm font-mono font-semibold text-[#10B981]">
+                              {client.deal_value}
+                            </p>
+                          )}
+                        </div>
+
+                        {/* Last Contact */}
+                        <span
+                          className={`inline-flex shrink-0 items-center gap-1 rounded-md px-2 py-0.5 text-[10px] font-medium ${contactBadgeColor(days)}`}
+                        >
+                          <Clock className="h-2.5 w-2.5" />
+                          {days}d ago
+                        </span>
+
+                        {/* Arrow */}
+                        <ChevronRight className="h-4 w-4 shrink-0 text-[#6B7280] opacity-0 transition-opacity group-hover:opacity-100" />
+                      </div>
+                    );
+                  })
+                )}
               </div>
             )}
           </>

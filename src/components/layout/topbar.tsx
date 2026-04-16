@@ -74,7 +74,10 @@ export function Topbar({ title, lastSynced, headerExtra }: TopbarProps) {
   return (
     <>
       <header className="flex h-16 items-center justify-between border-b border-[#1E1E1E] bg-[#0A0A0A]/80 px-6 backdrop-blur-sm">
-        <h1 className="text-xl font-semibold">{title}</h1>
+        <div className="flex items-center gap-4">
+          <h1 className="text-xl font-semibold">{title}</h1>
+          {headerExtra}
+        </div>
 
         {lastSynced && (
           <span className="text-sm text-muted-foreground">
@@ -83,7 +86,6 @@ export function Topbar({ title, lastSynced, headerExtra }: TopbarProps) {
         )}
 
         <div className="flex items-center gap-2">
-          {headerExtra}
           <button
             onClick={() => setSearchOpen(true)}
             className="flex h-9 w-9 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-[#1E1E1E] hover:text-foreground"
