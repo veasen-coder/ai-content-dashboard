@@ -127,6 +127,14 @@ function getNextStage(
   return undefined;
 }
 
+function getPrevStage(
+  currentStage: string
+): (typeof STAGES)[number] | undefined {
+  const idx = STAGES.findIndex((s) => s.key === currentStage);
+  if (idx > 0) return STAGES[idx - 1];
+  return undefined;
+}
+
 function daysSinceContact(dateStr: string | null): number {
   if (!dateStr) return 0;
   const now = new Date();
@@ -455,6 +463,7 @@ function ClientCard({
   const [confirmDel, setConfirmDel] = useState(false);
   const isClosed = client.stage === "closed";
   const nextStage = getNextStage(client.stage);
+  const prevStage = getPrevStage(client.stage);
   const isStalled = client.status === "stalled";
 
   const status = getClientStatus({
@@ -576,18 +585,34 @@ function ClientCard({
         )}
       </div>
 
-      {/* Quick move button — only visible on hover */}
-      {!isClosed && nextStage && (
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            onMove(nextStage.key);
-          }}
-          className="mt-2 flex w-full items-center justify-center gap-1 rounded-md border border-[#1E1E1E] py-1 text-[10px] font-medium text-muted-foreground/70 opacity-0 transition-all group-hover:opacity-100 hover:border-primary/30 hover:text-foreground"
-        >
-          → {nextStage.label}
-          <ArrowRight className="h-2.5 w-2.5" />
-        </button>
+      {/* Quick move buttons — only visible on hover */}
+      {!isClosed && (nextStage || prevStage) && (
+        <div className="mt-2 flex gap-1.5 opacity-0 transition-all group-hover:opacity-100">
+          {prevStage && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onMove(prevStage.key);
+              }}
+              className="flex flex-1 items-center justify-center gap-1 rounded-md border border-[#1E1E1E] py-1 text-[10px] font-medium text-muted-foreground/70 hover:border-red-500/30 hover:text-red-400"
+            >
+              <ArrowRight className="h-2.5 w-2.5 rotate-180" />
+              {prevStage.label}
+            </button>
+          )}
+          {nextStage && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onMove(nextStage.key);
+              }}
+              className="flex flex-1 items-center justify-center gap-1 rounded-md border border-[#1E1E1E] py-1 text-[10px] font-medium text-muted-foreground/70 hover:border-primary/30 hover:text-foreground"
+            >
+              → {nextStage.label}
+              <ArrowRight className="h-2.5 w-2.5" />
+            </button>
+          )}
+        </div>
       )}
     </div>
   );
