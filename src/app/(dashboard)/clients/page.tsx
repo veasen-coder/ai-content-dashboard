@@ -59,7 +59,7 @@ interface Client {
 const STAGES = [
   { key: "lead", label: "Lead", color: "#6B7280" },
   { key: "contacted", label: "Contacted", color: "#3B82F6" },
-  { key: "demo_sent", label: "Demo Sent", color: "#8B5CF6" },
+  { key: "demo_sent", label: "Demo", color: "#8B5CF6" },
   { key: "negotiation", label: "Negotiation", color: "#F59E0B" },
   { key: "closed", label: "Closed", color: "#10B981" },
 ] as const;
