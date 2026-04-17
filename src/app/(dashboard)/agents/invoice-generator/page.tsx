@@ -20,6 +20,11 @@ import {
   DollarSign,
   Eye,
   ChevronDown,
+  Clock,
+  CheckCircle2,
+  XCircle,
+  RotateCcw,
+  Download,
 } from "lucide-react";
 import Link from "next/link";
 import { toast } from "sonner";
@@ -50,6 +55,37 @@ interface PricingTier {
   name: string;
   price: number;
   features: string[];
+}
+
+interface SavedInvoice {
+  id: string;
+  type: "invoice" | "proposal";
+  status: "draft" | "sent" | "paid" | "overdue" | "cancelled";
+  invoice_number: string | null;
+  title: string | null;
+  client_id: string | null;
+  client_name: string;
+  client_business: string | null;
+  client_email: string | null;
+  client_industry: string | null;
+  invoice_date: string | null;
+  due_date: string | null;
+  line_items: LineItem[];
+  tax_rate: number;
+  subtotal: number;
+  tax_amount: number;
+  total: number;
+  notes: string | null;
+  proposal_title: string | null;
+  scope_of_work: string | null;
+  pricing_tiers: PricingTier[];
+  timeline: string | null;
+  terms: string | null;
+  html_content: string | null;
+  sent_at: string | null;
+  paid_at: string | null;
+  created_at: string;
+  updated_at: string;
 }
 
 interface HistoryEntry {
@@ -199,8 +235,16 @@ export default function InvoiceGeneratorPage() {
   const [showPreview, setShowPreview] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [sending, setSending] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [copied, setCopied] = useState(false);
-  const [history, setHistory] = useState<HistoryEntry[]>([]);
+  const [, setHistory] = useState<HistoryEntry[]>([]);
+
+  // Saved documents
+  const [savedInvoices, setSavedInvoices] = useState<SavedInvoice[]>([]);
+  const [loadingSaved, setLoadingSaved] = useState(true);
+  const [viewingInvoice, setViewingInvoice] = useState<SavedInvoice | null>(null);
+  const [savedFilter, setSavedFilter] = useState<"all" | "invoice" | "proposal">("all");
+  const [editingId, setEditingId] = useState<string | null>(null);
 
   // --------------- Fetch Clients ---------------
 
@@ -213,6 +257,24 @@ export default function InvoiceGeneratorPage() {
       })
       .catch(() => toast.error("Failed to load clients"));
   }, []);
+
+  // --------------- Fetch Saved Invoices ---------------
+
+  const fetchSavedInvoices = useCallback(async () => {
+    try {
+      const res = await fetch("/api/supabase/invoices");
+      const data = await res.json();
+      if (Array.isArray(data)) setSavedInvoices(data);
+    } catch {
+      // silently fail — table might not exist yet
+    } finally {
+      setLoadingSaved(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchSavedInvoices();
+  }, [fetchSavedInvoices]);
 
   // --------------- Client Selection ---------------
 
@@ -389,6 +451,181 @@ TIMELINE:
     }
   };
 
+  // --------------- Save / Load / Delete ---------------
+
+  const saveInvoice = async () => {
+    if (!clientName.trim()) {
+      toast.error("Client name is required to save");
+      return;
+    }
+    setSaving(true);
+    try {
+      const html = activeTab === "invoice" ? generateInvoiceHTML() : generateProposalHTML();
+      const payload = {
+        type: activeTab,
+        status: "draft" as const,
+        invoice_number: activeTab === "invoice" ? invoiceNumber : null,
+        title: activeTab === "invoice" ? invoiceNumber : proposalTitle || "Untitled Proposal",
+        client_id: selectedClientId || null,
+        client_name: clientName,
+        client_business: clientBusiness,
+        client_email: clientEmail,
+        client_industry: clientIndustry,
+        invoice_date: activeTab === "invoice" ? invoiceDate : toDateInputValue(new Date()),
+        due_date: activeTab === "invoice" ? dueDate : null,
+        line_items: activeTab === "invoice" ? lineItems : [],
+        tax_rate: activeTab === "invoice" ? taxRate : 0,
+        subtotal: activeTab === "invoice" ? subtotal : 0,
+        tax_amount: activeTab === "invoice" ? taxAmount : 0,
+        total: activeTab === "invoice" ? total : proposalTotal,
+        notes: activeTab === "invoice" ? invoiceNotes : null,
+        proposal_title: activeTab === "proposal" ? proposalTitle : null,
+        scope_of_work: activeTab === "proposal" ? scopeOfWork : null,
+        pricing_tiers: activeTab === "proposal" ? pricingTiers : [],
+        timeline: activeTab === "proposal" ? timeline : null,
+        terms: activeTab === "proposal" ? terms : null,
+        html_content: html,
+      };
+
+      let res;
+      if (editingId) {
+        res = await fetch("/api/supabase/invoices", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id: editingId, ...payload }),
+        });
+      } else {
+        res = await fetch("/api/supabase/invoices", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+      }
+
+      if (!res.ok) throw new Error("Save failed");
+
+      toast.success(editingId ? "Document updated" : "Document saved");
+      fetchSavedInvoices();
+
+      if (!editingId) {
+        setHistory((prev) => [
+          {
+            id: generateId(),
+            type: activeTab,
+            clientName: clientName || "Unknown",
+            title: activeTab === "invoice" ? invoiceNumber : proposalTitle,
+            amount: activeTab === "invoice" ? total : proposalTotal,
+            date: new Date().toISOString(),
+          },
+          ...prev,
+        ]);
+      }
+    } catch {
+      toast.error("Failed to save document");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const loadInvoice = (inv: SavedInvoice) => {
+    setActiveTab(inv.type);
+    setEditingId(inv.id);
+    setShowPreview(false);
+    setViewingInvoice(null);
+
+    // Load client info
+    setSelectedClientId(inv.client_id || "");
+    setClientName(inv.client_name || "");
+    setClientBusiness(inv.client_business || "");
+    setClientEmail(inv.client_email || "");
+    setClientIndustry(inv.client_industry || "");
+    setClientDealValue(inv.total || 0);
+
+    if (inv.type === "invoice") {
+      setInvoiceNumber(inv.invoice_number || generateInvoiceNumber());
+      setInvoiceDate(inv.invoice_date || toDateInputValue(new Date()));
+      setDueDate(inv.due_date || (() => { const d = new Date(); d.setDate(d.getDate() + 14); return toDateInputValue(d); })());
+      setLineItems(
+        inv.line_items && inv.line_items.length > 0
+          ? inv.line_items
+          : [{ id: generateId(), description: "", quantity: 1, unitPrice: 0 }]
+      );
+      setTaxRate(inv.tax_rate || 0);
+      setInvoiceNotes(inv.notes || "");
+    } else {
+      setProposalTitle(inv.proposal_title || "");
+      setScopeOfWork(inv.scope_of_work || "");
+      setPricingTiers(
+        inv.pricing_tiers && inv.pricing_tiers.length > 0
+          ? inv.pricing_tiers
+          : [{ id: generateId(), name: "Standard", price: 0, features: [""] }]
+      );
+      setTimeline(inv.timeline || "");
+      setTerms(inv.terms || DEFAULT_TERMS);
+    }
+
+    toast.success(`Loaded ${inv.type}: ${inv.title || inv.invoice_number}`);
+  };
+
+  const deleteInvoice = async (id: string) => {
+    try {
+      const res = await fetch(`/api/supabase/invoices?id=${id}`, { method: "DELETE" });
+      if (!res.ok) throw new Error("Delete failed");
+      toast.success("Document deleted");
+      fetchSavedInvoices();
+      if (editingId === id) setEditingId(null);
+      if (viewingInvoice?.id === id) setViewingInvoice(null);
+    } catch {
+      toast.error("Failed to delete document");
+    }
+  };
+
+  const updateInvoiceStatus = async (id: string, status: string) => {
+    try {
+      const updates: Record<string, string> = { status };
+      if (status === "sent") updates.sent_at = new Date().toISOString();
+      if (status === "paid") updates.paid_at = new Date().toISOString();
+
+      const res = await fetch("/api/supabase/invoices", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id, ...updates }),
+      });
+      if (!res.ok) throw new Error("Update failed");
+      toast.success(`Status updated to ${status}`);
+      fetchSavedInvoices();
+    } catch {
+      toast.error("Failed to update status");
+    }
+  };
+
+  const resetForm = () => {
+    setEditingId(null);
+    setSelectedClientId("");
+    setClientName("");
+    setClientBusiness("");
+    setClientEmail("");
+    setClientIndustry("");
+    setClientDealValue(0);
+    setInvoiceNumber(generateInvoiceNumber());
+    setInvoiceDate(toDateInputValue(new Date()));
+    const d = new Date(); d.setDate(d.getDate() + 14);
+    setDueDate(toDateInputValue(d));
+    setLineItems([{ id: generateId(), description: "", quantity: 1, unitPrice: 0 }]);
+    setTaxRate(0);
+    setInvoiceNotes("");
+    setProposalTitle("");
+    setScopeOfWork("");
+    setPricingTiers([{ id: generateId(), name: "Standard", price: 0, features: [""] }]);
+    setTimeline("");
+    setTerms(DEFAULT_TERMS);
+    setShowPreview(false);
+  };
+
+  const filteredSaved = savedFilter === "all"
+    ? savedInvoices
+    : savedInvoices.filter((inv) => inv.type === savedFilter);
+
   // --------------- Invoice HTML ---------------
 
   const generateInvoiceHTML = useCallback(() => {
@@ -563,6 +800,11 @@ TIMELINE:
 
       toast.success(`${activeTab === "invoice" ? "Invoice" : "Proposal"} sent to ${clientEmail}`);
 
+      // Update status if saved
+      if (editingId) {
+        await updateInvoiceStatus(editingId, "sent");
+      }
+
       // Add to history
       setHistory((prev) => [
         {
@@ -621,30 +863,47 @@ TIMELINE:
           Back to Agents
         </Link>
 
-        {/* Tab Selector */}
-        <div className="flex gap-2">
-          <button
-            onClick={() => { setActiveTab("invoice"); setShowPreview(false); }}
-            className={`flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium transition-all ${
-              activeTab === "invoice"
-                ? "bg-[#7C3AED] text-white shadow-lg shadow-violet-500/20"
-                : "bg-[#111111] text-[#6B7280] border border-[#1E1E1E] hover:text-[#F5F5F5]"
-            }`}
-          >
-            <Receipt className="h-4 w-4" />
-            Invoice
-          </button>
-          <button
-            onClick={() => { setActiveTab("proposal"); setShowPreview(false); }}
-            className={`flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium transition-all ${
-              activeTab === "proposal"
-                ? "bg-[#7C3AED] text-white shadow-lg shadow-violet-500/20"
-                : "bg-[#111111] text-[#6B7280] border border-[#1E1E1E] hover:text-[#F5F5F5]"
-            }`}
-          >
-            <FileText className="h-4 w-4" />
-            Proposal
-          </button>
+        {/* Tab Selector + Editing Indicator */}
+        <div className="flex items-center justify-between">
+          <div className="flex gap-2">
+            <button
+              onClick={() => { setActiveTab("invoice"); setShowPreview(false); }}
+              className={`flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium transition-all ${
+                activeTab === "invoice"
+                  ? "bg-[#7C3AED] text-white shadow-lg shadow-violet-500/20"
+                  : "bg-[#111111] text-[#6B7280] border border-[#1E1E1E] hover:text-[#F5F5F5]"
+              }`}
+            >
+              <Receipt className="h-4 w-4" />
+              Invoice
+            </button>
+            <button
+              onClick={() => { setActiveTab("proposal"); setShowPreview(false); }}
+              className={`flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium transition-all ${
+                activeTab === "proposal"
+                  ? "bg-[#7C3AED] text-white shadow-lg shadow-violet-500/20"
+                  : "bg-[#111111] text-[#6B7280] border border-[#1E1E1E] hover:text-[#F5F5F5]"
+              }`}
+            >
+              <FileText className="h-4 w-4" />
+              Proposal
+            </button>
+          </div>
+          <div className="flex items-center gap-2">
+            {editingId && (
+              <span className="flex items-center gap-1.5 rounded-lg bg-amber-500/10 border border-amber-500/20 px-3 py-1.5 text-xs font-medium text-amber-400">
+                <Clock className="h-3 w-3" />
+                Editing saved document
+              </span>
+            )}
+            <button
+              onClick={resetForm}
+              className="flex items-center gap-1.5 rounded-lg border border-[#1E1E1E] bg-[#111111] px-3 py-1.5 text-xs font-medium text-[#6B7280] hover:text-[#F5F5F5] transition"
+            >
+              <Plus className="h-3 w-3" />
+              New
+            </button>
+          </div>
         </div>
 
         {/* Client Selector */}
@@ -873,6 +1132,14 @@ TIMELINE:
                 Generate with AI
               </button>
               <button
+                onClick={saveInvoice}
+                disabled={saving}
+                className="flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-blue-500 disabled:opacity-50 transition shadow-lg shadow-blue-500/20"
+              >
+                {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+                {editingId ? "Update" : "Save"}
+              </button>
+              <button
                 onClick={() => setShowPreview(true)}
                 className="flex items-center gap-2 rounded-lg border border-[#1E1E1E] bg-[#111111] px-4 py-2.5 text-sm font-medium text-[#F5F5F5] hover:bg-[#1E1E1E] transition"
               >
@@ -1052,6 +1319,14 @@ TIMELINE:
                 Generate with AI
               </button>
               <button
+                onClick={saveInvoice}
+                disabled={saving}
+                className="flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-blue-500 disabled:opacity-50 transition shadow-lg shadow-blue-500/20"
+              >
+                {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+                {editingId ? "Update" : "Save"}
+              </button>
+              <button
                 onClick={() => setShowPreview(true)}
                 className="flex items-center gap-2 rounded-lg border border-[#1E1E1E] bg-[#111111] px-4 py-2.5 text-sm font-medium text-[#F5F5F5] hover:bg-[#1E1E1E] transition"
               >
@@ -1123,41 +1398,203 @@ TIMELINE:
           </div>
         )}
 
-        {/* ====== HISTORY ====== */}
-        {history.length > 0 && (
-          <div className="rounded-xl border border-[#1E1E1E] bg-[#111111] p-5">
-            <div className="mb-4 flex items-center gap-2 text-sm font-medium text-[#F5F5F5]">
+        {/* ====== SAVED DOCUMENTS ====== */}
+        <div className="rounded-xl border border-[#1E1E1E] bg-[#111111] p-5">
+          <div className="mb-4 flex items-center justify-between">
+            <div className="flex items-center gap-2 text-sm font-medium text-[#F5F5F5]">
               <FileText className="h-4 w-4 text-[#7C3AED]" />
-              Recent Documents
+              Saved Documents
+              {savedInvoices.length > 0 && (
+                <span className="rounded-full bg-[#1E1E1E] px-2 py-0.5 text-xs text-[#6B7280]">
+                  {savedInvoices.length}
+                </span>
+              )}
             </div>
-            <div className="space-y-2">
-              {history.map((entry) => (
-                <div
-                  key={entry.id}
-                  className="flex items-center justify-between rounded-lg border border-[#1E1E1E] bg-[#0A0A0A] px-4 py-3"
+            <div className="flex gap-1">
+              {(["all", "invoice", "proposal"] as const).map((f) => (
+                <button
+                  key={f}
+                  onClick={() => setSavedFilter(f)}
+                  className={`rounded-md px-2.5 py-1 text-xs font-medium transition ${
+                    savedFilter === f
+                      ? "bg-[#7C3AED]/20 text-[#7C3AED]"
+                      : "text-[#6B7280] hover:text-[#F5F5F5]"
+                  }`}
                 >
-                  <div className="flex items-center gap-3">
-                    {entry.type === "invoice" ? (
-                      <Receipt className="h-4 w-4 text-emerald-400" />
-                    ) : (
-                      <FileText className="h-4 w-4 text-violet-400" />
-                    )}
-                    <div>
-                      <p className="text-sm font-medium text-[#F5F5F5]">{entry.title}</p>
-                      <p className="text-xs text-[#6B7280]">
-                        {entry.clientName} &middot; {entry.type === "invoice" ? "Invoice" : "Proposal"} &middot;{" "}
-                        {formatDate(entry.date)}
-                      </p>
-                    </div>
-                  </div>
-                  <span className="font-mono text-sm font-medium text-[#F5F5F5]">
-                    {formatCurrency(entry.amount)}
-                  </span>
-                </div>
+                  {f === "all" ? "All" : f === "invoice" ? "Invoices" : "Proposals"}
+                </button>
               ))}
             </div>
           </div>
-        )}
+
+          {loadingSaved ? (
+            <div className="flex items-center justify-center py-8">
+              <Loader2 className="h-5 w-5 animate-spin text-[#6B7280]" />
+            </div>
+          ) : filteredSaved.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-8 text-center">
+              <FileText className="mb-2 h-8 w-8 text-[#1E1E1E]" />
+              <p className="text-sm text-[#6B7280]">
+                {savedFilter === "all"
+                  ? "No saved documents yet. Create an invoice or proposal and click Save."
+                  : `No saved ${savedFilter}s yet.`}
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {filteredSaved.map((inv) => (
+                <div
+                  key={inv.id}
+                  className={`group flex items-center justify-between rounded-lg border bg-[#0A0A0A] px-4 py-3 transition ${
+                    editingId === inv.id
+                      ? "border-amber-500/40 bg-amber-500/5"
+                      : "border-[#1E1E1E] hover:border-[#2E2E2E]"
+                  }`}
+                >
+                  <div className="flex items-center gap-3 min-w-0 flex-1">
+                    {inv.type === "invoice" ? (
+                      <Receipt className="h-4 w-4 shrink-0 text-emerald-400" />
+                    ) : (
+                      <FileText className="h-4 w-4 shrink-0 text-violet-400" />
+                    )}
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2">
+                        <p className="truncate text-sm font-medium text-[#F5F5F5]">
+                          {inv.title || inv.invoice_number || inv.proposal_title || "Untitled"}
+                        </p>
+                        <span
+                          className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium ${
+                            inv.status === "draft"
+                              ? "bg-[#1E1E1E] text-[#6B7280]"
+                              : inv.status === "sent"
+                              ? "bg-blue-500/10 text-blue-400"
+                              : inv.status === "paid"
+                              ? "bg-emerald-500/10 text-emerald-400"
+                              : inv.status === "overdue"
+                              ? "bg-red-500/10 text-red-400"
+                              : "bg-[#1E1E1E] text-[#6B7280]"
+                          }`}
+                        >
+                          {inv.status}
+                        </span>
+                      </div>
+                      <p className="text-xs text-[#6B7280]">
+                        {inv.client_name}
+                        {inv.client_business ? ` — ${inv.client_business}` : ""}
+                        {" · "}
+                        {formatDate(inv.created_at)}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-3">
+                    <span className="font-mono text-sm font-medium text-[#F5F5F5]">
+                      {formatCurrency(inv.total || 0)}
+                    </span>
+
+                    {/* Actions — visible on hover */}
+                    <div className="flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+                      {/* Quick preview */}
+                      {inv.html_content && (
+                        <button
+                          onClick={() => setViewingInvoice(viewingInvoice?.id === inv.id ? null : inv)}
+                          className="rounded-md p-1.5 text-[#6B7280] hover:bg-[#1E1E1E] hover:text-[#F5F5F5] transition"
+                          title="Quick preview"
+                        >
+                          <Eye className="h-3.5 w-3.5" />
+                        </button>
+                      )}
+                      {/* Load into editor */}
+                      <button
+                        onClick={() => loadInvoice(inv)}
+                        className="rounded-md p-1.5 text-[#6B7280] hover:bg-[#1E1E1E] hover:text-[#F5F5F5] transition"
+                        title="Edit"
+                      >
+                        <RotateCcw className="h-3.5 w-3.5" />
+                      </button>
+                      {/* Mark as paid */}
+                      {inv.status === "sent" && (
+                        <button
+                          onClick={() => updateInvoiceStatus(inv.id, "paid")}
+                          className="rounded-md p-1.5 text-[#6B7280] hover:bg-emerald-500/10 hover:text-emerald-400 transition"
+                          title="Mark as paid"
+                        >
+                          <CheckCircle2 className="h-3.5 w-3.5" />
+                        </button>
+                      )}
+                      {/* Delete */}
+                      <button
+                        onClick={() => deleteInvoice(inv.id)}
+                        className="rounded-md p-1.5 text-[#6B7280] hover:bg-red-500/10 hover:text-[#EF4444] transition"
+                        title="Delete"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Quick preview panel */}
+          {viewingInvoice && viewingInvoice.html_content && (
+            <div className="mt-4 rounded-xl border border-[#1E1E1E] bg-white p-6 shadow-xl">
+              <div className="mb-3 flex items-center justify-between">
+                <span className="text-xs font-medium text-gray-500">
+                  Preview: {viewingInvoice.title || viewingInvoice.invoice_number}
+                </span>
+                <button
+                  onClick={() => setViewingInvoice(null)}
+                  className="rounded p-1 text-gray-400 hover:text-gray-600 transition"
+                >
+                  <XCircle className="h-4 w-4" />
+                </button>
+              </div>
+              <div
+                dangerouslySetInnerHTML={{ __html: viewingInvoice.html_content }}
+              />
+            </div>
+          )}
+
+          {/* Summary stats */}
+          {savedInvoices.length > 0 && (
+            <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
+              <div className="rounded-lg border border-[#1E1E1E] bg-[#0A0A0A] p-3 text-center">
+                <p className="text-xs text-[#6B7280]">Total Invoices</p>
+                <p className="mt-1 font-mono text-lg font-bold text-[#F5F5F5]">
+                  {savedInvoices.filter((i) => i.type === "invoice").length}
+                </p>
+              </div>
+              <div className="rounded-lg border border-[#1E1E1E] bg-[#0A0A0A] p-3 text-center">
+                <p className="text-xs text-[#6B7280]">Total Proposals</p>
+                <p className="mt-1 font-mono text-lg font-bold text-[#F5F5F5]">
+                  {savedInvoices.filter((i) => i.type === "proposal").length}
+                </p>
+              </div>
+              <div className="rounded-lg border border-[#1E1E1E] bg-[#0A0A0A] p-3 text-center">
+                <p className="text-xs text-[#6B7280]">Paid</p>
+                <p className="mt-1 font-mono text-lg font-bold text-[#10B981]">
+                  {formatCurrency(
+                    savedInvoices
+                      .filter((i) => i.status === "paid")
+                      .reduce((sum, i) => sum + (i.total || 0), 0)
+                  )}
+                </p>
+              </div>
+              <div className="rounded-lg border border-[#1E1E1E] bg-[#0A0A0A] p-3 text-center">
+                <p className="text-xs text-[#6B7280]">Outstanding</p>
+                <p className="mt-1 font-mono text-lg font-bold text-amber-400">
+                  {formatCurrency(
+                    savedInvoices
+                      .filter((i) => i.status === "sent" || i.status === "draft")
+                      .reduce((sum, i) => sum + (i.total || 0), 0)
+                  )}
+                </p>
+              </div>
+            </div>
+          )}
+        </div>
       </div>
     </PageWrapper>
   );
