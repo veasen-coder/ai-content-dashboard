@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { PageWrapper } from "@/components/layout/page-wrapper";
 import {
   FileText,
@@ -246,6 +246,18 @@ export default function InvoiceGeneratorPage() {
   const [savedFilter, setSavedFilter] = useState<"all" | "invoice" | "proposal">("all");
   const [editingId, setEditingId] = useState<string | null>(null);
 
+  // Click-outside to close dropdown
+  const dropdownRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        setClientDropdownOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
   // --------------- Fetch Clients ---------------
 
   useEffect(() => {
@@ -293,16 +305,6 @@ export default function InvoiceGeneratorPage() {
     },
     [clients]
   );
-
-  const clearClient = useCallback(() => {
-    setSelectedClientId("");
-    setClientName("");
-    setClientBusiness("");
-    setClientEmail("");
-    setClientIndustry("");
-    setClientDealValue(0);
-    setClientDropdownOpen(false);
-  }, []);
 
   // --------------- Line Items ---------------
 
@@ -914,50 +916,61 @@ TIMELINE:
             Client Information
           </div>
 
-          {/* Dropdown */}
-          <div className="relative mb-4">
-            <button
-              onClick={() => setClientDropdownOpen((o) => !o)}
-              className={`${inputClass} flex items-center justify-between text-left`}
-            >
-              <span className={selectedClientId ? "text-[#F5F5F5]" : "text-[#6B7280]"}>
-                {selectedClientId
-                  ? clients.find((c) => c.id === selectedClientId)?.name || "Select client"
-                  : "Select a client or enter manually"}
-              </span>
-              <ChevronDown className={`h-4 w-4 text-[#6B7280] transition-transform ${clientDropdownOpen ? "rotate-180" : ""}`} />
-            </button>
+          {/* Client Search / Select */}
+          <div className="relative mb-4" ref={dropdownRef}>
+            <div className="relative">
+              <input
+                className={`${inputClass} pr-8`}
+                value={clientName}
+                onChange={(e) => {
+                  setClientName(e.target.value);
+                  setSelectedClientId("");
+                  setClientDropdownOpen(true);
+                }}
+                onFocus={() => setClientDropdownOpen(true)}
+                placeholder="Search client or type name..."
+              />
+              <button
+                onClick={() => setClientDropdownOpen((o) => !o)}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-[#6B7280] hover:text-[#F5F5F5] transition"
+                type="button"
+              >
+                <ChevronDown className={`h-4 w-4 transition-transform ${clientDropdownOpen ? "rotate-180" : ""}`} />
+              </button>
+            </div>
             {clientDropdownOpen && (
               <div className="absolute z-20 mt-1 max-h-60 w-full overflow-auto rounded-lg border border-[#1E1E1E] bg-[#111111] shadow-xl">
-                <button
-                  onClick={clearClient}
-                  className="w-full px-3 py-2 text-left text-sm text-[#6B7280] hover:bg-[#1E1E1E] hover:text-[#F5F5F5]"
-                >
-                  — Manual entry —
-                </button>
-                {clients.map((c) => (
-                  <button
-                    key={c.id}
-                    onClick={() => selectClient(c.id)}
-                    className="w-full px-3 py-2 text-left text-sm text-[#F5F5F5] hover:bg-[#1E1E1E]"
-                  >
-                    <span className="font-medium">{c.name}</span>
-                    {c.business && <span className="ml-2 text-[#6B7280]">— {c.business}</span>}
-                  </button>
-                ))}
+                {clients
+                  .filter((c) =>
+                    !clientName.trim() ||
+                    c.name?.toLowerCase().includes(clientName.toLowerCase()) ||
+                    c.business?.toLowerCase().includes(clientName.toLowerCase())
+                  )
+                  .map((c) => (
+                    <button
+                      key={c.id}
+                      onClick={() => selectClient(c.id)}
+                      className="w-full px-3 py-2 text-left text-sm text-[#F5F5F5] hover:bg-[#1E1E1E]"
+                    >
+                      <span className="font-medium">{c.name}</span>
+                      {c.business && <span className="ml-2 text-[#6B7280]">— {c.business}</span>}
+                    </button>
+                  ))}
+                {clients.filter((c) =>
+                  !clientName.trim() ||
+                  c.name?.toLowerCase().includes(clientName.toLowerCase()) ||
+                  c.business?.toLowerCase().includes(clientName.toLowerCase())
+                ).length === 0 && (
+                  <div className="px-3 py-2 text-sm text-[#6B7280]">
+                    No matching clients — type to enter manually
+                  </div>
+                )}
               </div>
             )}
           </div>
 
           {/* Client fields */}
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <div>
-              <label className={labelClass}>
-                <User className="mb-0.5 mr-1 inline h-3 w-3" />
-                Client Name
-              </label>
-              <input className={inputClass} value={clientName} onChange={(e) => setClientName(e.target.value)} placeholder="John Doe" />
-            </div>
             <div>
               <label className={labelClass}>
                 <Building2 className="mb-0.5 mr-1 inline h-3 w-3" />
