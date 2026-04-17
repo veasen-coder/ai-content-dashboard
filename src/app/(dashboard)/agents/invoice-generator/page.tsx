@@ -301,6 +301,7 @@ export default function InvoiceGeneratorPage() {
     setClientEmail("");
     setClientIndustry("");
     setClientDealValue(0);
+    setClientDropdownOpen(false);
   }, []);
 
   // --------------- Line Items ---------------
