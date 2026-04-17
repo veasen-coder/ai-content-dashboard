@@ -73,22 +73,22 @@ export function Topbar({ title, lastSynced, headerExtra }: TopbarProps) {
 
   return (
     <>
-      <header className="flex h-16 items-center justify-between border-b border-[#1E1E1E] bg-[#0A0A0A]/80 px-6 backdrop-blur-sm">
-        <div className="flex items-center gap-4">
-          <h1 className="text-xl font-semibold">{title}</h1>
+      <header className="flex h-16 items-center justify-between border-b border-border bg-background/80 px-4 backdrop-blur-sm md:px-6">
+        <div className="flex min-w-0 items-center gap-4">
+          <h1 className="truncate text-xl font-semibold">{title}</h1>
           {headerExtra}
         </div>
 
         {lastSynced && (
-          <span className="text-sm text-muted-foreground">
+          <span className="hidden text-sm text-muted-foreground sm:block">
             Last synced: {formatRelativeTime(lastSynced)}
           </span>
         )}
 
-        <div className="flex items-center gap-2">
+        <div className="flex shrink-0 items-center gap-2">
           <button
             onClick={() => setSearchOpen(true)}
-            className="flex h-9 w-9 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-[#1E1E1E] hover:text-foreground"
+            className="flex h-9 w-9 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
             title="Search (Cmd+K)"
           >
             <Search className="h-4 w-4" />
@@ -97,14 +97,14 @@ export function Topbar({ title, lastSynced, headerExtra }: TopbarProps) {
           <div className="relative" ref={notifRef}>
             <button
               onClick={() => setNotifOpen(!notifOpen)}
-              className="flex h-9 w-9 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-[#1E1E1E] hover:text-foreground"
+              className="flex h-9 w-9 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
             >
               <Bell className="h-4 w-4" />
             </button>
 
             {notifOpen && (
-              <div className="absolute right-0 top-11 z-50 w-72 rounded-xl border border-[#1E1E1E] bg-[#111111] shadow-2xl">
-                <div className="border-b border-[#1E1E1E] px-4 py-3">
+              <div className="absolute right-0 top-11 z-50 w-72 rounded-xl border border-border bg-card shadow-2xl">
+                <div className="border-b border-border px-4 py-3">
                   <h3 className="text-sm font-semibold">Notifications</h3>
                 </div>
                 <div className="p-6 text-center">
@@ -126,10 +126,10 @@ export function Topbar({ title, lastSynced, headerExtra }: TopbarProps) {
           onClick={() => setSearchOpen(false)}
         >
           <div
-            className="w-full max-w-lg rounded-xl border border-[#1E1E1E] bg-[#111111] shadow-2xl"
+            className="w-full max-w-lg rounded-xl border border-border bg-card shadow-2xl mx-4"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center gap-3 border-b border-[#1E1E1E] px-4">
+            <div className="flex items-center gap-3 border-b border-border px-4">
               <Search className="h-4 w-4 shrink-0 text-muted-foreground" />
               <input
                 ref={searchInputRef}
@@ -160,7 +160,7 @@ export function Topbar({ title, lastSynced, headerExtra }: TopbarProps) {
                       router.push(item.href);
                       setSearchOpen(false);
                     }}
-                    className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm text-muted-foreground transition-colors hover:bg-[#1E1E1E] hover:text-foreground"
+                    className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
                   >
                     {item.label}
                   </button>
@@ -171,7 +171,7 @@ export function Topbar({ title, lastSynced, headerExtra }: TopbarProps) {
                 </p>
               )}
             </div>
-            <div className="border-t border-[#1E1E1E] px-4 py-2">
+            <div className="border-t border-border px-4 py-2">
               <p className="text-[10px] text-muted-foreground">
                 Press Enter to navigate &middot; Esc to close
               </p>

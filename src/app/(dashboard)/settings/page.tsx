@@ -1,7 +1,9 @@
 "use client";
 
 import { PageWrapper } from "@/components/layout/page-wrapper";
-import { User, Key, Palette, Bell } from "lucide-react";
+import { User, Key, Palette, Bell, Sun, Moon, Monitor } from "lucide-react";
+import { useThemeStore } from "@/store/theme-store";
+import { cn } from "@/lib/utils";
 
 const INTEGRATIONS = [
   { name: "Supabase", status: "Connected", description: "Database & Auth" },
@@ -33,6 +35,8 @@ function SettingSection({
 }
 
 export default function SettingsPage() {
+  const { theme, setTheme } = useThemeStore();
+
   return (
     <PageWrapper title="Settings">
       <div className="mx-auto max-w-3xl space-y-6">
@@ -84,16 +88,27 @@ export default function SettingsPage() {
 
         {/* Appearance */}
         <SettingSection title="Appearance" icon={Palette}>
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium">Theme</p>
-              <p className="text-xs text-muted-foreground">
-                Dark mode is always enabled
-              </p>
+          <div>
+            <p className="text-sm font-medium mb-3">Theme</p>
+            <div className="flex gap-2">
+              {(["light", "dark", "system"] as const).map((t) => (
+                <button
+                  key={t}
+                  onClick={() => setTheme(t)}
+                  className={cn(
+                    "flex items-center gap-2 rounded-lg border px-4 py-2.5 text-sm font-medium transition-all",
+                    theme === t
+                      ? "border-primary bg-primary/10 text-primary"
+                      : "border-border bg-background text-muted-foreground hover:text-foreground hover:border-foreground/20"
+                  )}
+                >
+                  {t === "light" && <Sun className="h-4 w-4" />}
+                  {t === "dark" && <Moon className="h-4 w-4" />}
+                  {t === "system" && <Monitor className="h-4 w-4" />}
+                  {t.charAt(0).toUpperCase() + t.slice(1)}
+                </button>
+              ))}
             </div>
-            <span className="rounded-lg border border-[#1E1E1E] bg-[#0A0A0A] px-3 py-1.5 text-xs text-muted-foreground">
-              Dark
-            </span>
           </div>
         </SettingSection>
 

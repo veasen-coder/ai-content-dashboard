@@ -13,7 +13,7 @@ export function PageWrapper({ title, lastSynced, headerExtra, children }: PageWr
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <Topbar title={title} lastSynced={lastSynced} headerExtra={headerExtra} />
-      <main className="flex-1 overflow-auto p-6">{children}</main>
+      <main className="flex-1 overflow-auto p-4 md:p-6">{children}</main>
     </div>
   );
 }

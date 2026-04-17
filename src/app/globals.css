@@ -4,6 +4,41 @@
 
 @layer base {
   :root {
+    --background: #FFFFFF;
+    --foreground: #0F172A;
+    --surface: #F8FAFC;
+    --border: #E2E8F0;
+    --input: #E2E8F0;
+    --ring: #7C3AED;
+
+    --primary: #7C3AED;
+    --primary-foreground: #FFFFFF;
+    --secondary: #F1F5F9;
+    --secondary-foreground: #0F172A;
+    --destructive: #EF4444;
+    --destructive-foreground: #FFFFFF;
+    --muted: #F1F5F9;
+    --muted-foreground: #64748B;
+    --accent: #7C3AED;
+    --accent-foreground: #FFFFFF;
+    --popover: #FFFFFF;
+    --popover-foreground: #0F172A;
+    --card: #FFFFFF;
+    --card-foreground: #0F172A;
+
+    --success: #10B981;
+    --warning: #F59E0B;
+
+    --sidebar: #F8FAFC;
+    --sidebar-foreground: #0F172A;
+    --sidebar-border: #E2E8F0;
+    --sidebar-accent: #F1F5F9;
+    --sidebar-accent-foreground: #0F172A;
+
+    --radius: 0.75rem;
+  }
+
+  .dark {
     --background: #0A0A0A;
     --foreground: #F5F5F5;
     --surface: #111111;
@@ -57,12 +92,19 @@
 ::-webkit-scrollbar-track {
   background: transparent;
 }
-::-webkit-scrollbar-thumb {
+.dark ::-webkit-scrollbar-thumb {
   background: #1E1E1E;
   border-radius: 3px;
 }
-::-webkit-scrollbar-thumb:hover {
+.dark ::-webkit-scrollbar-thumb:hover {
   background: #2E2E2E;
+}
+::-webkit-scrollbar-thumb {
+  background: #CBD5E1;
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #94A3B8;
 }
 
 /* Custom utilities */

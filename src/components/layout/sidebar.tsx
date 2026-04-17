@@ -53,17 +53,20 @@ const navItems: NavItem[] = [
 
 export function Sidebar() {
   const pathname = usePathname();
-  const { isCollapsed, toggle } = useSidebarStore();
-  const [expandedMenus, setExpandedMenus] = useState<Record<string, boolean>>(() => {
-    // Auto-expand Finance if we're on a finance sub-page
-    const initial: Record<string, boolean> = {};
-    navItems.forEach((item) => {
-      if (item.children && pathname.startsWith(item.href)) {
-        initial[item.href] = true;
-      }
-    });
-    return initial;
-  });
+  const { isCollapsed, toggle, isMobileOpen, closeMobile } =
+    useSidebarStore();
+  const [expandedMenus, setExpandedMenus] = useState<Record<string, boolean>>(
+    () => {
+      // Auto-expand Finance if we're on a finance sub-page
+      const initial: Record<string, boolean> = {};
+      navItems.forEach((item) => {
+        if (item.children && pathname.startsWith(item.href)) {
+          initial[item.href] = true;
+        }
+      });
+      return initial;
+    }
+  );
 
   function toggleMenu(href: string) {
     setExpandedMenus((prev) => ({ ...prev, [href]: !prev[href] }));
@@ -72,12 +75,16 @@ export function Sidebar() {
   return (
     <aside
       className={cn(
-        "fixed left-0 top-0 z-40 flex h-screen flex-col border-r border-[#1E1E1E] bg-[#0A0A0A] transition-all duration-300",
-        isCollapsed ? "w-16" : "w-60"
+        "fixed left-0 top-0 z-40 flex h-screen flex-col border-r border-border bg-background transition-all duration-300",
+        // Desktop
+        isCollapsed ? "w-16" : "w-60",
+        // Mobile: slide in/out
+        "max-md:-translate-x-full max-md:w-72 max-md:shadow-2xl",
+        isMobileOpen && "max-md:translate-x-0"
       )}
     >
       {/* Logo */}
-      <div className="flex h-16 items-center border-b border-[#1E1E1E] px-4">
+      <div className="flex h-16 items-center border-b border-border px-4">
         <div className="flex items-center gap-3">
           <img
             src="https://cdn.shopify.com/s/files/1/0729/6424/3631/files/WhatsApp_Image_2026-03-08_at_19.02.23.jpg?v=1772968015"
@@ -86,7 +93,7 @@ export function Sidebar() {
             height={32}
             className="shrink-0 rounded-lg"
           />
-          {!isCollapsed && (
+          {(!isCollapsed || isMobileOpen) && (
             <span className="text-lg font-semibold tracking-tight">
               Flogen AI
             </span>
@@ -102,8 +109,8 @@ export function Sidebar() {
           const hasChildren = item.children && item.children.length > 0;
           const isExpanded = expandedMenus[item.href] || false;
 
-          // Items with children — render dropdown
-          if (hasChildren && !isCollapsed) {
+          // Items with children — render dropdown (show when not collapsed on desktop, or on mobile)
+          if (hasChildren && (!isCollapsed || isMobileOpen)) {
             return (
               <div key={item.href}>
                 <button
@@ -112,7 +119,7 @@ export function Sidebar() {
                     "flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors",
                     isActive
                       ? "bg-primary/10 text-primary"
-                      : "text-muted-foreground hover:bg-[#1E1E1E] hover:text-foreground"
+                      : "text-muted-foreground hover:bg-muted hover:text-foreground"
                   )}
                 >
                   <item.icon className="h-5 w-5 shrink-0" />
@@ -131,18 +138,19 @@ export function Sidebar() {
                     isExpanded ? "max-h-40 mt-0.5" : "max-h-0"
                   )}
                 >
-                  <div className="ml-4 space-y-0.5 border-l border-[#1E1E1E] pl-3">
+                  <div className="ml-4 space-y-0.5 border-l border-border pl-3">
                     {item.children!.map((child) => {
                       const isChildActive = pathname === child.href;
                       return (
                         <Link
                           key={child.href}
                           href={child.href}
+                          onClick={closeMobile}
                           className={cn(
                             "flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-xs font-medium transition-colors",
                             isChildActive
                               ? "bg-primary/10 text-primary"
-                              : "text-muted-foreground hover:bg-[#1E1E1E] hover:text-foreground"
+                              : "text-muted-foreground hover:bg-muted hover:text-foreground"
                           )}
                         >
                           <child.icon className="h-3.5 w-3.5 shrink-0" />
@@ -161,68 +169,73 @@ export function Sidebar() {
             <Link
               key={item.href}
               href={item.href}
+              onClick={closeMobile}
               className={cn(
                 "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors",
                 isActive
                   ? "bg-primary/10 text-primary"
-                  : "text-muted-foreground hover:bg-[#1E1E1E] hover:text-foreground",
-                isCollapsed && "justify-center px-2"
+                  : "text-muted-foreground hover:bg-muted hover:text-foreground",
+                isCollapsed && !isMobileOpen && "justify-center px-2"
               )}
-              title={isCollapsed ? item.label : undefined}
+              title={isCollapsed && !isMobileOpen ? item.label : undefined}
             >
               <item.icon className="h-5 w-5 shrink-0" />
-              {!isCollapsed && <span>{item.label}</span>}
+              {(!isCollapsed || isMobileOpen) && <span>{item.label}</span>}
             </Link>
           );
         })}
       </nav>
 
       {/* Footer */}
-      <div className="border-t border-[#1E1E1E] p-2">
+      <div className="border-t border-border p-2">
         <Link
           href="/chat"
+          onClick={closeMobile}
           className={cn(
             "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors",
             pathname === "/chat"
               ? "bg-primary/10 text-primary"
-              : "text-muted-foreground hover:bg-[#1E1E1E] hover:text-foreground",
-            isCollapsed && "justify-center px-2"
+              : "text-muted-foreground hover:bg-muted hover:text-foreground",
+            isCollapsed && !isMobileOpen && "justify-center px-2"
           )}
-          title={isCollapsed ? "Team Chat" : undefined}
+          title={isCollapsed && !isMobileOpen ? "Team Chat" : undefined}
         >
           <MessageSquare className="h-5 w-5 shrink-0" />
-          {!isCollapsed && <span>Team Chat</span>}
+          {(!isCollapsed || isMobileOpen) && <span>Team Chat</span>}
         </Link>
         <Link
           href="/calendar"
+          onClick={closeMobile}
           className={cn(
             "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors",
             pathname === "/calendar"
               ? "bg-primary/10 text-primary"
-              : "text-muted-foreground hover:bg-[#1E1E1E] hover:text-foreground",
-            isCollapsed && "justify-center px-2"
+              : "text-muted-foreground hover:bg-muted hover:text-foreground",
+            isCollapsed && !isMobileOpen && "justify-center px-2"
           )}
-          title={isCollapsed ? "Calendar" : undefined}
+          title={isCollapsed && !isMobileOpen ? "Calendar" : undefined}
         >
           <Calendar className="h-5 w-5 shrink-0" />
-          {!isCollapsed && <span>Calendar</span>}
+          {(!isCollapsed || isMobileOpen) && <span>Calendar</span>}
         </Link>
         <Link
           href="/settings"
+          onClick={closeMobile}
           className={cn(
-            "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-[#1E1E1E] hover:text-foreground",
-            isCollapsed && "justify-center px-2"
+            "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground",
+            isCollapsed && !isMobileOpen && "justify-center px-2"
           )}
-          title={isCollapsed ? "Settings" : undefined}
+          title={isCollapsed && !isMobileOpen ? "Settings" : undefined}
         >
           <Settings className="h-5 w-5 shrink-0" />
-          {!isCollapsed && <span>Settings</span>}
+          {(!isCollapsed || isMobileOpen) && <span>Settings</span>}
         </Link>
 
+        {/* Collapse button — desktop only */}
         <button
           onClick={toggle}
           className={cn(
-            "flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-[#1E1E1E] hover:text-foreground",
+            "hidden w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground md:flex",
             isCollapsed && "justify-center px-2"
           )}
         >
