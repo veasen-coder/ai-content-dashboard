@@ -20,6 +20,7 @@ import {
   ChevronDown,
   BarChart3,
   Calendar,
+  MessageCircle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useSidebarStore } from "@/store/sidebar-store";
@@ -35,6 +36,7 @@ const navItems: NavItem[] = [
   { href: "/dashboard", label: "Overview", icon: LayoutDashboard },
   { href: "/tasks", label: "Tasks", icon: CheckSquare },
   { href: "/clients", label: "Clients", icon: Users },
+  { href: "/whatsapp", label: "WhatsApp CRM", icon: MessageCircle },
   {
     href: "/finance",
     label: "Finance",
