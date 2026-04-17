@@ -18,6 +18,7 @@ import {
   Lightbulb,
   CalendarClock,
   ImagePlus,
+  FileText,
 } from "lucide-react";
 import { ClaudeBalance } from "@/components/claude-balance";
 import { toast } from "sonner";
@@ -514,6 +515,22 @@ export default function AgentsPage() {
               <h3 className="text-base font-semibold">Image Summary Agent</h3>
               <p className="mt-0.5 text-sm text-muted-foreground">
                 Upload screenshots &amp; images — AI extracts contacts, leads &amp; action items automatically
+              </p>
+            </div>
+            <ChevronRight className="h-5 w-5 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" />
+          </Link>
+
+          <Link
+            href="/agents/invoice-generator"
+            className="group flex items-center gap-4 rounded-xl border border-rose-500/30 bg-rose-500/5 p-5 transition-all hover:border-rose-500/50 hover:bg-rose-500/10"
+          >
+            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-rose-500/15">
+              <FileText className="h-6 w-6 text-rose-400" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <h3 className="text-base font-semibold">Invoice &amp; Proposal Generator</h3>
+              <p className="mt-0.5 text-sm text-muted-foreground">
+                Generate professional invoices &amp; proposals — auto-fill client details &amp; send via email
               </p>
             </div>
             <ChevronRight className="h-5 w-5 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" />
