@@ -169,15 +169,31 @@ function MsgStatus({ status }: { status: WaMessage["status"] }) {
 
 function ConnectPanel({
   session,
+  onConnect,
   onRefresh,
 }: {
   session: WaSession | null;
+  onConnect: () => void;
   onRefresh: () => void;
 }) {
+  const [connecting, setConnecting] = useState(false);
+
+  async function handleConnect() {
+    setConnecting(true);
+    await onConnect();
+    // Poll for QR after connect initiated
+    setTimeout(onRefresh, 2000);
+    setTimeout(onRefresh, 5000);
+    setTimeout(() => setConnecting(false), 6000);
+  }
+
   return (
     <div className="flex flex-1 flex-col items-center justify-center gap-6 p-8">
       <div className="flex h-20 w-20 items-center justify-center rounded-2xl border border-[#1E1E1E] bg-[#111111]">
-        <QrCode className="h-10 w-10 text-muted-foreground/40" />
+        {connecting
+          ? <Loader2 className="h-10 w-10 animate-spin text-[#25D366]/60" />
+          : <QrCode className="h-10 w-10 text-muted-foreground/40" />
+        }
       </div>
 
       {session?.qrCode ? (
@@ -188,14 +204,9 @@ function ConnectPanel({
           <p className="max-w-xs text-center text-xs text-muted-foreground">
             Open WhatsApp on your phone → Linked Devices → Link a Device
           </p>
-          {/* QR as image — backend returns base64 or SVG */}
           <div className="rounded-xl border border-[#1E1E1E] bg-white p-4">
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={session.qrCode}
-              alt="WhatsApp QR Code"
-              className="h-52 w-52"
-            />
+            <img src={session.qrCode} alt="WhatsApp QR Code" className="h-52 w-52" />
           </div>
           <button
             onClick={onRefresh}
@@ -208,18 +219,23 @@ function ConnectPanel({
       ) : (
         <div className="flex flex-col items-center gap-3">
           <p className="text-sm font-semibold text-foreground">
-            WhatsApp not connected
+            {connecting ? "Starting connection…" : "WhatsApp not connected"}
           </p>
           <p className="max-w-xs text-center text-xs text-muted-foreground">
-            Configure your backend URL in Settings, then connect to start the
-            session.
+            {connecting
+              ? "Generating QR code — this takes a few seconds"
+              : "Click Connect to generate a QR code, then scan it with your phone"}
           </p>
           <button
-            onClick={onRefresh}
-            className="flex items-center gap-2 rounded-lg bg-[#25D366] px-5 py-2.5 text-sm font-semibold text-white transition-opacity hover:opacity-90"
+            onClick={handleConnect}
+            disabled={connecting}
+            className="flex items-center gap-2 rounded-lg bg-[#25D366] px-5 py-2.5 text-sm font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-60"
           >
-            <Plug className="h-4 w-4" />
-            Connect Session
+            {connecting
+              ? <Loader2 className="h-4 w-4 animate-spin" />
+              : <Plug className="h-4 w-4" />
+            }
+            {connecting ? "Connecting…" : "Connect Session"}
           </button>
         </div>
       )}
@@ -1141,7 +1157,7 @@ export default function WhatsAppCrmPage() {
             {backendOnline === false ? (
               <BackendOffline url={backendUrl} onSettings={() => setTab("settings")} />
             ) : !isConnected ? (
-              <ConnectPanel session={session} onRefresh={() => checkBackend(backendUrl)} />
+              <ConnectPanel session={session} onConnect={handleConnect} onRefresh={() => checkBackend(backendUrl)} />
             ) : (
               <ContactsPanel contacts={chats} />
             )}
@@ -1324,6 +1340,7 @@ export default function WhatsAppCrmPage() {
                   {!isConnected ? (
                     <ConnectPanel
                       session={session}
+                      onConnect={handleConnect}
                       onRefresh={() => checkBackend(backendUrl)}
                     />
                   ) : !selectedChat ? (
