@@ -178,13 +178,19 @@ function ConnectPanel({
 }) {
   const [connecting, setConnecting] = useState(false);
 
+  // Auto-clear spinner the moment a QR code or connected status arrives
+  useEffect(() => {
+    if (session?.qrCode || session?.status === "connected" || session?.status === "qr_ready") {
+      setConnecting(false);
+    }
+  }, [session?.qrCode, session?.status]);
+
   async function handleConnect() {
     setConnecting(true);
     await onConnect();
-    // Poll for QR after connect initiated
-    setTimeout(onRefresh, 2000);
-    setTimeout(onRefresh, 5000);
-    setTimeout(() => setConnecting(false), 6000);
+    // Parent now drives polling via startQrPolling().
+    // Fallback: stop spinner after 15 s if nothing arrives
+    setTimeout(() => setConnecting(false), 15000);
   }
 
   return (
@@ -877,6 +883,7 @@ export default function WhatsAppCrmPage() {
   const [loadingMessages, setLoadingMessages] = useState(false);
   const [search, setSearch] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const qrPollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Load backend URL + JWT from localStorage on mount
   useEffect(() => {
@@ -891,12 +898,9 @@ export default function WhatsAppCrmPage() {
     return jwtToken ? { "Authorization": `Bearer ${jwtToken}` } : {};
   }, [jwtToken]);
 
-  // Ping backend + fetch session
+  // Ping backend + fetch session list
   const checkBackend = useCallback(async (url: string, token?: string) => {
-    if (!url) {
-      setBackendOnline(false);
-      return;
-    }
+    if (!url) { setBackendOnline(false); return; }
     const tok = token ?? jwtToken;
     try {
       const res = await fetch(`${url}/api/sessions`, {
@@ -906,8 +910,6 @@ export default function WhatsAppCrmPage() {
       if (!res.ok) throw new Error("not ok");
       const data = await res.json();
       setBackendOnline(true);
-
-      // Handle both array and {sessions:[]} shapes
       const list: WaSession[] = Array.isArray(data) ? data : (data.sessions ?? []);
       if (list.length > 0) setSession(list[0]);
     } catch {
@@ -915,6 +917,26 @@ export default function WhatsAppCrmPage() {
       setSession(null);
     }
   }, [jwtToken]);
+
+  // Fetch detailed session status (including QR data URL)
+  const fetchSessionStatus = useCallback(async (sessionId: string) => {
+    if (!backendUrl || !sessionId) return;
+    try {
+      const res = await fetch(`${backendUrl}/api/sessions/${sessionId}/status`, {
+        signal: AbortSignal.timeout(6000),
+        headers: jwtToken ? { "Authorization": `Bearer ${jwtToken}` } : {},
+      });
+      if (!res.ok) return;
+      const data = await res.json();
+      // data = { session, qrDataUrl, qr, warmupSecondsRemaining }
+      const s = data.session ?? data;
+      setSession((prev) => prev ? {
+        ...prev,
+        status: s.status ?? prev.status,
+        qrCode: data.qrDataUrl || data.qr || prev.qrCode,
+      } : prev);
+    } catch { /* silent */ }
+  }, [backendUrl, jwtToken]);
 
   useEffect(() => {
     checkBackend(backendUrl);
@@ -1066,14 +1088,80 @@ export default function WhatsAppCrmPage() {
     checkBackend(backendUrl, token);
   }
 
+  // Start polling /api/sessions/:id/status every 3 s until QR appears or session connects
+  function startQrPolling(sessionId: string) {
+    if (qrPollingRef.current) clearInterval(qrPollingRef.current);
+    qrPollingRef.current = setInterval(() => {
+      fetchSessionStatus(sessionId);
+    }, 3000);
+    // Hard stop after 90 s
+    setTimeout(() => {
+      if (qrPollingRef.current) {
+        clearInterval(qrPollingRef.current);
+        qrPollingRef.current = null;
+      }
+    }, 90000);
+  }
+
+  // Stop polling once connected
+  useEffect(() => {
+    if (session?.status === "connected" && qrPollingRef.current) {
+      clearInterval(qrPollingRef.current);
+      qrPollingRef.current = null;
+    }
+  }, [session?.status]);
+
+  // Cleanup on unmount
+  useEffect(() => () => {
+    if (qrPollingRef.current) clearInterval(qrPollingRef.current);
+  }, []);
+
   async function handleConnect() {
-    if (!backendUrl || !session) return;
+    if (!backendUrl) return;
+
+    let sid = session?.id;
+
+    // If no session exists yet, create one first
+    if (!sid) {
+      try {
+        const res = await fetch(`${backendUrl}/api/sessions`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", ...authHeaders() },
+          body: JSON.stringify({ name: "My WhatsApp" }),
+        });
+        if (res.ok) {
+          const d = await res.json();
+          const created: WaSession = d.session ?? d;
+          setSession(created);
+          sid = created.id;
+        }
+      } catch { return; }
+    }
+
+    if (!sid) return;
+
     try {
-      await fetch(`${backendUrl}/api/sessions/${session.id}/connect`, {
+      const connectRes = await fetch(`${backendUrl}/api/sessions/${sid}/connect`, {
         method: "POST",
         headers: authHeaders(),
       });
-      checkBackend(backendUrl);
+      // Optimistically mark as connecting so UI shows spinner
+      setSession((prev) => prev ? { ...prev, status: "connecting" } : prev);
+
+      // The connect response itself may include the QR immediately
+      if (connectRes.ok) {
+        const connectData = await connectRes.json().catch(() => ({}));
+        if (connectData.qrDataUrl || connectData.qr) {
+          setSession((prev) => prev ? {
+            ...prev,
+            status: "qr_ready",
+            qrCode: connectData.qrDataUrl || connectData.qr,
+          } : prev);
+        }
+      }
+
+      // Kick off QR polling regardless (QR refreshes every ~20 s)
+      startQrPolling(sid);
     } catch {
       /* silent */
     }
@@ -1157,7 +1245,11 @@ export default function WhatsAppCrmPage() {
             {backendOnline === false ? (
               <BackendOffline url={backendUrl} onSettings={() => setTab("settings")} />
             ) : !isConnected ? (
-              <ConnectPanel session={session} onConnect={handleConnect} onRefresh={() => checkBackend(backendUrl)} />
+              <ConnectPanel
+                session={session}
+                onConnect={handleConnect}
+                onRefresh={() => { if (session?.id) fetchSessionStatus(session.id); }}
+              />
             ) : (
               <ContactsPanel contacts={chats} />
             )}
@@ -1341,7 +1433,7 @@ export default function WhatsAppCrmPage() {
                     <ConnectPanel
                       session={session}
                       onConnect={handleConnect}
-                      onRefresh={() => checkBackend(backendUrl)}
+                      onRefresh={() => { if (session?.id) fetchSessionStatus(session.id); }}
                     />
                   ) : !selectedChat ? (
                     <EmptyChat />
