@@ -26,6 +26,11 @@ import {
   Image as ImageIcon,
   FileText,
   ExternalLink,
+  ShieldAlert,
+  ShieldCheck,
+  Eye,
+  EyeOff,
+  X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -267,35 +272,224 @@ function BackendOffline({ url, onSettings }: { url: string; onSettings: () => vo
   );
 }
 
+// ─── No-Proxy Confirmation Modal ─────────────────────────────────────────────
+
+function NoProxyConfirmModal({
+  onConfirm,
+  onCancel,
+}: {
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center">
+      <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onCancel} />
+      <div className="relative z-10 w-full max-w-md rounded-2xl border border-red-500/20 bg-[#111111] shadow-2xl">
+        {/* Header */}
+        <div className="flex items-start justify-between border-b border-[#1E1E1E] px-5 py-4">
+          <div className="flex items-center gap-3">
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-red-500/10">
+              <ShieldAlert className="h-5 w-5 text-red-400" />
+            </div>
+            <div>
+              <p className="text-sm font-semibold text-foreground">No Proxy Detected</p>
+              <p className="text-xs text-muted-foreground">Higher ban risk</p>
+            </div>
+          </div>
+          <button onClick={onCancel} className="text-muted-foreground hover:text-foreground transition-colors">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        {/* Body */}
+        <div className="p-5 space-y-4">
+          <p className="text-sm text-muted-foreground leading-relaxed">
+            You are about to connect WhatsApp <span className="font-semibold text-foreground">without a residential proxy</span>. Your server&apos;s IP address will be exposed to WhatsApp directly.
+          </p>
+
+          <div className="rounded-xl border border-red-500/10 bg-red-500/5 p-4 space-y-2">
+            <p className="text-xs font-semibold text-red-400 uppercase tracking-wider">Risks without proxy</p>
+            {[
+              "WhatsApp may detect server/datacenter IP",
+              "Higher chance of session ban on new numbers",
+              "Account may require re-verification",
+            ].map((r) => (
+              <p key={r} className="flex items-start gap-2 text-xs text-muted-foreground">
+                <span className="mt-0.5 shrink-0 text-red-400">✕</span>
+                {r}
+              </p>
+            ))}
+          </div>
+
+          <div className="rounded-xl border border-[#25D366]/10 bg-[#25D366]/5 p-4 space-y-2">
+            <p className="text-xs font-semibold text-[#25D366] uppercase tracking-wider">Safer with residential proxy</p>
+            {[
+              "Looks like a real phone on a home network",
+              "Malaysian IP matches your target market",
+              "Significantly lower ban rate",
+            ].map((r) => (
+              <p key={r} className="flex items-start gap-2 text-xs text-muted-foreground">
+                <span className="mt-0.5 shrink-0 text-[#25D366]">✓</span>
+                {r}
+              </p>
+            ))}
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="flex gap-3 border-t border-[#1E1E1E] px-5 py-4">
+          <button
+            onClick={onCancel}
+            className="flex-1 rounded-xl border border-[#1E1E1E] py-2.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-[#1E1E1E] hover:text-foreground"
+          >
+            Go Back &amp; Add Proxy
+          </button>
+          <button
+            onClick={onConfirm}
+            className="flex-1 rounded-xl border border-red-500/30 bg-red-500/10 py-2.5 text-sm font-medium text-red-400 transition-colors hover:bg-red-500/20"
+          >
+            Proceed Without Proxy
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Settings Panel ──────────────────────────────────────────────────────────
+
+interface ProxyConfig {
+  enabled: boolean;
+  type: "http" | "socks5";
+  host: string;
+  port: string;
+  username: string;
+  password: string;
+}
 
 function SettingsPanel({
   backendUrl,
+  sessionId,
   onSave,
 }: {
   backendUrl: string;
+  sessionId?: string;
   onSave: (url: string) => void;
 }) {
   const [url, setUrl] = useState(backendUrl);
-  const [saved, setSaved] = useState(false);
+  const [urlSaved, setUrlSaved] = useState(false);
 
-  function handleSave() {
+  // Proxy state
+  const [proxy, setProxy] = useState<ProxyConfig>({
+    enabled: false,
+    type: "socks5",
+    host: "",
+    port: "",
+    username: "",
+    password: "",
+  });
+  const [proxySaved, setProxySaved] = useState(false);
+  const [proxySaving, setProxySaving] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [showNoProxyModal, setShowNoProxyModal] = useState(false);
+  const [pendingConnect, setPendingConnect] = useState(false);
+
+  // Load proxy settings from backend when session available
+  useEffect(() => {
+    if (!backendUrl || !sessionId) return;
+    fetch(`${backendUrl}/api/sessions/${sessionId}/proxy`)
+      .then((r) => r.json())
+      .then((d) => {
+        setProxy({
+          enabled: d.proxy_enabled ?? false,
+          type: d.proxy_type ?? "socks5",
+          host: d.proxy_host ?? "",
+          port: d.proxy_port ?? "",
+          username: d.proxy_username ?? "",
+          password: "",
+        });
+      })
+      .catch(() => {});
+  }, [backendUrl, sessionId]);
+
+  function handleSaveUrl() {
     onSave(url.trim().replace(/\/$/, ""));
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2000);
+    setUrlSaved(true);
+    setTimeout(() => setUrlSaved(false), 2000);
+  }
+
+  async function saveProxy(config: ProxyConfig) {
+    if (!backendUrl || !sessionId) return;
+    setProxySaving(true);
+    try {
+      await fetch(`${backendUrl}/api/sessions/${sessionId}/proxy`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          proxy_enabled: config.enabled,
+          proxy_type: config.type,
+          proxy_host: config.host,
+          proxy_port: config.port,
+          proxy_username: config.username,
+          proxy_password: config.password || undefined,
+        }),
+      });
+      setProxySaved(true);
+      setTimeout(() => setProxySaved(false), 2000);
+    } catch {
+      /* silent */
+    } finally {
+      setProxySaving(false);
+    }
+  }
+
+  function handleProxyToggle(enabled: boolean) {
+    // Turning OFF proxy — show confirmation
+    if (!enabled && proxy.enabled) {
+      setShowNoProxyModal(true);
+      setPendingConnect(false);
+      return;
+    }
+    setProxy((p) => ({ ...p, enabled }));
+  }
+
+  function handleSaveProxy() {
+    // Saving with proxy disabled — show warning
+    if (!proxy.enabled) {
+      setShowNoProxyModal(true);
+      setPendingConnect(true);
+      return;
+    }
+    saveProxy(proxy);
   }
 
   return (
     <div className="flex-1 overflow-auto p-6">
+      {/* No-proxy confirmation modal */}
+      {showNoProxyModal && (
+        <NoProxyConfirmModal
+          onCancel={() => {
+            setShowNoProxyModal(false);
+            setPendingConnect(false);
+          }}
+          onConfirm={() => {
+            setShowNoProxyModal(false);
+            if (pendingConnect) {
+              saveProxy({ ...proxy, enabled: false });
+            } else {
+              setProxy((p) => ({ ...p, enabled: false }));
+            }
+            setPendingConnect(false);
+          }}
+        />
+      )}
+
       <div className="mx-auto max-w-xl space-y-6">
         {/* Backend URL */}
         <div className="rounded-xl border border-[#1E1E1E] bg-[#111111] p-5">
-          <h3 className="mb-1 text-sm font-semibold text-foreground">
-            Backend URL
-          </h3>
+          <h3 className="mb-1 text-sm font-semibold text-foreground">Backend URL</h3>
           <p className="mb-4 text-xs text-muted-foreground">
-            The URL where your WhatsApp backend server is running (Railway,
-            Render, or localhost).
+            The URL where your WhatsApp backend server is running (Railway, Render, or localhost).
           </p>
           <label className="mb-1.5 block text-xs font-medium uppercase tracking-wider text-muted-foreground">
             API Base URL
@@ -311,32 +505,191 @@ function SettingsPanel({
             Example: http://localhost:3001 or https://wa.yourapp.app
           </p>
           <button
-            onClick={handleSave}
+            onClick={handleSaveUrl}
             className={cn(
               "mt-4 rounded-lg px-4 py-2 text-sm font-medium transition-colors",
-              saved
-                ? "bg-[#25D366] text-white"
-                : "bg-primary text-primary-foreground hover:bg-primary/90"
+              urlSaved ? "bg-[#25D366] text-white" : "bg-primary text-primary-foreground hover:bg-primary/90"
             )}
           >
-            {saved ? "✓ Saved" : "Save URL"}
+            {urlSaved ? "✓ Saved" : "Save URL"}
+          </button>
+        </div>
+
+        {/* Proxy settings */}
+        <div className={cn(
+          "rounded-xl border p-5 transition-colors",
+          proxy.enabled
+            ? "border-[#25D366]/20 bg-[#25D366]/5"
+            : "border-amber-500/20 bg-amber-500/5"
+        )}>
+          {/* Header row */}
+          <div className="mb-4 flex items-start justify-between gap-4">
+            <div className="flex items-center gap-3">
+              {proxy.enabled ? (
+                <ShieldCheck className="h-5 w-5 text-[#25D366]" />
+              ) : (
+                <ShieldAlert className="h-5 w-5 text-amber-400" />
+              )}
+              <div>
+                <h3 className={cn("text-sm font-semibold", proxy.enabled ? "text-[#25D366]" : "text-amber-400")}>
+                  Residential Proxy {proxy.enabled ? "— Enabled" : "— Disabled"}
+                </h3>
+                <p className="text-xs text-muted-foreground">
+                  {proxy.enabled
+                    ? "Your connection routes through a residential IP — lower ban risk"
+                    : "No proxy — server IP exposed to WhatsApp — higher ban risk"}
+                </p>
+              </div>
+            </div>
+            {/* Toggle */}
+            <button
+              onClick={() => handleProxyToggle(!proxy.enabled)}
+              className={cn(
+                "relative h-6 w-11 shrink-0 rounded-full transition-colors",
+                proxy.enabled ? "bg-[#25D366]" : "bg-[#1E1E1E]"
+              )}
+            >
+              <span
+                className={cn(
+                  "absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform",
+                  proxy.enabled ? "translate-x-5" : "translate-x-0.5"
+                )}
+              />
+            </button>
+          </div>
+
+          {proxy.enabled && (
+            <div className="space-y-3">
+              {/* Protocol */}
+              <div>
+                <label className="mb-1.5 block text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                  Protocol
+                </label>
+                <div className="flex gap-2">
+                  {(["socks5", "http"] as const).map((t) => (
+                    <button
+                      key={t}
+                      onClick={() => setProxy((p) => ({ ...p, type: t }))}
+                      className={cn(
+                        "rounded-lg border px-4 py-2 text-xs font-semibold transition-colors",
+                        proxy.type === t
+                          ? "border-[#25D366]/40 bg-[#25D366]/10 text-[#25D366]"
+                          : "border-[#1E1E1E] bg-[#0A0A0A] text-muted-foreground hover:text-foreground"
+                      )}
+                    >
+                      {t.toUpperCase()}
+                    </button>
+                  ))}
+                </div>
+                <p className="mt-1 text-[10px] text-muted-foreground/60">
+                  SOCKS5 recommended for residential proxies
+                </p>
+              </div>
+
+              {/* Host + Port */}
+              <div className="grid grid-cols-3 gap-3">
+                <div className="col-span-2">
+                  <label className="mb-1.5 block text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                    Host
+                  </label>
+                  <input
+                    type="text"
+                    value={proxy.host}
+                    onChange={(e) => setProxy((p) => ({ ...p, host: e.target.value }))}
+                    placeholder="proxy.provider.com"
+                    className="w-full rounded-lg border border-[#1E1E1E] bg-[#0A0A0A] px-3 py-2 font-mono text-xs outline-none transition-colors focus:border-[#25D366]"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1.5 block text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                    Port
+                  </label>
+                  <input
+                    type="text"
+                    value={proxy.port}
+                    onChange={(e) => setProxy((p) => ({ ...p, port: e.target.value }))}
+                    placeholder="1080"
+                    className="w-full rounded-lg border border-[#1E1E1E] bg-[#0A0A0A] px-3 py-2 font-mono text-xs outline-none transition-colors focus:border-[#25D366]"
+                  />
+                </div>
+              </div>
+
+              {/* Username + Password */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="mb-1.5 block text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                    Username
+                  </label>
+                  <input
+                    type="text"
+                    value={proxy.username}
+                    onChange={(e) => setProxy((p) => ({ ...p, username: e.target.value }))}
+                    placeholder="optional"
+                    className="w-full rounded-lg border border-[#1E1E1E] bg-[#0A0A0A] px-3 py-2 font-mono text-xs outline-none transition-colors focus:border-[#25D366]"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1.5 block text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                    Password
+                  </label>
+                  <div className="relative">
+                    <input
+                      type={showPassword ? "text" : "password"}
+                      value={proxy.password}
+                      onChange={(e) => setProxy((p) => ({ ...p, password: e.target.value }))}
+                      placeholder="optional"
+                      className="w-full rounded-lg border border-[#1E1E1E] bg-[#0A0A0A] px-3 py-2 pr-8 font-mono text-xs outline-none transition-colors focus:border-[#25D366]"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword((v) => !v)}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground/60 hover:text-muted-foreground"
+                    >
+                      {showPassword ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Preview */}
+              {proxy.host && proxy.port && (
+                <div className="rounded-lg border border-[#1E1E1E] bg-[#0A0A0A] px-3 py-2">
+                  <p className="text-[10px] text-muted-foreground/60 mb-0.5">Preview</p>
+                  <p className="font-mono text-xs text-muted-foreground break-all">
+                    {proxy.type}://{proxy.username ? `${proxy.username}:***@` : ""}{proxy.host}:{proxy.port}
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
+
+          <button
+            onClick={handleSaveProxy}
+            disabled={proxySaving}
+            className={cn(
+              "mt-4 rounded-lg px-4 py-2 text-sm font-medium transition-colors disabled:opacity-50",
+              proxySaved
+                ? "bg-[#25D366] text-white"
+                : proxy.enabled
+                ? "bg-[#25D366]/20 text-[#25D366] hover:bg-[#25D366]/30 border border-[#25D366]/20"
+                : "bg-amber-500/10 text-amber-400 hover:bg-amber-500/20 border border-amber-500/20"
+            )}
+          >
+            {proxySaving ? "Saving…" : proxySaved ? "✓ Proxy Saved" : proxy.enabled ? "Save Proxy Settings" : "Save (No Proxy)"}
           </button>
         </div>
 
         {/* Deploy guide */}
         <div className="rounded-xl border border-[#1E1E1E] bg-[#111111] p-5">
-          <h3 className="mb-1 text-sm font-semibold text-foreground">
-            Deployment Guide
-          </h3>
+          <h3 className="mb-1 text-sm font-semibold text-foreground">Deployment Guide</h3>
           <p className="mb-4 text-xs text-muted-foreground">
-            The WhatsApp backend requires a persistent server (not serverless).
-            Deploy to Railway or Render to get a stable URL.
+            The WhatsApp backend requires a persistent server. Deploy to Railway or Render.
           </p>
           <div className="space-y-2 text-xs text-muted-foreground">
             {[
               "1. Push your backend to GitHub",
               "2. Create a new project on Railway.app",
-              '3. Set environment variables: PORT, DASHBOARD_PIN, JWT_SECRET',
+              "3. Set environment variables: PORT, DASHBOARD_PIN, JWT_SECRET",
               "4. Add a volume mounted at /app/data",
               "5. Copy the Railway URL and paste above",
             ].map((step) => (
@@ -355,21 +708,6 @@ function SettingsPanel({
             <ExternalLink className="h-3 w-3" />
             Open Railway.app
           </a>
-        </div>
-
-        {/* Proxy note */}
-        <div className="rounded-xl border border-amber-500/10 bg-amber-500/5 p-5">
-          <h3 className="mb-1 text-sm font-semibold text-amber-400">
-            Anti-Ban: Proxy Settings
-          </h3>
-          <p className="text-xs text-muted-foreground">
-            To reduce ban risk, configure a Malaysian residential proxy on the
-            backend. Set the <span className="font-mono text-primary/80">PROXY_URL</span>{" "}
-            environment variable on Railway:
-          </p>
-          <pre className="mt-3 rounded-lg border border-[#1E1E1E] bg-[#0A0A0A] p-3 font-mono text-xs text-muted-foreground">
-            PROXY_URL=socks5://user:pass@my.proxy.com:1080
-          </pre>
         </div>
       </div>
     </div>
@@ -707,7 +1045,11 @@ export default function WhatsAppCrmPage() {
       <div className="flex min-h-0 flex-1 overflow-hidden">
         {/* ── Settings tab ─────────────────────────────────── */}
         {tab === "settings" && (
-          <SettingsPanel backendUrl={backendUrl} onSave={saveBackendUrl} />
+          <SettingsPanel
+            backendUrl={backendUrl}
+            sessionId={session?.id}
+            onSave={saveBackendUrl}
+          />
         )}
 
         {/* ── Contacts tab ────────────────────────────────── */}
