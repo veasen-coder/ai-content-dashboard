@@ -389,14 +389,126 @@ interface ProxyConfig {
   password: string;
 }
 
+interface AiConfig {
+  ai_reply_enabled: boolean;
+  openai_api_key: string;
+  ai_system_prompt: string;
+  ai_model: string;
+  ai_temperature: number;
+  ai_max_tokens: number;
+  ai_top_p: number;
+  ai_frequency_penalty: number;
+  ai_presence_penalty: number;
+  ai_context_window: number;
+  ai_fallback_message: string;
+  // Timing
+  ai_reply_delay_mode: "fixed" | "random" | "human_typing";
+  ai_reply_delay_min_ms: number;
+  ai_reply_delay_max_ms: number;
+  ai_typing_speed_wpm: number;
+  ai_read_delay_ms: number;
+  // Human sim
+  ai_send_typing_indicator: boolean;
+  ai_mark_read_before_reply: boolean;
+  ai_simulate_online: boolean;
+  ai_split_long_messages: boolean;
+  ai_split_delay_ms: number;
+  ai_add_filler_phrases: boolean;
+  ai_avoid_duplicate_replies: boolean;
+  // Rate limits
+  ai_max_replies_per_hour: number;
+  ai_max_replies_per_day: number;
+  ai_cooldown_same_contact_ms: number;
+  ai_ignore_broadcast: boolean;
+  ai_ignore_forwarded: boolean;
+  ai_reply_to_groups: boolean;
+  // Working hours
+  ai_working_hours_enabled: boolean;
+  ai_working_hours_start: string;
+  ai_working_hours_end: string;
+  ai_working_hours_timezone: string;
+  ai_working_days: string;
+  // Contact filter
+  ai_contact_filter_mode: "all" | "whitelist" | "blacklist";
+  ai_contact_filter_list: string;
+  // Triggers
+  ai_trigger_keywords: string;
+  ai_stop_keywords: string;
+  ai_handoff_enabled: boolean;
+  ai_handoff_webhook: string;
+  ai_handoff_trigger_count: number;
+}
+
+const AI_DEFAULTS: AiConfig = {
+  ai_reply_enabled: false, openai_api_key: "", ai_system_prompt: "", ai_model: "gpt-4o-mini",
+  ai_temperature: 0.7, ai_max_tokens: 500, ai_top_p: 1.0, ai_frequency_penalty: 0.0,
+  ai_presence_penalty: 0.0, ai_context_window: 10, ai_fallback_message: "",
+  ai_reply_delay_mode: "random", ai_reply_delay_min_ms: 3000, ai_reply_delay_max_ms: 12000,
+  ai_typing_speed_wpm: 45, ai_read_delay_ms: 1500, ai_send_typing_indicator: true,
+  ai_mark_read_before_reply: true, ai_simulate_online: true, ai_split_long_messages: true,
+  ai_split_delay_ms: 2000, ai_add_filler_phrases: false, ai_avoid_duplicate_replies: true,
+  ai_max_replies_per_hour: 0, ai_max_replies_per_day: 0, ai_cooldown_same_contact_ms: 5000,
+  ai_ignore_broadcast: true, ai_ignore_forwarded: false, ai_reply_to_groups: false,
+  ai_working_hours_enabled: false, ai_working_hours_start: "09:00", ai_working_hours_end: "18:00",
+  ai_working_hours_timezone: "Asia/Kuala_Lumpur", ai_working_days: "1,2,3,4,5",
+  ai_contact_filter_mode: "all", ai_contact_filter_list: "[]",
+  ai_trigger_keywords: "[]", ai_stop_keywords: "[]", ai_handoff_enabled: false,
+  ai_handoff_webhook: "", ai_handoff_trigger_count: 3,
+};
+
+function Toggle({ value, onChange }: { value: boolean; onChange: (v: boolean) => void }) {
+  return (
+    <button
+      onClick={() => onChange(!value)}
+      className={cn("relative h-5 w-9 shrink-0 rounded-full transition-colors", value ? "bg-[#25D366]" : "bg-[#2A2A2A]")}
+    >
+      <span className={cn("absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform", value ? "translate-x-4" : "translate-x-0.5")} />
+    </button>
+  );
+}
+
+function SettingRow({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
+  return (
+    <div className="flex items-center justify-between gap-4">
+      <div className="min-w-0 flex-1">
+        <p className="text-xs font-medium text-foreground">{label}</p>
+        {hint && <p className="text-[11px] text-muted-foreground/70">{hint}</p>}
+      </div>
+      <div className="shrink-0">{children}</div>
+    </div>
+  );
+}
+
+function SectionCard({ title, icon, children, defaultOpen = false }: {
+  title: string; icon: string; children: React.ReactNode; defaultOpen?: boolean;
+}) {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <div className="rounded-xl border border-[#1E1E1E] bg-[#111111] overflow-hidden">
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className="flex w-full items-center justify-between px-5 py-3.5 text-left hover:bg-[#1A1A1A] transition-colors"
+      >
+        <span className="flex items-center gap-2.5 text-sm font-semibold text-foreground">
+          <span>{icon}</span>{title}
+        </span>
+        <span className={cn("text-muted-foreground transition-transform text-xs", open ? "rotate-180" : "")}>▼</span>
+      </button>
+      {open && <div className="border-t border-[#1E1E1E] px-5 py-4 space-y-3">{children}</div>}
+    </div>
+  );
+}
+
 function SettingsPanel({
   backendUrl,
   sessionId,
+  jwtToken,
   onSave,
   onAuth,
 }: {
   backendUrl: string;
   sessionId?: string;
+  jwtToken: string;
   onSave: (url: string) => void;
   onAuth: (token: string) => void;
 }) {
@@ -406,37 +518,36 @@ function SettingsPanel({
   const [authStatus, setAuthStatus] = useState<"idle" | "loading" | "ok" | "error">("idle");
 
   // Proxy state
-  const [proxy, setProxy] = useState<ProxyConfig>({
-    enabled: false,
-    type: "socks5",
-    host: "",
-    port: "",
-    username: "",
-    password: "",
-  });
+  const [proxy, setProxy] = useState<ProxyConfig>({ enabled: false, type: "socks5", host: "", port: "", username: "", password: "" });
   const [proxySaved, setProxySaved] = useState(false);
   const [proxySaving, setProxySaving] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [showNoProxyModal, setShowNoProxyModal] = useState(false);
   const [pendingConnect, setPendingConnect] = useState(false);
 
-  // Load proxy settings from backend when session available
+  // AI settings state
+  const [ai, setAi] = useState<AiConfig>(AI_DEFAULTS);
+  const [aiSaved, setAiSaved] = useState(false);
+  const [aiSaving, setAiSaving] = useState(false);
+  const [showApiKey, setShowApiKey] = useState(false);
+
+  const authH = useCallback((): HeadersInit =>
+    jwtToken ? { "Authorization": `Bearer ${jwtToken}` } : {}
+  , [jwtToken]);
+
+  // Load proxy + AI settings
   useEffect(() => {
     if (!backendUrl || !sessionId) return;
-    fetch(`${backendUrl}/api/sessions/${sessionId}/proxy`)
+    const h = jwtToken ? { "Authorization": `Bearer ${jwtToken}` } : {};
+    fetch(`${backendUrl}/api/sessions/${sessionId}/proxy`, { headers: h })
       .then((r) => r.json())
-      .then((d) => {
-        setProxy({
-          enabled: d.proxy_enabled ?? false,
-          type: d.proxy_type ?? "socks5",
-          host: d.proxy_host ?? "",
-          port: d.proxy_port ?? "",
-          username: d.proxy_username ?? "",
-          password: "",
-        });
-      })
+      .then((d) => setProxy({ enabled: !!d.proxy_enabled, type: d.proxy_type ?? "socks5", host: d.proxy_host ?? "", port: d.proxy_port ?? "", username: d.proxy_username ?? "", password: "" }))
       .catch(() => {});
-  }, [backendUrl, sessionId]);
+    fetch(`${backendUrl}/api/sessions/${sessionId}/ai`, { headers: h })
+      .then((r) => r.json())
+      .then((d) => setAi((prev) => ({ ...prev, ...d, openai_api_key: "" })))
+      .catch(() => {});
+  }, [backendUrl, sessionId, jwtToken]);
 
   async function handleSaveUrl() {
     const cleaned = url.trim().replace(/\/$/, "");
@@ -450,9 +561,7 @@ function SettingsPanel({
     setAuthStatus("loading");
     try {
       const res = await fetch(`${url.trim().replace(/\/$/, "")}/api/auth/pin`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ pin }),
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ pin }),
       });
       if (!res.ok) throw new Error("Wrong PIN");
       const data = await res.json();
@@ -471,332 +580,508 @@ function SettingsPanel({
     setProxySaving(true);
     try {
       await fetch(`${backendUrl}/api/sessions/${sessionId}/proxy`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          proxy_enabled: config.enabled,
-          proxy_type: config.type,
-          proxy_host: config.host,
-          proxy_port: config.port,
-          proxy_username: config.username,
-          proxy_password: config.password || undefined,
-        }),
+        method: "PUT", headers: { "Content-Type": "application/json", ...authH() },
+        body: JSON.stringify({ proxy_enabled: config.enabled, proxy_type: config.type, proxy_host: config.host, proxy_port: config.port, proxy_username: config.username, proxy_password: config.password || undefined }),
       });
       setProxySaved(true);
       setTimeout(() => setProxySaved(false), 2000);
-    } catch {
-      /* silent */
-    } finally {
-      setProxySaving(false);
-    }
+    } catch { /* silent */ } finally { setProxySaving(false); }
   }
+
+  async function saveAi() {
+    if (!backendUrl || !sessionId) return;
+    setAiSaving(true);
+    try {
+      const payload: Record<string, unknown> = { ...ai };
+      if (!payload.openai_api_key) delete payload.openai_api_key;
+      await fetch(`${backendUrl}/api/sessions/${sessionId}/ai`, {
+        method: "PUT", headers: { "Content-Type": "application/json", ...authH() },
+        body: JSON.stringify(payload),
+      });
+      setAiSaved(true);
+      setTimeout(() => setAiSaved(false), 2500);
+    } catch { /* silent */ } finally { setAiSaving(false); }
+  }
+
+  const setA = <K extends keyof AiConfig>(k: K, v: AiConfig[K]) => setAi((p) => ({ ...p, [k]: v }));
 
   function handleProxyToggle(enabled: boolean) {
-    // Turning OFF proxy — show confirmation
-    if (!enabled && proxy.enabled) {
-      setShowNoProxyModal(true);
-      setPendingConnect(false);
-      return;
-    }
+    if (!enabled && proxy.enabled) { setShowNoProxyModal(true); setPendingConnect(false); return; }
     setProxy((p) => ({ ...p, enabled }));
   }
-
   function handleSaveProxy() {
-    // Saving with proxy disabled — show warning
-    if (!proxy.enabled) {
-      setShowNoProxyModal(true);
-      setPendingConnect(true);
-      return;
-    }
+    if (!proxy.enabled) { setShowNoProxyModal(true); setPendingConnect(true); return; }
     saveProxy(proxy);
   }
 
+  const TIMEZONES = ["UTC", "Asia/Kuala_Lumpur", "Asia/Singapore", "Asia/Jakarta", "Asia/Bangkok", "Asia/Manila", "Asia/Tokyo", "Asia/Shanghai", "America/New_York", "America/Los_Angeles", "Europe/London", "Europe/Paris"];
+  const DAYS = [{ v: "1", l: "Mon" }, { v: "2", l: "Tue" }, { v: "3", l: "Wed" }, { v: "4", l: "Thu" }, { v: "5", l: "Fri" }, { v: "6", l: "Sat" }, { v: "7", l: "Sun" }];
+  const activeDays = new Set(ai.ai_working_days.split(",").map((d) => d.trim()));
+
+  function toggleDay(v: string) {
+    const s = new Set(activeDays);
+    s.has(v) ? s.delete(v) : s.add(v);
+    setA("ai_working_days", [...s].sort().join(","));
+  }
+
+  function parseKeywords(raw: string): string[] {
+    try { return JSON.parse(raw); } catch { return []; }
+  }
+
+  function serializeKeywords(arr: string[]): string {
+    return JSON.stringify(arr);
+  }
+
   return (
-    <div className="flex-1 overflow-auto p-6">
-      {/* No-proxy confirmation modal */}
+    <div className="flex-1 overflow-auto p-5">
       {showNoProxyModal && (
         <NoProxyConfirmModal
-          onCancel={() => {
-            setShowNoProxyModal(false);
-            setPendingConnect(false);
-          }}
+          onCancel={() => { setShowNoProxyModal(false); setPendingConnect(false); }}
           onConfirm={() => {
             setShowNoProxyModal(false);
-            if (pendingConnect) {
-              saveProxy({ ...proxy, enabled: false });
-            } else {
-              setProxy((p) => ({ ...p, enabled: false }));
-            }
+            if (pendingConnect) saveProxy({ ...proxy, enabled: false });
+            else setProxy((p) => ({ ...p, enabled: false }));
             setPendingConnect(false);
           }}
         />
       )}
 
-      <div className="mx-auto max-w-xl space-y-6">
-        {/* Backend URL */}
-        <div className="rounded-xl border border-[#1E1E1E] bg-[#111111] p-5">
-          <h3 className="mb-1 text-sm font-semibold text-foreground">Backend URL</h3>
-          <p className="mb-4 text-xs text-muted-foreground">
-            The URL where your WhatsApp backend server is running (Railway, Render, or localhost).
-          </p>
-          <label className="mb-1.5 block text-xs font-medium uppercase tracking-wider text-muted-foreground">
-            API Base URL
-          </label>
-          <input
-            type="url"
-            value={url}
-            onChange={(e) => setUrl(e.target.value)}
-            placeholder="https://your-app.up.railway.app"
-            className="w-full rounded-lg border border-[#1E1E1E] bg-[#0A0A0A] px-3 py-2.5 font-mono text-sm outline-none transition-colors focus:border-primary"
-          />
-          <p className="mt-1.5 text-xs text-muted-foreground/60">
-            Example: http://localhost:3001 or https://wa.yourapp.app
-          </p>
-          <button
-            onClick={handleSaveUrl}
-            className={cn(
-              "mt-4 rounded-lg px-4 py-2 text-sm font-medium transition-colors",
-              urlSaved ? "bg-[#25D366] text-white" : "bg-primary text-primary-foreground hover:bg-primary/90"
-            )}
-          >
-            {urlSaved ? "✓ Saved" : "Save URL"}
-          </button>
-        </div>
+      <div className="mx-auto max-w-2xl space-y-4">
 
-        {/* PIN Authentication */}
-        <div className="rounded-xl border border-[#1E1E1E] bg-[#111111] p-5">
-          <h3 className="mb-1 text-sm font-semibold text-foreground">Authentication</h3>
-          <p className="mb-4 text-xs text-muted-foreground">
-            Enter your dashboard PIN to authenticate with the backend and get a session token.
-          </p>
-          <label className="mb-1.5 block text-xs font-medium uppercase tracking-wider text-muted-foreground">
-            Dashboard PIN
-          </label>
-          <div className="flex gap-2">
-            <input
-              type="password"
-              value={pin}
-              onChange={(e) => setPin(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && handleAuth()}
-              placeholder="Enter PIN…"
-              maxLength={8}
-              className="w-32 rounded-lg border border-[#1E1E1E] bg-[#0A0A0A] px-3 py-2.5 font-mono text-sm outline-none transition-colors focus:border-primary tracking-widest"
-            />
-            <button
-              onClick={handleAuth}
-              disabled={authStatus === "loading" || !pin || !url}
-              className={cn(
-                "flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors disabled:opacity-50",
-                authStatus === "ok" ? "bg-[#25D366] text-white" :
-                authStatus === "error" ? "bg-red-500/20 text-red-400 border border-red-500/30" :
-                "bg-primary text-primary-foreground hover:bg-primary/90"
-              )}
+        {/* ── AI Auto-Reply ───────────────────────────────────── */}
+        <SectionCard title="AI Auto-Reply" icon="🤖" defaultOpen={true}>
+          <SettingRow label="Enable AI Auto-Reply" hint="AI will automatically respond to incoming messages">
+            <Toggle value={ai.ai_reply_enabled} onChange={(v) => setA("ai_reply_enabled", v)} />
+          </SettingRow>
+
+          <div>
+            <label className="mb-1 block text-[11px] font-medium uppercase tracking-wider text-muted-foreground">OpenAI API Key</label>
+            <div className="relative">
+              <input
+                type={showApiKey ? "text" : "password"}
+                value={ai.openai_api_key}
+                onChange={(e) => setA("openai_api_key", e.target.value)}
+                placeholder="sk-... (leave blank to keep existing)"
+                className="w-full rounded-lg border border-[#1E1E1E] bg-[#0A0A0A] px-3 py-2 pr-9 font-mono text-xs outline-none transition-colors focus:border-primary"
+              />
+              <button type="button" onClick={() => setShowApiKey((v) => !v)} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground/60 hover:text-muted-foreground">
+                {showApiKey ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+              </button>
+            </div>
+          </div>
+
+          <div>
+            <label className="mb-1 block text-[11px] font-medium uppercase tracking-wider text-muted-foreground">Model</label>
+            <select
+              value={ai.ai_model}
+              onChange={(e) => setA("ai_model", e.target.value)}
+              className="w-full rounded-lg border border-[#1E1E1E] bg-[#0A0A0A] px-3 py-2 text-sm text-foreground outline-none transition-colors focus:border-primary"
             >
-              {authStatus === "loading" && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-              {authStatus === "ok" ? "✓ Authenticated" :
-               authStatus === "error" ? "Wrong PIN" :
-               authStatus === "loading" ? "Verifying…" : "Authenticate"}
+              {["gpt-4o", "gpt-4o-mini", "gpt-4-turbo", "gpt-3.5-turbo"].map((m) => (
+                <option key={m} value={m}>{m}</option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="mb-1 block text-[11px] font-medium uppercase tracking-wider text-muted-foreground">System Prompt</label>
+            <textarea
+              value={ai.ai_system_prompt}
+              onChange={(e) => setA("ai_system_prompt", e.target.value)}
+              placeholder="You are a helpful assistant for [your business]. Answer questions about [topic]..."
+              rows={4}
+              className="w-full rounded-lg border border-[#1E1E1E] bg-[#0A0A0A] px-3 py-2 text-sm text-foreground outline-none transition-colors focus:border-primary resize-none"
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="mb-1 block text-[11px] font-medium uppercase tracking-wider text-muted-foreground">Temperature ({ai.ai_temperature})</label>
+              <input type="range" min={0} max={2} step={0.1} value={ai.ai_temperature} onChange={(e) => setA("ai_temperature", parseFloat(e.target.value))} className="w-full accent-[#25D366]" />
+              <div className="flex justify-between text-[10px] text-muted-foreground/50"><span>Precise</span><span>Creative</span></div>
+            </div>
+            <div>
+              <label className="mb-1 block text-[11px] font-medium uppercase tracking-wider text-muted-foreground">Max Tokens ({ai.ai_max_tokens})</label>
+              <input type="range" min={50} max={2000} step={50} value={ai.ai_max_tokens} onChange={(e) => setA("ai_max_tokens", parseInt(e.target.value))} className="w-full accent-[#25D366]" />
+              <div className="flex justify-between text-[10px] text-muted-foreground/50"><span>Short</span><span>Long</span></div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="mb-1 block text-[11px] font-medium uppercase tracking-wider text-muted-foreground">Context Window</label>
+              <input type="number" min={1} max={50} value={ai.ai_context_window} onChange={(e) => setA("ai_context_window", parseInt(e.target.value))}
+                className="w-full rounded-lg border border-[#1E1E1E] bg-[#0A0A0A] px-3 py-2 text-sm outline-none focus:border-primary" />
+              <p className="mt-0.5 text-[10px] text-muted-foreground/50">Past messages sent as context</p>
+            </div>
+            <div>
+              <label className="mb-1 block text-[11px] font-medium uppercase tracking-wider text-muted-foreground">Fallback Message</label>
+              <input type="text" value={ai.ai_fallback_message} onChange={(e) => setA("ai_fallback_message", e.target.value)} placeholder="Sorry, I couldn't understand that."
+                className="w-full rounded-lg border border-[#1E1E1E] bg-[#0A0A0A] px-3 py-2 text-sm outline-none focus:border-primary" />
+            </div>
+          </div>
+        </SectionCard>
+
+        {/* ── Reply Timing (Anti-Ban) ─────────────────────────── */}
+        <SectionCard title="Reply Timing — Anti-Ban" icon="⏱️" defaultOpen={true}>
+          <p className="text-[11px] text-amber-400/80">Critical: human-like delays prevent WhatsApp from detecting automation</p>
+
+          <div>
+            <label className="mb-1.5 block text-[11px] font-medium uppercase tracking-wider text-muted-foreground">Delay Mode</label>
+            <div className="flex gap-2">
+              {(["fixed", "random", "human_typing"] as const).map((mode) => (
+                <button key={mode} onClick={() => setA("ai_reply_delay_mode", mode)}
+                  className={cn("flex-1 rounded-lg border py-2 text-xs font-semibold transition-colors",
+                    ai.ai_reply_delay_mode === mode ? "border-[#25D366]/40 bg-[#25D366]/10 text-[#25D366]" : "border-[#1E1E1E] text-muted-foreground hover:text-foreground")}>
+                  {mode === "human_typing" ? "Human Speed" : mode.charAt(0).toUpperCase() + mode.slice(1)}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {ai.ai_reply_delay_mode === "fixed" && (
+            <div>
+              <label className="mb-1 block text-[11px] font-medium uppercase tracking-wider text-muted-foreground">Fixed Delay (ms)</label>
+              <input type="number" min={500} step={500} value={ai.ai_reply_delay_min_ms} onChange={(e) => setA("ai_reply_delay_min_ms", parseInt(e.target.value))}
+                className="w-full rounded-lg border border-[#1E1E1E] bg-[#0A0A0A] px-3 py-2 text-sm outline-none focus:border-primary" />
+            </div>
+          )}
+
+          {ai.ai_reply_delay_mode === "random" && (
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="mb-1 block text-[11px] font-medium uppercase tracking-wider text-muted-foreground">Min Delay (ms)</label>
+                <input type="number" min={500} step={500} value={ai.ai_reply_delay_min_ms} onChange={(e) => setA("ai_reply_delay_min_ms", parseInt(e.target.value))}
+                  className="w-full rounded-lg border border-[#1E1E1E] bg-[#0A0A0A] px-3 py-2 text-sm outline-none focus:border-primary" />
+              </div>
+              <div>
+                <label className="mb-1 block text-[11px] font-medium uppercase tracking-wider text-muted-foreground">Max Delay (ms)</label>
+                <input type="number" min={500} step={500} value={ai.ai_reply_delay_max_ms} onChange={(e) => setA("ai_reply_delay_max_ms", parseInt(e.target.value))}
+                  className="w-full rounded-lg border border-[#1E1E1E] bg-[#0A0A0A] px-3 py-2 text-sm outline-none focus:border-primary" />
+              </div>
+              <div className="col-span-2 flex gap-2">
+                {[["Fast (1–5s)", 1000, 5000], ["Normal (3–12s)", 3000, 12000], ["Slow (10–30s)", 10000, 30000]].map(([label, min, max]) => (
+                  <button key={label as string} onClick={() => { setA("ai_reply_delay_min_ms", min as number); setA("ai_reply_delay_max_ms", max as number); }}
+                    className="rounded-md border border-[#1E1E1E] px-2.5 py-1 text-[10px] text-muted-foreground hover:bg-[#1E1E1E] hover:text-foreground transition-colors">
+                    {label as string}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {ai.ai_reply_delay_mode === "human_typing" && (
+            <div>
+              <label className="mb-1 block text-[11px] font-medium uppercase tracking-wider text-muted-foreground">Typing Speed — {ai.ai_typing_speed_wpm} WPM</label>
+              <input type="range" min={20} max={120} step={5} value={ai.ai_typing_speed_wpm} onChange={(e) => setA("ai_typing_speed_wpm", parseInt(e.target.value))} className="w-full accent-[#25D366]" />
+              <div className="flex justify-between text-[10px] text-muted-foreground/50"><span>20 wpm (slow)</span><span>120 wpm (fast)</span></div>
+            </div>
+          )}
+
+          <div>
+            <label className="mb-1 block text-[11px] font-medium uppercase tracking-wider text-muted-foreground">Read Receipt Delay — {ai.ai_read_delay_ms}ms</label>
+            <input type="range" min={0} max={5000} step={500} value={ai.ai_read_delay_ms} onChange={(e) => setA("ai_read_delay_ms", parseInt(e.target.value))} className="w-full accent-[#25D366]" />
+            <p className="text-[10px] text-muted-foreground/50">Delay before marking message as read</p>
+          </div>
+        </SectionCard>
+
+        {/* ── Anti-Ban Protection ────────────────────────────── */}
+        <SectionCard title="Anti-Ban Protection" icon="🛡️">
+          <div className="space-y-3">
+            <SettingRow label="Show typing indicator" hint="Send 'composing...' presence before reply">
+              <Toggle value={ai.ai_send_typing_indicator} onChange={(v) => setA("ai_send_typing_indicator", v)} />
+            </SettingRow>
+            <SettingRow label="Mark as read before replying" hint="Simulates natural read → reply flow">
+              <Toggle value={ai.ai_mark_read_before_reply} onChange={(v) => setA("ai_mark_read_before_reply", v)} />
+            </SettingRow>
+            <SettingRow label="Simulate online presence" hint="Set 'available' status while composing">
+              <Toggle value={ai.ai_simulate_online} onChange={(v) => setA("ai_simulate_online", v)} />
+            </SettingRow>
+            <SettingRow label="Split long messages" hint="Break replies >200 chars into multiple messages">
+              <Toggle value={ai.ai_split_long_messages} onChange={(v) => setA("ai_split_long_messages", v)} />
+            </SettingRow>
+            <SettingRow label="Natural filler phrases" hint="Occasionally prepend 'Sure!', 'Got it!' etc.">
+              <Toggle value={ai.ai_add_filler_phrases} onChange={(v) => setA("ai_add_filler_phrases", v)} />
+            </SettingRow>
+            <SettingRow label="Avoid duplicate replies" hint="Never send exact same message twice in a row">
+              <Toggle value={ai.ai_avoid_duplicate_replies} onChange={(v) => setA("ai_avoid_duplicate_replies", v)} />
+            </SettingRow>
+            <SettingRow label="Ignore broadcast messages" hint="Never reply to broadcast/list messages">
+              <Toggle value={ai.ai_ignore_broadcast} onChange={(v) => setA("ai_ignore_broadcast", v)} />
+            </SettingRow>
+            <SettingRow label="Ignore forwarded messages" hint="Skip messages that were forwarded">
+              <Toggle value={ai.ai_ignore_forwarded} onChange={(v) => setA("ai_ignore_forwarded", v)} />
+            </SettingRow>
+            <SettingRow label="Reply to group chats" hint="Allow AI to reply in group conversations">
+              <Toggle value={ai.ai_reply_to_groups} onChange={(v) => setA("ai_reply_to_groups", v)} />
+            </SettingRow>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3 pt-1">
+            <div>
+              <label className="mb-1 block text-[11px] font-medium uppercase tracking-wider text-muted-foreground">Max Replies / Hour</label>
+              <input type="number" min={0} value={ai.ai_max_replies_per_hour} onChange={(e) => setA("ai_max_replies_per_hour", parseInt(e.target.value))}
+                className="w-full rounded-lg border border-[#1E1E1E] bg-[#0A0A0A] px-3 py-2 text-sm outline-none focus:border-primary" />
+              <p className="mt-0.5 text-[10px] text-muted-foreground/50">0 = unlimited</p>
+            </div>
+            <div>
+              <label className="mb-1 block text-[11px] font-medium uppercase tracking-wider text-muted-foreground">Max Replies / Day</label>
+              <input type="number" min={0} value={ai.ai_max_replies_per_day} onChange={(e) => setA("ai_max_replies_per_day", parseInt(e.target.value))}
+                className="w-full rounded-lg border border-[#1E1E1E] bg-[#0A0A0A] px-3 py-2 text-sm outline-none focus:border-primary" />
+              <p className="mt-0.5 text-[10px] text-muted-foreground/50">0 = unlimited</p>
+            </div>
+            <div>
+              <label className="mb-1 block text-[11px] font-medium uppercase tracking-wider text-muted-foreground">Reply Cooldown (same contact, ms)</label>
+              <input type="number" min={0} step={1000} value={ai.ai_cooldown_same_contact_ms} onChange={(e) => setA("ai_cooldown_same_contact_ms", parseInt(e.target.value))}
+                className="w-full rounded-lg border border-[#1E1E1E] bg-[#0A0A0A] px-3 py-2 text-sm outline-none focus:border-primary" />
+            </div>
+            {ai.ai_split_long_messages && (
+              <div>
+                <label className="mb-1 block text-[11px] font-medium uppercase tracking-wider text-muted-foreground">Split Message Delay (ms)</label>
+                <input type="number" min={500} step={500} value={ai.ai_split_delay_ms} onChange={(e) => setA("ai_split_delay_ms", parseInt(e.target.value))}
+                  className="w-full rounded-lg border border-[#1E1E1E] bg-[#0A0A0A] px-3 py-2 text-sm outline-none focus:border-primary" />
+              </div>
+            )}
+          </div>
+        </SectionCard>
+
+        {/* ── Working Hours ───────────────────────────────────── */}
+        <SectionCard title="Working Hours" icon="🕐">
+          <SettingRow label="Restrict to working hours" hint="AI only replies within the configured time window">
+            <Toggle value={ai.ai_working_hours_enabled} onChange={(v) => setA("ai_working_hours_enabled", v)} />
+          </SettingRow>
+
+          {ai.ai_working_hours_enabled && (
+            <>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="mb-1 block text-[11px] font-medium uppercase tracking-wider text-muted-foreground">Start Time</label>
+                  <input type="time" value={ai.ai_working_hours_start} onChange={(e) => setA("ai_working_hours_start", e.target.value)}
+                    className="w-full rounded-lg border border-[#1E1E1E] bg-[#0A0A0A] px-3 py-2 text-sm outline-none focus:border-primary" />
+                </div>
+                <div>
+                  <label className="mb-1 block text-[11px] font-medium uppercase tracking-wider text-muted-foreground">End Time</label>
+                  <input type="time" value={ai.ai_working_hours_end} onChange={(e) => setA("ai_working_hours_end", e.target.value)}
+                    className="w-full rounded-lg border border-[#1E1E1E] bg-[#0A0A0A] px-3 py-2 text-sm outline-none focus:border-primary" />
+                </div>
+              </div>
+
+              <div>
+                <label className="mb-1 block text-[11px] font-medium uppercase tracking-wider text-muted-foreground">Timezone</label>
+                <select value={ai.ai_working_hours_timezone} onChange={(e) => setA("ai_working_hours_timezone", e.target.value)}
+                  className="w-full rounded-lg border border-[#1E1E1E] bg-[#0A0A0A] px-3 py-2 text-sm text-foreground outline-none focus:border-primary">
+                  {TIMEZONES.map((tz) => <option key={tz} value={tz}>{tz}</option>)}
+                </select>
+              </div>
+
+              <div>
+                <label className="mb-1.5 block text-[11px] font-medium uppercase tracking-wider text-muted-foreground">Active Days</label>
+                <div className="flex gap-1.5">
+                  {DAYS.map(({ v, l }) => (
+                    <button key={v} onClick={() => toggleDay(v)}
+                      className={cn("flex-1 rounded-lg border py-1.5 text-[11px] font-semibold transition-colors",
+                        activeDays.has(v) ? "border-[#25D366]/40 bg-[#25D366]/10 text-[#25D366]" : "border-[#1E1E1E] text-muted-foreground hover:text-foreground")}>
+                      {l}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </>
+          )}
+        </SectionCard>
+
+        {/* ── Contact Filter ──────────────────────────────────── */}
+        <SectionCard title="Contact Filtering" icon="👥">
+          <div>
+            <label className="mb-1.5 block text-[11px] font-medium uppercase tracking-wider text-muted-foreground">Filter Mode</label>
+            <div className="flex gap-2">
+              {(["all", "whitelist", "blacklist"] as const).map((mode) => (
+                <button key={mode} onClick={() => setA("ai_contact_filter_mode", mode)}
+                  className={cn("flex-1 rounded-lg border py-2 text-xs font-semibold capitalize transition-colors",
+                    ai.ai_contact_filter_mode === mode ? "border-[#25D366]/40 bg-[#25D366]/10 text-[#25D366]" : "border-[#1E1E1E] text-muted-foreground hover:text-foreground")}>
+                  {mode}
+                </button>
+              ))}
+            </div>
+            <p className="mt-1 text-[10px] text-muted-foreground/50">
+              {ai.ai_contact_filter_mode === "all" ? "Reply to everyone" : ai.ai_contact_filter_mode === "whitelist" ? "Only reply to listed numbers" : "Never reply to listed numbers"}
+            </p>
+          </div>
+
+          {ai.ai_contact_filter_mode !== "all" && (
+            <div>
+              <label className="mb-1 block text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+                {ai.ai_contact_filter_mode === "whitelist" ? "Whitelist" : "Blacklist"} Numbers (one per line, include country code)
+              </label>
+              <textarea
+                value={parseKeywords(ai.ai_contact_filter_list).join("\n")}
+                onChange={(e) => setA("ai_contact_filter_list", serializeKeywords(e.target.value.split("\n").map((s) => s.trim()).filter(Boolean)))}
+                placeholder={"60123456789\n60198765432"}
+                rows={3}
+                className="w-full rounded-lg border border-[#1E1E1E] bg-[#0A0A0A] px-3 py-2 font-mono text-xs outline-none focus:border-primary resize-none"
+              />
+            </div>
+          )}
+        </SectionCard>
+
+        {/* ── Triggers & Handoff ──────────────────────────────── */}
+        <SectionCard title="Triggers & Human Handoff" icon="🔀">
+          <div>
+            <label className="mb-1 block text-[11px] font-medium uppercase tracking-wider text-muted-foreground">Trigger Keywords (one per line)</label>
+            <textarea
+              value={parseKeywords(ai.ai_trigger_keywords).join("\n")}
+              onChange={(e) => setA("ai_trigger_keywords", serializeKeywords(e.target.value.split("\n").map((s) => s.trim()).filter(Boolean)))}
+              placeholder={"hello\nhi\nhelp"}
+              rows={2}
+              className="w-full rounded-lg border border-[#1E1E1E] bg-[#0A0A0A] px-3 py-2 font-mono text-xs outline-none focus:border-primary resize-none"
+            />
+            <p className="mt-0.5 text-[10px] text-muted-foreground/50">AI only fires if message contains one of these (leave blank for always)</p>
+          </div>
+
+          <div>
+            <label className="mb-1 block text-[11px] font-medium uppercase tracking-wider text-muted-foreground">Stop Keywords — Handoff Triggers (one per line)</label>
+            <textarea
+              value={parseKeywords(ai.ai_stop_keywords).join("\n")}
+              onChange={(e) => setA("ai_stop_keywords", serializeKeywords(e.target.value.split("\n").map((s) => s.trim()).filter(Boolean)))}
+              placeholder={"human\nagent\nspeak to someone"}
+              rows={2}
+              className="w-full rounded-lg border border-[#1E1E1E] bg-[#0A0A0A] px-3 py-2 font-mono text-xs outline-none focus:border-primary resize-none"
+            />
+            <p className="mt-0.5 text-[10px] text-muted-foreground/50">AI pauses and notifies you when these are detected</p>
+          </div>
+
+          <SettingRow label="Human Handoff Notification" hint="POST to webhook URL when a stop keyword is detected">
+            <Toggle value={ai.ai_handoff_enabled} onChange={(v) => setA("ai_handoff_enabled", v)} />
+          </SettingRow>
+
+          {ai.ai_handoff_enabled && (
+            <div className="grid grid-cols-3 gap-3">
+              <div className="col-span-2">
+                <label className="mb-1 block text-[11px] font-medium uppercase tracking-wider text-muted-foreground">Webhook URL</label>
+                <input type="url" value={ai.ai_handoff_webhook} onChange={(e) => setA("ai_handoff_webhook", e.target.value)} placeholder="https://hooks.slack.com/..."
+                  className="w-full rounded-lg border border-[#1E1E1E] bg-[#0A0A0A] px-3 py-2 font-mono text-xs outline-none focus:border-primary" />
+              </div>
+              <div>
+                <label className="mb-1 block text-[11px] font-medium uppercase tracking-wider text-muted-foreground">Trigger After</label>
+                <input type="number" min={1} value={ai.ai_handoff_trigger_count} onChange={(e) => setA("ai_handoff_trigger_count", parseInt(e.target.value))}
+                  className="w-full rounded-lg border border-[#1E1E1E] bg-[#0A0A0A] px-3 py-2 text-sm outline-none focus:border-primary" />
+                <p className="mt-0.5 text-[10px] text-muted-foreground/50">unanswered msgs</p>
+              </div>
+            </div>
+          )}
+        </SectionCard>
+
+        {/* Save AI Settings */}
+        {sessionId && (
+          <button onClick={saveAi} disabled={aiSaving}
+            className={cn("w-full rounded-xl py-3 text-sm font-semibold transition-colors disabled:opacity-50",
+              aiSaved ? "bg-[#25D366] text-white" : "bg-[#25D366]/20 text-[#25D366] hover:bg-[#25D366]/30 border border-[#25D366]/20")}>
+            {aiSaving ? "Saving…" : aiSaved ? "✓ AI Settings Saved" : "Save AI Settings"}
+          </button>
+        )}
+
+        {/* ── Backend & Auth ──────────────────────────────────── */}
+        <SectionCard title="Backend & Authentication" icon="🔗">
+          <div>
+            <label className="mb-1 block text-[11px] font-medium uppercase tracking-wider text-muted-foreground">API Base URL</label>
+            <input type="url" value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://your-app.up.railway.app"
+              className="w-full rounded-lg border border-[#1E1E1E] bg-[#0A0A0A] px-3 py-2.5 font-mono text-sm outline-none transition-colors focus:border-primary" />
+            <button onClick={handleSaveUrl}
+              className={cn("mt-3 rounded-lg px-4 py-2 text-sm font-medium transition-colors", urlSaved ? "bg-[#25D366] text-white" : "bg-primary text-primary-foreground hover:bg-primary/90")}>
+              {urlSaved ? "✓ Saved" : "Save URL"}
             </button>
           </div>
-          <p className="mt-1.5 text-xs text-muted-foreground/60">
-            Default PIN is 1234 unless you changed DASHBOARD_PIN on Railway
-          </p>
-        </div>
 
-        {/* Proxy settings */}
-        <div className={cn(
-          "rounded-xl border p-5 transition-colors",
-          proxy.enabled
-            ? "border-[#25D366]/20 bg-[#25D366]/5"
-            : "border-amber-500/20 bg-amber-500/5"
-        )}>
-          {/* Header row */}
+          <div>
+            <label className="mb-1 block text-[11px] font-medium uppercase tracking-wider text-muted-foreground">Dashboard PIN</label>
+            <div className="flex gap-2">
+              <input type="password" value={pin} onChange={(e) => setPin(e.target.value)} onKeyDown={(e) => e.key === "Enter" && handleAuth()} placeholder="Enter PIN…" maxLength={8}
+                className="w-32 rounded-lg border border-[#1E1E1E] bg-[#0A0A0A] px-3 py-2.5 font-mono text-sm outline-none transition-colors focus:border-primary tracking-widest" />
+              <button onClick={handleAuth} disabled={authStatus === "loading" || !pin || !url}
+                className={cn("flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors disabled:opacity-50",
+                  authStatus === "ok" ? "bg-[#25D366] text-white" : authStatus === "error" ? "bg-red-500/20 text-red-400 border border-red-500/30" : "bg-primary text-primary-foreground hover:bg-primary/90")}>
+                {authStatus === "loading" && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                {authStatus === "ok" ? "✓ Authenticated" : authStatus === "error" ? "Wrong PIN" : authStatus === "loading" ? "Verifying…" : "Authenticate"}
+              </button>
+            </div>
+            <p className="mt-1 text-[10px] text-muted-foreground/50">Default PIN is 1234 unless you changed DASHBOARD_PIN on Railway</p>
+          </div>
+        </SectionCard>
+
+        {/* ── Proxy ───────────────────────────────────────────── */}
+        <div className={cn("rounded-xl border p-5 transition-colors", proxy.enabled ? "border-[#25D366]/20 bg-[#25D366]/5" : "border-amber-500/20 bg-amber-500/5")}>
           <div className="mb-4 flex items-start justify-between gap-4">
             <div className="flex items-center gap-3">
-              {proxy.enabled ? (
-                <ShieldCheck className="h-5 w-5 text-[#25D366]" />
-              ) : (
-                <ShieldAlert className="h-5 w-5 text-amber-400" />
-              )}
+              {proxy.enabled ? <ShieldCheck className="h-5 w-5 text-[#25D366]" /> : <ShieldAlert className="h-5 w-5 text-amber-400" />}
               <div>
                 <h3 className={cn("text-sm font-semibold", proxy.enabled ? "text-[#25D366]" : "text-amber-400")}>
                   Residential Proxy {proxy.enabled ? "— Enabled" : "— Disabled"}
                 </h3>
-                <p className="text-xs text-muted-foreground">
-                  {proxy.enabled
-                    ? "Your connection routes through a residential IP — lower ban risk"
-                    : "No proxy — server IP exposed to WhatsApp — higher ban risk"}
-                </p>
+                <p className="text-xs text-muted-foreground">{proxy.enabled ? "Routes through residential IP — lower ban risk" : "No proxy — server IP exposed — higher ban risk"}</p>
               </div>
             </div>
-            {/* Toggle */}
-            <button
-              onClick={() => handleProxyToggle(!proxy.enabled)}
-              className={cn(
-                "relative h-6 w-11 shrink-0 rounded-full transition-colors",
-                proxy.enabled ? "bg-[#25D366]" : "bg-[#1E1E1E]"
-              )}
-            >
-              <span
-                className={cn(
-                  "absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform",
-                  proxy.enabled ? "translate-x-5" : "translate-x-0.5"
-                )}
-              />
+            <button onClick={() => handleProxyToggle(!proxy.enabled)}
+              className={cn("relative h-6 w-11 shrink-0 rounded-full transition-colors", proxy.enabled ? "bg-[#25D366]" : "bg-[#1E1E1E]")}>
+              <span className={cn("absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform", proxy.enabled ? "translate-x-5" : "translate-x-0.5")} />
             </button>
           </div>
 
           {proxy.enabled && (
             <div className="space-y-3">
-              {/* Protocol */}
-              <div>
-                <label className="mb-1.5 block text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                  Protocol
-                </label>
-                <div className="flex gap-2">
-                  {(["socks5", "http"] as const).map((t) => (
-                    <button
-                      key={t}
-                      onClick={() => setProxy((p) => ({ ...p, type: t }))}
-                      className={cn(
-                        "rounded-lg border px-4 py-2 text-xs font-semibold transition-colors",
-                        proxy.type === t
-                          ? "border-[#25D366]/40 bg-[#25D366]/10 text-[#25D366]"
-                          : "border-[#1E1E1E] bg-[#0A0A0A] text-muted-foreground hover:text-foreground"
-                      )}
-                    >
-                      {t.toUpperCase()}
-                    </button>
-                  ))}
-                </div>
-                <p className="mt-1 text-[10px] text-muted-foreground/60">
-                  SOCKS5 recommended for residential proxies
-                </p>
+              <div className="flex gap-2">
+                {(["socks5", "http"] as const).map((t) => (
+                  <button key={t} onClick={() => setProxy((p) => ({ ...p, type: t }))}
+                    className={cn("rounded-lg border px-4 py-2 text-xs font-semibold transition-colors",
+                      proxy.type === t ? "border-[#25D366]/40 bg-[#25D366]/10 text-[#25D366]" : "border-[#1E1E1E] bg-[#0A0A0A] text-muted-foreground")}>
+                    {t.toUpperCase()}
+                  </button>
+                ))}
               </div>
-
-              {/* Host + Port */}
               <div className="grid grid-cols-3 gap-3">
                 <div className="col-span-2">
-                  <label className="mb-1.5 block text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                    Host
-                  </label>
-                  <input
-                    type="text"
-                    value={proxy.host}
-                    onChange={(e) => setProxy((p) => ({ ...p, host: e.target.value }))}
-                    placeholder="proxy.provider.com"
-                    className="w-full rounded-lg border border-[#1E1E1E] bg-[#0A0A0A] px-3 py-2 font-mono text-xs outline-none transition-colors focus:border-[#25D366]"
-                  />
+                  <label className="mb-1 block text-[11px] font-medium uppercase tracking-wider text-muted-foreground">Host</label>
+                  <input type="text" value={proxy.host} onChange={(e) => setProxy((p) => ({ ...p, host: e.target.value }))} placeholder="proxy.provider.com"
+                    className="w-full rounded-lg border border-[#1E1E1E] bg-[#0A0A0A] px-3 py-2 font-mono text-xs outline-none focus:border-[#25D366]" />
                 </div>
                 <div>
-                  <label className="mb-1.5 block text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                    Port
-                  </label>
-                  <input
-                    type="text"
-                    value={proxy.port}
-                    onChange={(e) => setProxy((p) => ({ ...p, port: e.target.value }))}
-                    placeholder="1080"
-                    className="w-full rounded-lg border border-[#1E1E1E] bg-[#0A0A0A] px-3 py-2 font-mono text-xs outline-none transition-colors focus:border-[#25D366]"
-                  />
+                  <label className="mb-1 block text-[11px] font-medium uppercase tracking-wider text-muted-foreground">Port</label>
+                  <input type="text" value={proxy.port} onChange={(e) => setProxy((p) => ({ ...p, port: e.target.value }))} placeholder="1080"
+                    className="w-full rounded-lg border border-[#1E1E1E] bg-[#0A0A0A] px-3 py-2 font-mono text-xs outline-none focus:border-[#25D366]" />
                 </div>
               </div>
-
-              {/* Username + Password */}
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="mb-1.5 block text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                    Username
-                  </label>
-                  <input
-                    type="text"
-                    value={proxy.username}
-                    onChange={(e) => setProxy((p) => ({ ...p, username: e.target.value }))}
-                    placeholder="optional"
-                    className="w-full rounded-lg border border-[#1E1E1E] bg-[#0A0A0A] px-3 py-2 font-mono text-xs outline-none transition-colors focus:border-[#25D366]"
-                  />
+                  <label className="mb-1 block text-[11px] font-medium uppercase tracking-wider text-muted-foreground">Username</label>
+                  <input type="text" value={proxy.username} onChange={(e) => setProxy((p) => ({ ...p, username: e.target.value }))} placeholder="optional"
+                    className="w-full rounded-lg border border-[#1E1E1E] bg-[#0A0A0A] px-3 py-2 font-mono text-xs outline-none focus:border-[#25D366]" />
                 </div>
                 <div>
-                  <label className="mb-1.5 block text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                    Password
-                  </label>
+                  <label className="mb-1 block text-[11px] font-medium uppercase tracking-wider text-muted-foreground">Password</label>
                   <div className="relative">
-                    <input
-                      type={showPassword ? "text" : "password"}
-                      value={proxy.password}
-                      onChange={(e) => setProxy((p) => ({ ...p, password: e.target.value }))}
-                      placeholder="optional"
-                      className="w-full rounded-lg border border-[#1E1E1E] bg-[#0A0A0A] px-3 py-2 pr-8 font-mono text-xs outline-none transition-colors focus:border-[#25D366]"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowPassword((v) => !v)}
-                      className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground/60 hover:text-muted-foreground"
-                    >
+                    <input type={showPassword ? "text" : "password"} value={proxy.password} onChange={(e) => setProxy((p) => ({ ...p, password: e.target.value }))} placeholder="optional"
+                      className="w-full rounded-lg border border-[#1E1E1E] bg-[#0A0A0A] px-3 py-2 pr-8 font-mono text-xs outline-none focus:border-[#25D366]" />
+                    <button type="button" onClick={() => setShowPassword((v) => !v)} className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground/60 hover:text-muted-foreground">
                       {showPassword ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
                     </button>
                   </div>
                 </div>
               </div>
-
-              {/* Preview */}
               {proxy.host && proxy.port && (
                 <div className="rounded-lg border border-[#1E1E1E] bg-[#0A0A0A] px-3 py-2">
                   <p className="text-[10px] text-muted-foreground/60 mb-0.5">Preview</p>
-                  <p className="font-mono text-xs text-muted-foreground break-all">
-                    {proxy.type}://{proxy.username ? `${proxy.username}:***@` : ""}{proxy.host}:{proxy.port}
-                  </p>
+                  <p className="font-mono text-xs text-muted-foreground break-all">{proxy.type}://{proxy.username ? `${proxy.username}:***@` : ""}{proxy.host}:{proxy.port}</p>
                 </div>
               )}
             </div>
           )}
 
-          <button
-            onClick={handleSaveProxy}
-            disabled={proxySaving}
-            className={cn(
-              "mt-4 rounded-lg px-4 py-2 text-sm font-medium transition-colors disabled:opacity-50",
-              proxySaved
-                ? "bg-[#25D366] text-white"
-                : proxy.enabled
-                ? "bg-[#25D366]/20 text-[#25D366] hover:bg-[#25D366]/30 border border-[#25D366]/20"
-                : "bg-amber-500/10 text-amber-400 hover:bg-amber-500/20 border border-amber-500/20"
-            )}
-          >
+          <button onClick={handleSaveProxy} disabled={proxySaving}
+            className={cn("mt-4 rounded-lg px-4 py-2 text-sm font-medium transition-colors disabled:opacity-50",
+              proxySaved ? "bg-[#25D366] text-white" : proxy.enabled ? "bg-[#25D366]/20 text-[#25D366] hover:bg-[#25D366]/30 border border-[#25D366]/20" : "bg-amber-500/10 text-amber-400 hover:bg-amber-500/20 border border-amber-500/20")}>
             {proxySaving ? "Saving…" : proxySaved ? "✓ Proxy Saved" : proxy.enabled ? "Save Proxy Settings" : "Save (No Proxy)"}
           </button>
         </div>
 
-        {/* Deploy guide */}
-        <div className="rounded-xl border border-[#1E1E1E] bg-[#111111] p-5">
-          <h3 className="mb-1 text-sm font-semibold text-foreground">Deployment Guide</h3>
-          <p className="mb-4 text-xs text-muted-foreground">
-            The WhatsApp backend requires a persistent server. Deploy to Railway or Render.
-          </p>
-          <div className="space-y-2 text-xs text-muted-foreground">
-            {[
-              "1. Push your backend to GitHub",
-              "2. Create a new project on Railway.app",
-              "3. Set environment variables: PORT, DASHBOARD_PIN, JWT_SECRET",
-              "4. Add a volume mounted at /app/data",
-              "5. Copy the Railway URL and paste above",
-            ].map((step) => (
-              <p key={step} className="flex items-start gap-2">
-                <span className="mt-0.5 shrink-0 text-primary/60">→</span>
-                {step}
-              </p>
-            ))}
-          </div>
-          <a
-            href="https://railway.app"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="mt-4 flex items-center gap-1.5 text-xs text-primary/80 hover:text-primary transition-colors"
-          >
-            <ExternalLink className="h-3 w-3" />
-            Open Railway.app
-          </a>
-        </div>
       </div>
     </div>
   );
@@ -947,37 +1232,36 @@ export default function WhatsAppCrmPage() {
     if (!backendUrl || !session || session.status !== "connected") return;
     setLoadingChats(true);
     try {
+      // Backend mounts messages router at /api/sessions/:id/messages, so chats is /messages/chats
       const res = await fetch(
-        `${backendUrl}/api/sessions/${session.id}/chats`,
+        `${backendUrl}/api/sessions/${session.id}/messages/chats`,
         { signal: AbortSignal.timeout(8000), headers: authHeaders() }
       );
       if (!res.ok) return;
       const data = await res.json();
-      // Normalise to WaChat shape
-      const mapped: WaChat[] = (data || []).map(
-        (c: {
-          id?: string;
-          jid?: string;
-          name?: string;
-          last_message?: string;
-          lastMessage?: string;
-          last_message_time?: string;
-          lastMessageTime?: string;
-          unread_count?: number;
-          unreadCount?: number;
-          is_group?: boolean;
-          isGroup?: boolean;
-        }) => ({
-          id: c.id || c.jid || "",
-          jid: c.jid || c.id || "",
-          name: c.name || c.jid?.split("@")[0] || "Unknown",
-          lastMessage: c.last_message || c.lastMessage || "",
-          lastMessageTime: c.last_message_time || c.lastMessageTime || "",
-          unreadCount: c.unread_count ?? c.unreadCount ?? 0,
-          isGroup: c.is_group ?? c.isGroup ?? false,
-          avatarInitials: getInitials(c.name || "?"),
-        })
-      );
+      // Backend returns { chats: [...] } with snake_case fields
+      const chatList: Array<{
+        jid?: string;
+        name?: string;
+        last_message?: string;
+        last_message_time?: number | string;
+        message_type?: string;
+        is_group?: number | boolean;
+      }> = data.chats || data || [];
+      const mapped: WaChat[] = chatList.map((c) => {
+        const rawName = c.name || (c.jid ?? "").split("@")[0] || "Unknown";
+        const lastMsg = c.last_message || (c.message_type && c.message_type !== "text" ? `[${c.message_type}]` : "");
+        return {
+          id: c.jid || "",
+          jid: c.jid || "",
+          name: rawName,
+          lastMessage: lastMsg,
+          lastMessageTime: c.last_message_time ? String(c.last_message_time) : "",
+          unreadCount: 0,
+          isGroup: !!(c.is_group),
+          avatarInitials: getInitials(rawName),
+        };
+      });
       setChats(mapped);
     } catch {
       /* silent */
@@ -1001,27 +1285,23 @@ export default function WhatsAppCrmPage() {
       );
       if (!res.ok) return;
       const data = await res.json();
-      const mapped: WaMessage[] = (data || []).map(
-        (m: {
-          id?: string;
-          key?: { id?: string; fromMe?: boolean };
-          fromMe?: boolean;
-          body?: string;
-          text?: string;
-          message?: string;
-          timestamp?: number;
-          messageTimestamp?: number;
-          status?: WaMessage["status"];
-          type?: WaMessage["type"];
-        }) => ({
-          id: m.id || m.key?.id || String(Math.random()),
-          fromMe: m.fromMe ?? m.key?.fromMe ?? false,
-          body: m.body || m.text || m.message || "",
-          timestamp: m.timestamp || m.messageTimestamp || 0,
-          status: m.status || "delivered",
-          type: m.type || "text",
-        })
-      );
+      // Backend returns { messages: [...] } with snake_case fields (from_me, content, message_type)
+      const msgList: Array<{
+        id?: string; message_id?: string;
+        from_me?: number | boolean; fromMe?: boolean;
+        content?: string; body?: string; text?: string;
+        timestamp?: number;
+        message_type?: string; type?: string;
+        status?: WaMessage["status"];
+      }> = data.messages || data || [];
+      const mapped: WaMessage[] = msgList.map((m) => ({
+        id: m.id || m.message_id || String(Math.random()),
+        fromMe: !!(m.from_me ?? m.fromMe),
+        body: m.content || m.body || m.text || "",
+        timestamp: m.timestamp || 0,
+        status: m.status || "delivered",
+        type: (m.message_type || m.type || "text") as WaMessage["type"],
+      }));
       setMessages(mapped);
       setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }), 50);
     } catch {
@@ -1234,6 +1514,7 @@ export default function WhatsAppCrmPage() {
           <SettingsPanel
             backendUrl={backendUrl}
             sessionId={session?.id}
+            jwtToken={jwtToken}
             onSave={saveBackendUrl}
             onAuth={saveJwtToken}
           />
