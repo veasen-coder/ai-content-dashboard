@@ -111,6 +111,32 @@ function mediaPreview(type: string): string {
 }
 
 // Force-download a cross-origin file with the original filename
+// Map full MIME type to short file label
+function mimeLabel(mime: string | undefined): string {
+  if (!mime) return "FILE";
+  const m = mime.toLowerCase();
+  if (m.includes("pdf")) return "PDF";
+  if (m.includes("presentationml") || m.includes("pptx") || m.includes("powerpoint")) return "PPTX";
+  if (m.includes("wordprocessingml") || m.includes("docx") || m.includes("msword")) return "DOCX";
+  if (m.includes("spreadsheetml") || m.includes("xlsx") || m.includes("excel")) return "XLSX";
+  if (m.includes("zip") || m.includes("x-zip")) return "ZIP";
+  if (m.includes("rar")) return "RAR";
+  if (m.includes("csv")) return "CSV";
+  if (m.includes("plain") || m.includes("text/")) return "TXT";
+  if (m.includes("image/")) return "IMG";
+  if (m.includes("video/")) return "VID";
+  if (m.includes("audio/")) return "AUD";
+  // fallback: grab the subtype after "/"
+  const sub = mime.split("/")[1]?.split(";")[0]?.toUpperCase();
+  return sub?.slice(0, 6) || "FILE";
+}
+
+// Extract filename from a media URL path as last-resort fallback
+function filenameFromUrl(url: string | undefined): string {
+  if (!url) return "";
+  return decodeURIComponent(url.split("/").pop() || "");
+}
+
 async function downloadFile(url: string, filename: string, token?: string) {
   try {
     const headers: Record<string, string> = {};
@@ -2277,10 +2303,10 @@ export default function WhatsAppCrmPage() {
                                         </div>
                                         <div className="min-w-0 flex-1">
                                           <p className="truncate text-xs font-medium text-foreground">
-                                            {msg.body || msg.caption || "Document"}
+                                            {msg.body || msg.caption || filenameFromUrl(msg.mediaUrl) || "Document"}
                                           </p>
                                           <p className="text-[10px] text-muted-foreground/60">
-                                            {msg.mediaMimetype?.includes("pdf") ? "PDF" : msg.mediaMimetype?.split("/")[1]?.toUpperCase() || "FILE"}
+                                            {mimeLabel(msg.mediaMimetype)}
                                           </p>
                                         </div>
                                         {msg.mediaUrl && (
