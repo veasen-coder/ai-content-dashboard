@@ -1848,7 +1848,7 @@ export default function WhatsAppCrmPage() {
   );
 
   return (
-    <PageWrapper title="WhatsApp CRM" headerExtra={headerExtra}>
+    <PageWrapper title="WhatsApp CRM" headerExtra={headerExtra} fixed>
       {/* Hidden file inputs */}
       <input ref={fileInputRef} type="file" accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.zip,.rar,.csv" className="hidden" onChange={handleFileSelect} />
       <input ref={docTplInputRef} type="file" accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.zip,.rar,.csv,image/*" className="hidden"
@@ -1946,8 +1946,11 @@ export default function WhatsAppCrmPage() {
         </div>
       )}
 
+      {/* Flex column fills remaining height — never expands the page */}
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+
       {/* Tab bar */}
-      <div className="flex items-center gap-1 border-b border-[#1E1E1E] px-6 pt-0 pb-0 -mt-2">
+      <div className="flex shrink-0 items-center gap-1 border-b border-[#1E1E1E] px-6 pt-0 pb-0">
         {(
           [
             { key: "inbox", label: "Inbox", icon: MessageCircle },
@@ -2225,8 +2228,8 @@ export default function WhatsAppCrmPage() {
                         </div>
                       </div>
 
-                      {/* Messages */}
-                      <div className="flex-1 overflow-auto px-5 py-4">
+                      {/* Messages — min-h-0 is essential for flex overflow scrolling */}
+                      <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
                         {loadingMessages ? (
                           <div className="flex items-center justify-center py-12">
                             <Loader2 className="h-6 w-6 animate-spin text-muted-foreground/40" />
@@ -2451,6 +2454,7 @@ export default function WhatsAppCrmPage() {
           </div>
         )}
       </div>
+      </div>{/* end flex-col wrapper */}
     </PageWrapper>
   );
 }
