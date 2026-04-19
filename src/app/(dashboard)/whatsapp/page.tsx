@@ -586,20 +586,14 @@ function SectionCard({ title, icon, children, defaultOpen = false }: {
 function SettingsPanel({
   backendUrl,
   sessionId,
-  jwtToken,
   onSave,
-  onAuth,
 }: {
   backendUrl: string;
   sessionId?: string;
-  jwtToken: string;
   onSave: (url: string) => void;
-  onAuth: (token: string) => void;
 }) {
   const [url, setUrl] = useState(backendUrl);
   const [urlSaved, setUrlSaved] = useState(false);
-  const [pin, setPin] = useState("");
-  const [authStatus, setAuthStatus] = useState<"idle" | "loading" | "ok" | "error">("idle");
 
   // Proxy state
   const [proxy, setProxy] = useState<ProxyConfig>({ enabled: false, type: "socks5", host: "", port: "", username: "", password: "" });
@@ -615,48 +609,26 @@ function SettingsPanel({
   const [aiSaving, setAiSaving] = useState(false);
   const [showApiKey, setShowApiKey] = useState(false);
 
-  const authH = useCallback((): Record<string, string> =>
-    jwtToken ? { "Authorization": `Bearer ${jwtToken}` } : {}
-  , [jwtToken]);
+  const authH = useCallback((): Record<string, string> => ({}), []);
 
   // Load proxy + AI settings
   useEffect(() => {
     if (!backendUrl || !sessionId) return;
-    const h: Record<string, string> = jwtToken ? { "Authorization": `Bearer ${jwtToken}` } : {};
-    fetch(`${backendUrl}/api/sessions/${sessionId}/proxy`, { headers: h })
+    fetch(`${backendUrl}/api/sessions/${sessionId}/proxy`)
       .then((r) => r.json())
       .then((d) => setProxy({ enabled: !!d.proxy_enabled, type: d.proxy_type ?? "socks5", host: d.proxy_host ?? "", port: d.proxy_port ?? "", username: d.proxy_username ?? "", password: "" }))
       .catch(() => {});
-    fetch(`${backendUrl}/api/sessions/${sessionId}/ai`, { headers: h })
+    fetch(`${backendUrl}/api/sessions/${sessionId}/ai`)
       .then((r) => r.json())
       .then((d) => setAi((prev) => ({ ...prev, ...d, openai_api_key: "" })))
       .catch(() => {});
-  }, [backendUrl, sessionId, jwtToken]);
+  }, [backendUrl, sessionId]);
 
   async function handleSaveUrl() {
     const cleaned = url.trim().replace(/\/$/, "");
     onSave(cleaned);
     setUrlSaved(true);
     setTimeout(() => setUrlSaved(false), 2000);
-  }
-
-  async function handleAuth() {
-    if (!pin || !url) return;
-    setAuthStatus("loading");
-    try {
-      const res = await fetch(`${url.trim().replace(/\/$/, "")}/api/auth/pin`, {
-        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ pin }),
-      });
-      if (!res.ok) throw new Error("Wrong PIN");
-      const data = await res.json();
-      localStorage.setItem("wa_jwt_token", data.token);
-      onAuth(data.token);
-      setAuthStatus("ok");
-      setTimeout(() => setAuthStatus("idle"), 3000);
-    } catch {
-      setAuthStatus("error");
-      setTimeout(() => setAuthStatus("idle"), 3000);
-    }
   }
 
   async function saveProxy(config: ProxyConfig) {
@@ -1076,20 +1048,6 @@ function SettingsPanel({
             </button>
           </div>
 
-          <div>
-            <label className="mb-1 block text-[11px] font-medium uppercase tracking-wider text-muted-foreground">Dashboard PIN</label>
-            <div className="flex gap-2">
-              <input type="password" value={pin} onChange={(e) => setPin(e.target.value)} onKeyDown={(e) => e.key === "Enter" && handleAuth()} placeholder="Enter PIN…" maxLength={8}
-                className="w-32 rounded-lg border border-[#1E1E1E] bg-[#0A0A0A] px-3 py-2.5 font-mono text-sm outline-none transition-colors focus:border-primary tracking-widest" />
-              <button onClick={handleAuth} disabled={authStatus === "loading" || !pin || !url}
-                className={cn("flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors disabled:opacity-50",
-                  authStatus === "ok" ? "bg-[#25D366] text-white" : authStatus === "error" ? "bg-red-500/20 text-red-400 border border-red-500/30" : "bg-primary text-primary-foreground hover:bg-primary/90")}>
-                {authStatus === "loading" && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-                {authStatus === "ok" ? "✓ Authenticated" : authStatus === "error" ? "Wrong PIN" : authStatus === "loading" ? "Verifying…" : "Authenticate"}
-              </button>
-            </div>
-            <p className="mt-1 text-[10px] text-muted-foreground/50">Default PIN is 1234 unless you changed DASHBOARD_PIN on Railway</p>
-          </div>
         </SectionCard>
 
         {/* ── Proxy ───────────────────────────────────────────── */}
@@ -1240,7 +1198,6 @@ function ContactsPanel({ contacts }: { contacts: WaChat[] }) {
 export default function WhatsAppCrmPage() {
   const [tab, setTab] = useState<Tab>("inbox");
   const [backendUrl, setBackendUrl] = useState<string>("");
-  const [jwtToken, setJwtToken] = useState<string>("");
   const [backendOnline, setBackendOnline] = useState<boolean | null>(null); // null = checking
   const [session, setSession] = useState<WaSession | null>(null);
   const [chats, setChats] = useState<WaChat[]>([]);
@@ -1259,10 +1216,6 @@ export default function WhatsAppCrmPage() {
   const [newTplText, setNewTplText] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
   const docTplInputRef = useRef<HTMLInputElement>(null);
-  const [showPinModal, setShowPinModal] = useState(false);
-  const [pinInput, setPinInput] = useState("");
-  const [pinError, setPinError] = useState("");
-  const [pinLoading, setPinLoading] = useState(false);
   const [loadingChats, setLoadingChats] = useState(false);
   const [loadingMessages, setLoadingMessages] = useState(false);
   const [search, setSearch] = useState("");
@@ -1272,17 +1225,13 @@ export default function WhatsAppCrmPage() {
   const selectedChatRef = useRef<WaChat | null>(null);
   useEffect(() => { selectedChatRef.current = selectedChat; }, [selectedChat]);
 
-  // Load backend URL + JWT on mount
-  // Backend URL: env var takes priority, then localStorage (allows manual override in Settings)
+  // Load backend URL on mount — env var takes priority, then localStorage
   useEffect(() => {
     const envUrl = process.env.NEXT_PUBLIC_WA_BACKEND_URL || "";
     const stored = localStorage.getItem("wa_backend_url") || "";
     const url = envUrl || stored;
-    const token = localStorage.getItem("wa_jwt_token") || "";
     setBackendUrl(url);
-    setJwtToken(token);
-    // Show PIN modal if we have a URL but no token
-    if (url && !token) setShowPinModal(true);
+    if (url) checkBackend(url);
   }, []);
 
   // Load templates from localStorage
@@ -1293,19 +1242,17 @@ export default function WhatsAppCrmPage() {
     } catch {}
   }, []);
 
-  // Auth headers helper
+  // Auth headers helper — no auth required
   const authHeaders = useCallback((): HeadersInit => {
-    return jwtToken ? { "Authorization": `Bearer ${jwtToken}` } : {};
-  }, [jwtToken]);
+    return {};
+  }, []);
 
   // Ping backend + fetch session list
-  const checkBackend = useCallback(async (url: string, token?: string) => {
+  const checkBackend = useCallback(async (url: string) => {
     if (!url) { setBackendOnline(false); return; }
-    const tok = token ?? jwtToken;
     try {
       const res = await fetch(`${url}/api/sessions`, {
         signal: AbortSignal.timeout(4000),
-        headers: tok ? { "Authorization": `Bearer ${tok}` } : {},
       });
       if (!res.ok) throw new Error("not ok");
       const data = await res.json();
@@ -1321,7 +1268,7 @@ export default function WhatsAppCrmPage() {
       setBackendOnline(false);
       setSession(null);
     }
-  }, [jwtToken]);
+  }, []);
 
   // Fetch detailed session status (including QR data URL)
   const fetchSessionStatus = useCallback(async (sessionId: string) => {
@@ -1329,11 +1276,9 @@ export default function WhatsAppCrmPage() {
     try {
       const res = await fetch(`${backendUrl}/api/sessions/${sessionId}/status`, {
         signal: AbortSignal.timeout(6000),
-        headers: jwtToken ? { "Authorization": `Bearer ${jwtToken}` } : {},
       });
       if (!res.ok) return;
       const data = await res.json();
-      // data = { session, qrDataUrl, qr, warmupSecondsRemaining }
       const s = data.session ?? data;
       setSession((prev) => prev ? {
         ...prev,
@@ -1341,7 +1286,7 @@ export default function WhatsAppCrmPage() {
         qrCode: data.qrDataUrl || data.qr || prev.qrCode,
       } : prev);
     } catch { /* silent */ }
-  }, [backendUrl, jwtToken]);
+  }, [backendUrl]);
 
   useEffect(() => {
     checkBackend(backendUrl);
@@ -1651,7 +1596,7 @@ export default function WhatsAppCrmPage() {
       formData.append("file", file);
       formData.append("jid", selectedChat.jid);
       formData.append("type", fileType);
-      const hdrs: Record<string, string> = jwtToken ? { "Authorization": `Bearer ${jwtToken}` } : {};
+      const hdrs: Record<string, string> = {};
       const res = await fetch(`${backendUrl}/api/sessions/${session.id}/messages/send-media`, {
         method: "POST",
         headers: hdrs,
@@ -1728,37 +1673,6 @@ export default function WhatsAppCrmPage() {
     localStorage.setItem("wa_backend_url", url);
     setBackendOnline(null);
     checkBackend(url);
-    if (url && !jwtToken) setShowPinModal(true);
-  }
-
-  async function handlePinLogin() {
-    if (!pinInput || !backendUrl) return;
-    setPinLoading(true);
-    setPinError("");
-    try {
-      const res = await fetch(`${backendUrl}/api/auth/pin`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ pin: pinInput }),
-      });
-      if (!res.ok) { setPinError("Wrong PIN — try again"); setPinInput(""); return; }
-      const data = await res.json();
-      saveJwtToken(data.token);
-      setShowPinModal(false);
-      setPinInput("");
-      checkBackend(backendUrl, data.token);
-    } catch {
-      setPinError("Could not reach backend");
-    } finally {
-      setPinLoading(false);
-    }
-  }
-
-  function saveJwtToken(token: string) {
-    setJwtToken(token);
-    localStorage.setItem("wa_jwt_token", token);
-    // Re-check backend with new token
-    checkBackend(backendUrl, token);
   }
 
   // Start polling /api/sessions/:id/status every 3 s until QR appears or session connects
@@ -1979,43 +1893,6 @@ export default function WhatsAppCrmPage() {
         </div>
       )}
 
-      {/* PIN login modal — shown when backend URL is known but no JWT */}
-      {showPinModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80">
-          <div className="w-full max-w-xs rounded-2xl border border-[#2A2A2A] bg-[#111] p-6 shadow-2xl">
-            <div className="mb-5 text-center">
-              <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-xl bg-[#25D366]/10">
-                <svg className="h-6 w-6 text-[#25D366]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-                </svg>
-              </div>
-              <h2 className="text-sm font-semibold text-foreground">Enter PIN</h2>
-              <p className="mt-1 text-[11px] text-muted-foreground">Enter your dashboard PIN to access WhatsApp</p>
-            </div>
-            <input
-              type="password"
-              value={pinInput}
-              onChange={(e) => { setPinInput(e.target.value); setPinError(""); }}
-              onKeyDown={(e) => e.key === "Enter" && handlePinLogin()}
-              placeholder="PIN"
-              maxLength={8}
-              autoFocus
-              className="mb-3 w-full rounded-xl border border-[#2A2A2A] bg-[#0A0A0A] px-4 py-2.5 text-center text-lg font-mono tracking-widest outline-none focus:border-[#25D366] transition-colors"
-            />
-            {pinError && <p className="mb-3 text-center text-xs text-red-400">{pinError}</p>}
-            <button
-              onClick={handlePinLogin}
-              disabled={pinLoading || !pinInput}
-              className="w-full rounded-xl bg-[#25D366] py-2.5 text-sm font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-40 flex items-center justify-center gap-2"
-            >
-              {pinLoading && <Loader2 className="h-4 w-4 animate-spin" />}
-              {pinLoading ? "Verifying…" : "Unlock"}
-            </button>
-            <p className="mt-3 text-center text-[10px] text-muted-foreground/50">Default PIN is 1234 unless changed on Railway</p>
-          </div>
-        </div>
-      )}
-
       {/* Flex column fills remaining height — never expands the page */}
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
 
@@ -2051,9 +1928,7 @@ export default function WhatsAppCrmPage() {
           <SettingsPanel
             backendUrl={backendUrl}
             sessionId={session?.id}
-            jwtToken={jwtToken}
             onSave={saveBackendUrl}
-            onAuth={saveJwtToken}
           />
         )}
 
@@ -2413,8 +2288,7 @@ export default function WhatsAppCrmPage() {
                                             type="button"
                                             onClick={() => downloadFile(
                                               `${backendUrl}${msg.mediaUrl}`,
-                                              msg.body || msg.caption || "document",
-                                              jwtToken
+                                              msg.body || msg.caption || "document"
                                             )}
                                             className="shrink-0 rounded-lg border border-[#2A2A2A] p-1.5 text-muted-foreground hover:text-foreground transition-colors">
                                             <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
