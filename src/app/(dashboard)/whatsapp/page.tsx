@@ -1259,6 +1259,10 @@ export default function WhatsAppCrmPage() {
   const [newTplText, setNewTplText] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
   const docTplInputRef = useRef<HTMLInputElement>(null);
+  const [showPinModal, setShowPinModal] = useState(false);
+  const [pinInput, setPinInput] = useState("");
+  const [pinError, setPinError] = useState("");
+  const [pinLoading, setPinLoading] = useState(false);
   const [loadingChats, setLoadingChats] = useState(false);
   const [loadingMessages, setLoadingMessages] = useState(false);
   const [search, setSearch] = useState("");
@@ -1268,12 +1272,17 @@ export default function WhatsAppCrmPage() {
   const selectedChatRef = useRef<WaChat | null>(null);
   useEffect(() => { selectedChatRef.current = selectedChat; }, [selectedChat]);
 
-  // Load backend URL + JWT from localStorage on mount
+  // Load backend URL + JWT on mount
+  // Backend URL: env var takes priority, then localStorage (allows manual override in Settings)
   useEffect(() => {
+    const envUrl = process.env.NEXT_PUBLIC_WA_BACKEND_URL || "";
     const stored = localStorage.getItem("wa_backend_url") || "";
+    const url = envUrl || stored;
     const token = localStorage.getItem("wa_jwt_token") || "";
-    setBackendUrl(stored);
+    setBackendUrl(url);
     setJwtToken(token);
+    // Show PIN modal if we have a URL but no token
+    if (url && !token) setShowPinModal(true);
   }, []);
 
   // Load templates from localStorage
@@ -1719,6 +1728,30 @@ export default function WhatsAppCrmPage() {
     localStorage.setItem("wa_backend_url", url);
     setBackendOnline(null);
     checkBackend(url);
+    if (url && !jwtToken) setShowPinModal(true);
+  }
+
+  async function handlePinLogin() {
+    if (!pinInput || !backendUrl) return;
+    setPinLoading(true);
+    setPinError("");
+    try {
+      const res = await fetch(`${backendUrl}/api/auth/pin`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pin: pinInput }),
+      });
+      if (!res.ok) { setPinError("Wrong PIN — try again"); setPinInput(""); return; }
+      const data = await res.json();
+      saveJwtToken(data.token);
+      setShowPinModal(false);
+      setPinInput("");
+      checkBackend(backendUrl, data.token);
+    } catch {
+      setPinError("Could not reach backend");
+    } finally {
+      setPinLoading(false);
+    }
   }
 
   function saveJwtToken(token: string) {
@@ -1942,6 +1975,43 @@ export default function WhatsAppCrmPage() {
                 </>
               )}
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* PIN login modal — shown when backend URL is known but no JWT */}
+      {showPinModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80">
+          <div className="w-full max-w-xs rounded-2xl border border-[#2A2A2A] bg-[#111] p-6 shadow-2xl">
+            <div className="mb-5 text-center">
+              <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-xl bg-[#25D366]/10">
+                <svg className="h-6 w-6 text-[#25D366]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                </svg>
+              </div>
+              <h2 className="text-sm font-semibold text-foreground">Enter PIN</h2>
+              <p className="mt-1 text-[11px] text-muted-foreground">Enter your dashboard PIN to access WhatsApp</p>
+            </div>
+            <input
+              type="password"
+              value={pinInput}
+              onChange={(e) => { setPinInput(e.target.value); setPinError(""); }}
+              onKeyDown={(e) => e.key === "Enter" && handlePinLogin()}
+              placeholder="PIN"
+              maxLength={8}
+              autoFocus
+              className="mb-3 w-full rounded-xl border border-[#2A2A2A] bg-[#0A0A0A] px-4 py-2.5 text-center text-lg font-mono tracking-widest outline-none focus:border-[#25D366] transition-colors"
+            />
+            {pinError && <p className="mb-3 text-center text-xs text-red-400">{pinError}</p>}
+            <button
+              onClick={handlePinLogin}
+              disabled={pinLoading || !pinInput}
+              className="w-full rounded-xl bg-[#25D366] py-2.5 text-sm font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-40 flex items-center justify-center gap-2"
+            >
+              {pinLoading && <Loader2 className="h-4 w-4 animate-spin" />}
+              {pinLoading ? "Verifying…" : "Unlock"}
+            </button>
+            <p className="mt-3 text-center text-[10px] text-muted-foreground/50">Default PIN is 1234 unless changed on Railway</p>
           </div>
         </div>
       )}
