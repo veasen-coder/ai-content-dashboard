@@ -26,7 +26,6 @@ import {
   Circle,
   Image as ImageIcon,
   FileText,
-  ExternalLink,
   ShieldAlert,
   ShieldCheck,
   Eye,
@@ -622,7 +621,7 @@ function SettingsPanel({
 
   function toggleDay(v: string) {
     const s = new Set(activeDays);
-    s.has(v) ? s.delete(v) : s.add(v);
+    if (s.has(v)) { s.delete(v); } else { s.add(v); }
     setA("ai_working_days", Array.from(s).sort().join(","));
   }
 
