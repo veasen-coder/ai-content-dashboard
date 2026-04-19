@@ -48,6 +48,7 @@ interface WaChat {
   id: string;
   jid: string;
   name: string;
+  phoneNumber?: string;
   lastMessage: string;
   lastMessageTime: string;
   unreadCount: number;
@@ -141,10 +142,13 @@ function mimeLabel(mime: string | undefined): string {
   return sub?.slice(0, 6) || "FILE";
 }
 
-// Extract filename from a media URL path as last-resort fallback
+// Extract filename from URL — returns empty string if it looks like a UUID hash
 function filenameFromUrl(url: string | undefined): string {
   if (!url) return "";
-  return decodeURIComponent(url.split("/").pop() || "");
+  const name = decodeURIComponent(url.split("/").pop() || "");
+  // Skip UUID-style hashes like "027da65b-2b5b-4b26-8ed4-519016b5a71e.pdf"
+  if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i.test(name)) return "";
+  return name;
 }
 
 async function downloadFile(url: string, filename: string, token?: string) {
@@ -1512,18 +1516,20 @@ export default function WhatsAppCrmPage() {
       const chatList: Array<{
         jid?: string;
         name?: string;
+        phone_number?: string;
         last_message?: string;
         last_message_time?: number | string;
         message_type?: string;
         is_group?: number | boolean;
       }> = data.chats || data || [];
       const mapped: WaChat[] = chatList.map((c) => {
-        const rawName = c.name || (c.jid ?? "").split("@")[0] || "Unknown";
+        const rawName = c.name || c.phone_number || (c.jid ?? "").split("@")[0] || "Unknown";
         const lastMsg = c.last_message || (c.message_type ? mediaPreview(c.message_type) : "");
         return {
           id: c.jid || "",
           jid: c.jid || "",
           name: rawName,
+          phoneNumber: c.phone_number || undefined,
           lastMessage: lastMsg,
           lastMessageTime: c.last_message_time ? String(c.last_message_time) : "",
           unreadCount: 0,
@@ -2302,8 +2308,13 @@ export default function WhatsAppCrmPage() {
                           <div>
                             <p className="text-sm font-semibold text-foreground">{selectedChat.name}</p>
                             <p className="text-[11px] text-muted-foreground">
-                              +{selectedChat.jid.split("@")[0]}
-                              {selectedChat.isGroup && " · Group"}
+                              {selectedChat.phoneNumber
+                                ? `+${selectedChat.phoneNumber}`
+                                : selectedChat.isGroup
+                                  ? "Group"
+                                  : selectedChat.jid.endsWith("@s.whatsapp.net")
+                                    ? `+${selectedChat.jid.split("@")[0]}`
+                                    : "WhatsApp Contact"}
                             </p>
                           </div>
                         </button>
