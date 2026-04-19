@@ -1253,8 +1253,8 @@ function ContactsPanel({ contacts }: { contacts: WaChat[] }) {
                 <p className="truncate text-sm font-medium text-foreground">
                   {c.name}
                 </p>
-                <p className="truncate text-xs text-muted-foreground">
-                  {c.jid.split("@")[0]}
+                <p className="truncate font-mono text-xs text-muted-foreground">
+                  {c.phoneNumber ? `+${c.phoneNumber}` : c.isGroup ? "Group" : c.jid.endsWith("@s.whatsapp.net") ? `+${c.jid.split("@")[0]}` : "WhatsApp Contact"}
                 </p>
               </div>
               {c.isGroup && (
