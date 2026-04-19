@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { io as ioConnect, Socket } from "socket.io-client";
 import { PageWrapper } from "@/components/layout/page-wrapper";
 import {
@@ -30,6 +30,10 @@ import {
   Eye,
   EyeOff,
   X,
+  Pin,
+  PinOff,
+  Tag,
+  ChevronDown,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -54,6 +58,8 @@ interface WaChat {
   unreadCount: number;
   isGroup: boolean;
   avatarInitials: string;
+  chatStatus?: string;
+  tags?: string[];
 }
 
 interface WaMessage {
@@ -1289,6 +1295,12 @@ export default function WhatsAppCrmPage() {
   const [contactInfo, setContactInfo] = useState<ContactInfo | null>(null);
   const [loadingContactInfo, setLoadingContactInfo] = useState(false);
   const [picCache, setPicCache] = useState<Record<string, string>>({});
+  const [pinnedJids, setPinnedJids] = useState<string[]>(() => {
+    try { return JSON.parse(localStorage.getItem("wa_pinned") || "[]"); } catch { return []; }
+  });
+  const [chatFilter, setChatFilter] = useState<string>("all");
+  const [remarkChat, setRemarkChat] = useState<WaChat | null>(null);
+  const [hoveredChatId, setHoveredChatId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const docTplInputRef = useRef<HTMLInputElement>(null);
   const [loadingChats, setLoadingChats] = useState(false);
@@ -1522,10 +1534,14 @@ export default function WhatsAppCrmPage() {
         last_message_time?: number | string;
         message_type?: string;
         is_group?: number | boolean;
+        chat_status?: string;
+        tags?: string;
       }> = data.chats || data || [];
       const mapped: WaChat[] = chatList.map((c) => {
         const rawName = c.name || c.phone_number || (c.jid ?? "").split("@")[0] || "Unknown";
         const lastMsg = c.last_message || (c.message_type ? mediaPreview(c.message_type) : "");
+        let tags: string[] = [];
+        try { tags = c.tags ? JSON.parse(c.tags) : []; } catch { tags = []; }
         return {
           id: c.jid || "",
           jid: c.jid || "",
@@ -1536,6 +1552,8 @@ export default function WhatsAppCrmPage() {
           unreadCount: 0,
           isGroup: !!(c.is_group),
           avatarInitials: getInitials(rawName),
+          chatStatus: c.chat_status || "open",
+          tags,
         };
       });
       setChats(mapped);
@@ -1880,9 +1898,45 @@ export default function WhatsAppCrmPage() {
   }
 
   const isConnected = session?.status === "connected";
-  const filteredChats = chats.filter((c) =>
-    c.name.toLowerCase().includes(search.toLowerCase())
-  );
+
+  const togglePin = useCallback((jid: string) => {
+    setPinnedJids(prev => {
+      const next = prev.includes(jid) ? prev.filter(j => j !== jid) : [...prev, jid];
+      localStorage.setItem("wa_pinned", JSON.stringify(next));
+      return next;
+    });
+  }, []);
+
+  const REMARK_OPTIONS = ["🔥 Hot Lead", "❄️ Cold", "⏳ Follow Up", "✅ Closed", "💎 VIP", "🆕 New Customer"];
+
+  const saveRemark = useCallback(async (chat: WaChat, tags: string[]) => {
+    if (!backendUrl || !session) return;
+    try {
+      await fetch(`${backendUrl}/api/sessions/${session.id}/contacts/${encodeURIComponent(chat.jid)}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", ...authHeaders() },
+        body: JSON.stringify({ tags }),
+      });
+      setChats(prev => prev.map(c => c.jid === chat.jid ? { ...c, tags } : c));
+    } catch { /* silent */ }
+    setRemarkChat(null);
+  }, [backendUrl, session]);
+
+  const filteredChats = useMemo(() => {
+    let list = chats.filter(c => c.name.toLowerCase().includes(search.toLowerCase()));
+    if (chatFilter === "pinned") list = list.filter(c => pinnedJids.includes(c.jid));
+    else if (chatFilter === "groups") list = list.filter(c => c.isGroup);
+    else if (chatFilter === "open") list = list.filter(c => !c.chatStatus || c.chatStatus === "open");
+    else if (chatFilter === "pending") list = list.filter(c => c.chatStatus === "pending");
+    else if (chatFilter === "resolved") list = list.filter(c => c.chatStatus === "resolved");
+    else if (chatFilter === "tagged") list = list.filter(c => c.tags && c.tags.length > 0);
+    // Pinned chats always sort to top
+    return [...list].sort((a, b) => {
+      const ap = pinnedJids.includes(a.jid) ? 0 : 1;
+      const bp = pinnedJids.includes(b.jid) ? 0 : 1;
+      return ap - bp;
+    });
+  }, [chats, search, chatFilter, pinnedJids]);
 
   // ── Header extra: status + refresh ─────────────────────────────────────────
   const headerExtra = (
@@ -2013,6 +2067,47 @@ export default function WhatsAppCrmPage() {
                   </button>
                 </>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Remark / tag selector modal */}
+      {remarkChat && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={() => setRemarkChat(null)}>
+          <div className="w-80 rounded-2xl bg-[#111] border border-[#2A2A2A] p-5 shadow-2xl" onClick={e => e.stopPropagation()}>
+            <div className="mb-4 flex items-center justify-between">
+              <p className="text-sm font-semibold text-foreground">Remark — {remarkChat.name}</p>
+              <button onClick={() => setRemarkChat(null)} className="text-muted-foreground hover:text-foreground"><X className="h-4 w-4" /></button>
+            </div>
+            <p className="mb-3 text-[11px] text-muted-foreground">Select one or more labels for this contact</p>
+            <div className="flex flex-wrap gap-2">
+              {REMARK_OPTIONS.map(opt => {
+                const active = remarkChat.tags?.includes(opt);
+                return (
+                  <button
+                    key={opt}
+                    onClick={() => {
+                      const current = remarkChat.tags || [];
+                      const next = active ? current.filter(t => t !== opt) : [...current, opt];
+                      setRemarkChat({ ...remarkChat, tags: next });
+                    }}
+                    className={cn(
+                      "rounded-full px-3 py-1 text-[11px] font-medium transition-colors",
+                      active ? "bg-primary text-white" : "bg-[#1E1E1E] text-muted-foreground hover:text-foreground"
+                    )}
+                  >
+                    {opt}
+                  </button>
+                );
+              })}
+            </div>
+            <div className="mt-4 flex justify-end gap-2">
+              <button onClick={() => setRemarkChat(null)} className="rounded-lg px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground">Cancel</button>
+              <button
+                onClick={() => saveRemark(remarkChat, remarkChat.tags || [])}
+                className="rounded-lg bg-primary px-4 py-1.5 text-xs font-semibold text-white"
+              >Save</button>
             </div>
           </div>
         </div>
@@ -2196,7 +2291,7 @@ export default function WhatsAppCrmPage() {
                   </div>
 
                   {/* Search */}
-                  <div className="border-b border-[#1E1E1E] p-2">
+                  <div className="border-b border-[#1E1E1E] p-2 pb-0">
                     <div className="relative">
                       <Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
                       <input
@@ -2206,6 +2301,23 @@ export default function WhatsAppCrmPage() {
                         placeholder="Search chats…"
                         className="w-full rounded-lg border border-[#1E1E1E] bg-[#111111] py-1.5 pl-8 pr-3 text-xs outline-none focus:border-primary"
                       />
+                    </div>
+                    {/* Filter pills */}
+                    <div className="flex gap-1 overflow-x-auto py-2 scrollbar-none">
+                      {(["all","pinned","groups","open","pending","resolved","tagged"] as const).map(f => (
+                        <button
+                          key={f}
+                          onClick={() => setChatFilter(f)}
+                          className={cn(
+                            "shrink-0 rounded-full px-2.5 py-0.5 text-[10px] font-medium capitalize transition-colors",
+                            chatFilter === f
+                              ? "bg-primary text-white"
+                              : "bg-[#1E1E1E] text-muted-foreground hover:text-foreground"
+                          )}
+                        >
+                          {f === "all" ? "All" : f === "pinned" ? "📌 Pinned" : f === "groups" ? "Groups" : f === "open" ? "Open" : f === "pending" ? "Pending" : f === "resolved" ? "Resolved" : "Tagged"}
+                        </button>
+                      ))}
                     </div>
                   </div>
 
@@ -2253,57 +2365,86 @@ export default function WhatsAppCrmPage() {
                         <p className="text-xs text-muted-foreground">No chats yet</p>
                       </div>
                     ) : (
-                      filteredChats.map((chat) => (
-                        <button
-                          key={chat.id}
-                          onClick={() => {
-                            setSelectedChat(chat);
-                            setMessages([]);
-                          }}
-                          className={cn(
-                            "flex w-full items-center gap-3 border-b border-[#1E1E1E] px-4 py-3 text-left transition-colors",
-                            selectedChat?.id === chat.id
-                              ? "bg-primary/5"
-                              : "hover:bg-[#1E1E1E]/40"
-                          )}
-                        >
-                          <div className="relative shrink-0">
-                            <Avatar name={chat.name} picUrl={picCache[chat.jid]} size={10} />
-                            {chat.isGroup && (
-                              <span className="absolute -bottom-0.5 -right-0.5 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-[#0A0A0A] text-[#6B7280]">
-                                <Users className="h-2 w-2" />
-                              </span>
+                      filteredChats.map((chat) => {
+                        const isPinned = pinnedJids.includes(chat.jid);
+                        const isHovered = hoveredChatId === chat.jid;
+                        return (
+                          <div
+                            key={chat.id}
+                            className={cn(
+                              "group relative flex items-center gap-3 border-b border-[#1E1E1E] px-4 py-3 transition-colors cursor-pointer",
+                              selectedChat?.id === chat.id ? "bg-primary/5" : "hover:bg-[#1E1E1E]/40"
                             )}
-                          </div>
-                          <div className="min-w-0 flex-1">
-                            <div className="flex items-baseline justify-between gap-1">
-                              <p className="truncate text-xs font-semibold text-foreground">
-                                {chat.name}
-                              </p>
-                              {chat.lastMessageTime && (
-                                <span className="shrink-0 text-[10px] text-muted-foreground">
-                                  {formatTime(chat.lastMessageTime)}
+                            onMouseEnter={() => setHoveredChatId(chat.jid)}
+                            onMouseLeave={() => setHoveredChatId(null)}
+                            onClick={() => { setSelectedChat(chat); setMessages([]); }}
+                          >
+                            {/* Pin indicator stripe */}
+                            {isPinned && <span className="absolute left-0 top-0 h-full w-0.5 bg-primary/60 rounded-r" />}
+                            <div className="relative shrink-0">
+                              <Avatar name={chat.name} picUrl={picCache[chat.jid]} size={10} />
+                              {chat.isGroup && (
+                                <span className="absolute -bottom-0.5 -right-0.5 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-[#0A0A0A] text-[#6B7280]">
+                                  <Users className="h-2 w-2" />
+                                </span>
+                              )}
+                              {isPinned && (
+                                <span className="absolute -top-0.5 -right-0.5 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-[#0A0A0A] text-primary">
+                                  <Pin className="h-2 w-2" />
                                 </span>
                               )}
                             </div>
-                            {!chat.isGroup && chat.phoneNumber && (
-                              <p className="truncate font-mono text-[10px] text-[#25D366]/70">
-                                +{chat.phoneNumber}
-                              </p>
-                            )}
-                            <div className="flex items-center justify-between gap-1">
-                              <p className="truncate text-[11px] text-muted-foreground">
-                                {chat.lastMessage || "No messages"}
-                              </p>
-                              {chat.unreadCount > 0 && (
-                                <span className="flex h-4 min-w-[1rem] shrink-0 items-center justify-center rounded-full bg-[#25D366] px-1 text-[10px] font-bold text-white">
-                                  {chat.unreadCount > 99 ? "99+" : chat.unreadCount}
-                                </span>
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-baseline justify-between gap-1">
+                                <p className="truncate text-xs font-semibold text-foreground">{chat.name}</p>
+                                <div className="flex shrink-0 items-center gap-1">
+                                  {/* Action buttons shown on hover */}
+                                  {isHovered && (
+                                    <>
+                                      <button
+                                        onClick={(e) => { e.stopPropagation(); setRemarkChat(chat); }}
+                                        className="flex h-5 w-5 items-center justify-center rounded text-muted-foreground hover:text-foreground"
+                                        title="Add remark"
+                                      >
+                                        <Tag className="h-3 w-3" />
+                                      </button>
+                                      <button
+                                        onClick={(e) => { e.stopPropagation(); togglePin(chat.jid); }}
+                                        className="flex h-5 w-5 items-center justify-center rounded text-muted-foreground hover:text-foreground"
+                                        title={isPinned ? "Unpin" : "Pin chat"}
+                                      >
+                                        {isPinned ? <PinOff className="h-3 w-3" /> : <Pin className="h-3 w-3" />}
+                                      </button>
+                                    </>
+                                  )}
+                                  {!isHovered && chat.lastMessageTime && (
+                                    <span className="text-[10px] text-muted-foreground">{formatTime(chat.lastMessageTime)}</span>
+                                  )}
+                                </div>
+                              </div>
+                              {!chat.isGroup && chat.phoneNumber && (
+                                <p className="truncate font-mono text-[10px] text-white/40">+{chat.phoneNumber}</p>
                               )}
+                              {/* Tags/remarks */}
+                              {chat.tags && chat.tags.length > 0 && (
+                                <div className="mt-0.5 flex flex-wrap gap-1">
+                                  {chat.tags.map(tag => (
+                                    <span key={tag} className="rounded-full bg-primary/10 px-1.5 py-px text-[9px] text-primary/80">{tag}</span>
+                                  ))}
+                                </div>
+                              )}
+                              <div className="flex items-center justify-between gap-1">
+                                <p className="truncate text-[11px] text-muted-foreground">{chat.lastMessage || "No messages"}</p>
+                                {chat.unreadCount > 0 && (
+                                  <span className="flex h-4 min-w-[1rem] shrink-0 items-center justify-center rounded-full bg-[#25D366] px-1 text-[10px] font-bold text-white">
+                                    {chat.unreadCount > 99 ? "99+" : chat.unreadCount}
+                                  </span>
+                                )}
+                              </div>
                             </div>
                           </div>
-                        </button>
-                      ))
+                        );
+                      })
                     )}
                   </div>
 
