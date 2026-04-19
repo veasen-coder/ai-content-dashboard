@@ -24,7 +24,6 @@ import {
   Mic,
   Paperclip,
   Circle,
-  Image as ImageIcon,
   FileText,
   ShieldAlert,
   ShieldCheck,
@@ -62,7 +61,10 @@ interface WaMessage {
   body: string;
   timestamp: number;
   status: "pending" | "sent" | "delivered" | "read" | "error";
-  type: "text" | "image" | "document" | "audio" | "sticker";
+  type: "text" | "image" | "document" | "audio" | "sticker" | "video" | "ptt";
+  mediaUrl?: string;
+  mediaMimetype?: string;
+  caption?: string;
 }
 
 type Tab = "inbox" | "contacts" | "settings";
@@ -79,7 +81,16 @@ function getInitials(name: string): string {
 }
 
 function formatTime(ts: number | string): string {
-  const date = typeof ts === "string" ? new Date(ts) : new Date(ts * 1000);
+  // Handle numeric strings (Unix timestamps stored as strings from SQLite)
+  let date: Date;
+  if (typeof ts === "string" && /^\d+$/.test(ts)) {
+    date = new Date(parseInt(ts, 10) * 1000);
+  } else if (typeof ts === "string") {
+    date = new Date(ts);
+  } else {
+    date = new Date(ts * 1000);
+  }
+  if (isNaN(date.getTime())) return "";
   const now = new Date();
   const diffMs = now.getTime() - date.getTime();
   const diffDays = Math.floor(diffMs / 86400000);
@@ -460,10 +471,17 @@ const AI_DEFAULTS: AiConfig = {
 function Toggle({ value, onChange }: { value: boolean; onChange: (v: boolean) => void }) {
   return (
     <button
+      type="button"
       onClick={() => onChange(!value)}
-      className={cn("relative h-5 w-9 shrink-0 rounded-full transition-colors", value ? "bg-[#25D366]" : "bg-[#2A2A2A]")}
+      className={cn(
+        "relative h-6 w-11 shrink-0 rounded-full transition-colors duration-200 outline-none focus:outline-none",
+        value ? "bg-[#25D366]" : "bg-[#333]"
+      )}
     >
-      <span className={cn("absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform", value ? "translate-x-4" : "translate-x-0.5")} />
+      <span className={cn(
+        "absolute top-0.5 left-0.5 h-5 w-5 rounded-full bg-white shadow-sm transition-transform duration-200",
+        value ? "translate-x-5" : "translate-x-0"
+      )} />
     </button>
   );
 }
@@ -487,13 +505,19 @@ function SectionCard({ title, icon, children, defaultOpen = false }: {
   return (
     <div className="rounded-xl border border-[#1E1E1E] bg-[#111111] overflow-hidden">
       <button
+        type="button"
         onClick={() => setOpen((v) => !v)}
-        className="flex w-full items-center justify-between px-5 py-3.5 text-left hover:bg-[#1A1A1A] transition-colors"
+        className="flex w-full items-center justify-between px-5 py-3.5 text-left hover:bg-[#1A1A1A] transition-colors outline-none focus:outline-none"
       >
         <span className="flex items-center gap-2.5 text-sm font-semibold text-foreground">
           <span>{icon}</span>{title}
         </span>
-        <span className={cn("text-muted-foreground transition-transform text-xs", open ? "rotate-180" : "")}>▼</span>
+        <svg
+          className={cn("h-4 w-4 text-muted-foreground transition-transform duration-200", open ? "rotate-180" : "")}
+          fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}
+        >
+          <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+        </svg>
       </button>
       {open && <div className="border-t border-[#1E1E1E] px-5 py-4 space-y-3">{children}</div>}
     </div>
@@ -1265,6 +1289,9 @@ export default function WhatsAppCrmPage() {
         messageType?: string;
         timestamp?: number;
         pushName?: string;
+        mediaUrl?: string;
+        mediaMimetype?: string;
+        caption?: string;
       };
     }) => {
       const msg = payload.message;
@@ -1272,15 +1299,26 @@ export default function WhatsAppCrmPage() {
 
       // Update the messages panel if this chat is open
       setMessages((prev) => {
-        const alreadyExists = prev.some((m) => m.id === msg.id);
-        if (alreadyExists) return prev;
+        // Dedup by ID
+        if (msg.id && prev.some((m) => m.id === msg.id)) return prev;
+        // Secondary dedup: if it's our own message sent <3s ago with same text, skip (optimistic already shown)
+        if (msg.fromMe && msg.content) {
+          const cutoff = (msg.timestamp || 0) - 3;
+          const duplicate = prev.some(
+            (m) => m.fromMe && m.body === msg.content && m.timestamp >= cutoff
+          );
+          if (duplicate) return prev;
+        }
         const newMsg: WaMessage = {
           id: msg.id || String(Date.now()),
           fromMe: !!msg.fromMe,
-          body: msg.content || "",
+          body: msg.content || msg.caption || "",
           timestamp: msg.timestamp || Math.floor(Date.now() / 1000),
           status: msg.fromMe ? "sent" : "delivered",
           type: (msg.messageType || "text") as WaMessage["type"],
+          mediaUrl: msg.mediaUrl || undefined,
+          mediaMimetype: msg.mediaMimetype || undefined,
+          caption: msg.caption || undefined,
         };
         // Only append if this chat is currently open
         if (selectedChatRef.current?.jid === jid) {
@@ -1421,15 +1459,25 @@ export default function WhatsAppCrmPage() {
         timestamp?: number;
         message_type?: string; type?: string;
         status?: WaMessage["status"];
+        media_url?: string; mediaUrl?: string;
+        media_mimetype?: string; mediaMimetype?: string;
+        caption?: string;
       }> = data.messages || data || [];
-      const mapped: WaMessage[] = msgList.map((m) => ({
-        id: m.id || m.message_id || String(Math.random()),
-        fromMe: !!(m.from_me ?? m.fromMe),
-        body: m.content || m.body || m.text || "",
-        timestamp: m.timestamp || 0,
-        status: m.status || "delivered",
-        type: (m.message_type || m.type || "text") as WaMessage["type"],
-      }));
+      const mapped: WaMessage[] = msgList.map((m) => {
+        const msgType = (m.message_type || m.type || "text") as WaMessage["type"];
+        const body = m.content || m.body || m.text || m.caption || "";
+        return {
+          id: m.id || m.message_id || String(Math.random()),
+          fromMe: !!(m.from_me ?? m.fromMe),
+          body,
+          timestamp: m.timestamp || 0,
+          status: m.status || (m.from_me ? "sent" : "delivered"),
+          type: msgType,
+          mediaUrl: m.media_url || m.mediaUrl || undefined,
+          mediaMimetype: m.media_mimetype || m.mediaMimetype || undefined,
+          caption: m.caption || undefined,
+        };
+      });
       setMessages(mapped);
       setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }), 50);
     } catch {
@@ -1463,15 +1511,21 @@ export default function WhatsAppCrmPage() {
     setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }), 50);
 
     try {
-      await fetch(`${backendUrl}/api/sessions/${session.id}/messages/send`, {
+      const res = await fetch(`${backendUrl}/api/sessions/${session.id}/messages/send`, {
         method: "POST",
         headers: { "Content-Type": "application/json", ...authHeaders() },
         body: JSON.stringify({ jid: selectedChat.jid, text }),
         signal: AbortSignal.timeout(10000),
       });
-      // Update optimistic to sent
+      const data = await res.json().catch(() => ({}));
+      const realId: string | undefined = data.messageId;
+      // Replace optimistic ID with real message ID so Socket.io dedup catches it
       setMessages((prev) =>
-        prev.map((m) => (m.id === optimistic.id ? { ...m, status: "sent" } : m))
+        prev.map((m) =>
+          m.id === optimistic.id
+            ? { ...m, id: realId || m.id, status: "sent" }
+            : m
+        )
       );
     } catch {
       setMessages((prev) =>
@@ -1919,46 +1973,116 @@ export default function WhatsAppCrmPage() {
                               >
                                 <div
                                   className={cn(
-                                    "max-w-[72%] rounded-2xl px-3.5 py-2 text-sm",
+                                    "max-w-[72%] rounded-2xl text-sm overflow-hidden",
                                     msg.fromMe
                                       ? "rounded-br-sm bg-primary/20 text-foreground"
-                                      : "rounded-bl-sm bg-[#1E1E1E] text-foreground"
+                                      : "rounded-bl-sm bg-[#1E1E1E] text-foreground",
+                                    // No padding for pure image/sticker bubbles
+                                    (msg.type === "image" || msg.type === "video" || msg.type === "sticker") && msg.mediaUrl
+                                      ? "p-0"
+                                      : "px-3.5 py-2"
                                   )}
                                 >
-                                  {msg.type === "image" && (
-                                    <div className="mb-1.5 flex items-center gap-1.5 text-xs text-muted-foreground">
-                                      <ImageIcon className="h-3.5 w-3.5" />
-                                      Photo
+                                  {/* ── Image / Video ── */}
+                                  {(msg.type === "image" || msg.type === "video") && msg.mediaUrl ? (
+                                    <div>
+                                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                                      <img
+                                        src={`${backendUrl}${msg.mediaUrl}`}
+                                        alt={msg.caption || "Image"}
+                                        className="max-w-[280px] max-h-[300px] w-full object-cover rounded-2xl"
+                                        onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+                                      />
+                                      {msg.caption && (
+                                        <p className="px-3 pt-1.5 pb-0.5 text-xs text-foreground/80">{msg.caption}</p>
+                                      )}
+                                      <div className={cn("px-3 pb-1.5 flex items-center gap-1 text-[10px] text-muted-foreground/60", msg.fromMe ? "justify-end" : "justify-start")}>
+                                        <span>{formatTime(msg.timestamp)}</span>
+                                        {msg.fromMe && <MsgStatus status={msg.status} />}
+                                      </div>
+                                    </div>
+                                  ) : /* ── Sticker ── */
+                                  msg.type === "sticker" && msg.mediaUrl ? (
+                                    <div className="p-1">
+                                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                                      <img
+                                        src={`${backendUrl}${msg.mediaUrl}`}
+                                        alt="Sticker"
+                                        className="h-24 w-24 object-contain"
+                                        onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+                                      />
+                                    </div>
+                                  ) : /* ── Audio / Voice ── */
+                                  (msg.type === "audio" || msg.type === "ptt") ? (
+                                    <div className="flex items-center gap-2.5 min-w-[160px]">
+                                      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#25D366]/20">
+                                        <Mic className="h-4 w-4 text-[#25D366]" />
+                                      </div>
+                                      {msg.mediaUrl ? (
+                                        <audio
+                                          controls
+                                          src={`${backendUrl}${msg.mediaUrl}`}
+                                          className="h-8 max-w-[200px]"
+                                        />
+                                      ) : (
+                                        <div className="flex-1">
+                                          <div className="flex gap-0.5">
+                                            {Array.from({ length: 20 }).map((_, i) => (
+                                              <div key={i} className="w-0.5 rounded-full bg-muted-foreground/40" style={{ height: `${4 + Math.random() * 12}px` }} />
+                                            ))}
+                                          </div>
+                                          <p className="mt-0.5 text-[10px] text-muted-foreground/60">Voice message</p>
+                                        </div>
+                                      )}
+                                    </div>
+                                  ) : /* ── Document / PDF ── */
+                                  msg.type === "document" ? (
+                                    <div className="flex items-center gap-3">
+                                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-500/20">
+                                        <FileText className="h-5 w-5 text-blue-400" />
+                                      </div>
+                                      <div className="min-w-0 flex-1">
+                                        <p className="truncate text-xs font-medium text-foreground">
+                                          {msg.body || msg.caption || "Document"}
+                                        </p>
+                                        <p className="text-[10px] text-muted-foreground/60">
+                                          {msg.mediaMimetype?.split("/")[1]?.toUpperCase() || "FILE"}
+                                        </p>
+                                      </div>
+                                      {msg.mediaUrl && (
+                                        <a
+                                          href={`${backendUrl}${msg.mediaUrl}`}
+                                          target="_blank"
+                                          rel="noopener noreferrer"
+                                          className="shrink-0 rounded-lg border border-[#2A2A2A] p-1.5 text-muted-foreground hover:text-foreground transition-colors"
+                                        >
+                                          <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                            <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                                          </svg>
+                                        </a>
+                                      )}
+                                    </div>
+                                  ) : (
+                                    /* ── Text / Emoji (default) ── */
+                                    <p className="whitespace-pre-wrap break-words leading-relaxed">
+                                      {msg.body || <span className="text-muted-foreground/40 italic text-xs">Media message</span>}
+                                    </p>
+                                  )}
+
+                                  {/* Timestamp + tick for non-media or text-only */}
+                                  {msg.type === "text" && (
+                                    <div className={cn("mt-0.5 flex items-center gap-1 text-[10px] text-muted-foreground/60", msg.fromMe ? "justify-end" : "justify-start")}>
+                                      <span>{formatTime(msg.timestamp)}</span>
+                                      {msg.fromMe && <MsgStatus status={msg.status} />}
                                     </div>
                                   )}
-                                  {msg.type === "document" && (
-                                    <div className="mb-1.5 flex items-center gap-1.5 text-xs text-muted-foreground">
-                                      <FileText className="h-3.5 w-3.5" />
-                                      Document
+                                  {/* Timestamp for doc/audio */}
+                                  {(msg.type === "document" || msg.type === "audio" || msg.type === "ptt") && (
+                                    <div className={cn("mt-1 flex items-center gap-1 text-[10px] text-muted-foreground/60", msg.fromMe ? "justify-end" : "justify-start")}>
+                                      <span>{formatTime(msg.timestamp)}</span>
+                                      {msg.fromMe && <MsgStatus status={msg.status} />}
                                     </div>
                                   )}
-                                  {msg.type === "audio" && (
-                                    <div className="mb-1 flex items-center gap-1.5 text-xs text-muted-foreground">
-                                      <Mic className="h-3.5 w-3.5" />
-                                      Voice message
-                                    </div>
-                                  )}
-                                  <p className="whitespace-pre-wrap break-words leading-relaxed">
-                                    {msg.body}
-                                  </p>
-                                  <div
-                                    className={cn(
-                                      "mt-0.5 flex items-center gap-1 text-[10px] text-muted-foreground/60",
-                                      msg.fromMe ? "justify-end" : "justify-start"
-                                    )}
-                                  >
-                                    <span>
-                                      {msg.timestamp
-                                        ? formatTime(msg.timestamp)
-                                        : ""}
-                                    </span>
-                                    {msg.fromMe && <MsgStatus status={msg.status} />}
-                                  </div>
                                 </div>
                               </div>
                             ))}
