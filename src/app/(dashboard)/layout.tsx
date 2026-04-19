@@ -45,7 +45,7 @@ export default function DashboardLayout({
           <div className="md:hidden" />
           <ClaudeBalance />
         </div>
-        <div className="flex-1 overflow-auto">{children}</div>
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden">{children}</div>
       </div>
     </div>
   );
