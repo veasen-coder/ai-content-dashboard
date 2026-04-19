@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
+import { io as ioConnect, Socket } from "socket.io-client";
 import { PageWrapper } from "@/components/layout/page-wrapper";
 import {
   WifiOff,
@@ -41,6 +42,7 @@ interface WaSession {
   name: string;
   status: "connected" | "connecting" | "disconnected" | "qr_ready";
   phone?: string;
+  phone_number?: string;
   qrCode?: string;
 }
 
@@ -1169,6 +1171,9 @@ export default function WhatsAppCrmPage() {
   const [search, setSearch] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const qrPollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const socketRef = useRef<Socket | null>(null);
+  const selectedChatRef = useRef<WaChat | null>(null);
+  useEffect(() => { selectedChatRef.current = selectedChat; }, [selectedChat]);
 
   // Load backend URL + JWT from localStorage on mount
   useEffect(() => {
@@ -1195,8 +1200,13 @@ export default function WhatsAppCrmPage() {
       if (!res.ok) throw new Error("not ok");
       const data = await res.json();
       setBackendOnline(true);
-      const list: WaSession[] = Array.isArray(data) ? data : (data.sessions ?? []);
-      if (list.length > 0) setSession(list[0]);
+      const rawList = Array.isArray(data) ? data : (data.sessions ?? []);
+      const list: WaSession[] = rawList.map((s: WaSession & { phone_number?: string }) => ({
+        ...s,
+        phone: s.phone_number || s.phone || "",
+        phone_number: s.phone_number || s.phone || "",
+      }));
+      if (list.length > 0) setSession((prev) => prev ? { ...prev, ...list[0] } : list[0]);
     } catch {
       setBackendOnline(false);
       setSession(null);
@@ -1226,6 +1236,125 @@ export default function WhatsAppCrmPage() {
   useEffect(() => {
     checkBackend(backendUrl);
   }, [backendUrl, checkBackend]);
+
+  // ── Socket.io real-time connection ────────────────────────────────────────
+  useEffect(() => {
+    if (!backendUrl) return;
+
+    // Disconnect previous socket if URL changed
+    if (socketRef.current) {
+      socketRef.current.disconnect();
+      socketRef.current = null;
+    }
+
+    const socket = ioConnect(backendUrl, {
+      transports: ["websocket", "polling"],
+      reconnectionDelay: 2000,
+      reconnectionAttempts: 10,
+    });
+
+    socketRef.current = socket;
+
+    // New message arrived
+    socket.on("message:new", (payload: {
+      sessionId: string;
+      message: {
+        id?: string;
+        remoteJid?: string;
+        fromMe?: boolean;
+        content?: string;
+        messageType?: string;
+        timestamp?: number;
+        pushName?: string;
+      };
+    }) => {
+      const msg = payload.message;
+      const jid = msg.remoteJid || "";
+
+      // Update the messages panel if this chat is open
+      setMessages((prev) => {
+        const alreadyExists = prev.some((m) => m.id === msg.id);
+        if (alreadyExists) return prev;
+        const newMsg: WaMessage = {
+          id: msg.id || String(Date.now()),
+          fromMe: !!msg.fromMe,
+          body: msg.content || "",
+          timestamp: msg.timestamp || Math.floor(Date.now() / 1000),
+          status: msg.fromMe ? "sent" : "delivered",
+          type: (msg.messageType || "text") as WaMessage["type"],
+        };
+        // Only append if this chat is currently open
+        if (selectedChatRef.current?.jid === jid) {
+          setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }), 50);
+          return [...prev, newMsg];
+        }
+        return prev;
+      });
+
+      // Update chat list preview + bump to top
+      setChats((prev) => {
+        const existing = prev.find((c) => c.jid === jid);
+        const name = existing?.name || msg.pushName || jid.split("@")[0];
+        const updated: WaChat = {
+          id: jid,
+          jid,
+          name,
+          lastMessage: msg.content || `[${msg.messageType || "media"}]`,
+          lastMessageTime: String(msg.timestamp || Math.floor(Date.now() / 1000)),
+          unreadCount: (existing?.unreadCount ?? 0) + (msg.fromMe ? 0 : 1),
+          isGroup: jid.endsWith("@g.us"),
+          avatarInitials: getInitials(name),
+        };
+        const filtered = prev.filter((c) => c.jid !== jid);
+        return [updated, ...filtered];
+      });
+    });
+
+    // Message status update (sent → delivered → read ticks)
+    socket.on("message:update", (payload: { sessionId: string; updates: Array<{ key: { id?: string }; update: { status?: number } }> }) => {
+      const STATUS_MAP: Record<number, WaMessage["status"]> = { 1: "sent", 2: "delivered", 3: "delivered", 4: "read" };
+      setMessages((prev) =>
+        prev.map((m) => {
+          const hit = payload.updates?.find((u) => u.key?.id === m.id);
+          if (!hit?.update?.status) return m;
+          return { ...m, status: STATUS_MAP[hit.update.status] ?? m.status };
+        })
+      );
+    });
+
+    // Session status changed (connected / disconnected / qr_ready)
+    socket.on("session:status", (payload: { sessionId: string; status: WaSession["status"]; user?: { id?: string; name?: string } }) => {
+      setSession((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          status: payload.status,
+          phone: payload.user?.id?.split(":")[0] || prev.phone,
+          name: payload.user?.name || prev.name,
+        };
+      });
+      if (payload.status === "connected") {
+        setBackendOnline(true);
+      }
+    });
+
+    // QR code updated
+    socket.on("session:qr", (payload: { sessionId: string; qrDataUrl?: string; qr?: string }) => {
+      setSession((prev) => prev ? { ...prev, status: "qr_ready", qrCode: payload.qrDataUrl || payload.qr } : prev);
+    });
+
+    // Backend says chats changed — re-fetch
+    socket.on("chats:refresh", () => {
+      // trigger fetchChats by resetting session status momentarily isn't great
+      // Instead just set a flag — fetchChats will be called by useEffect
+      setChats([]); // clears so useEffect sees change and re-fetches
+    });
+
+    return () => {
+      socket.disconnect();
+      socketRef.current = null;
+    };
+  }, [backendUrl]);
 
   // Fetch chat list when connected
   const fetchChats = useCallback(async () => {
@@ -1462,7 +1591,14 @@ export default function WhatsAppCrmPage() {
         </span>
       )}
       {backendOnline === true && session && (
-        <StatusPill status={session.status} />
+        <div className="flex items-center gap-2">
+          <StatusPill status={session.status} />
+          {(session.phone_number || session.phone) && (
+            <span className="rounded-md border border-[#1E1E1E] bg-[#111111] px-2 py-0.5 font-mono text-[11px] text-muted-foreground">
+              +{(session.phone_number || session.phone || "").replace(/\D/g, "")}
+            </span>
+          )}
+        </div>
       )}
       {backendOnline === false && (
         <span className="flex items-center gap-1.5 text-xs font-medium text-red-400">
@@ -1565,7 +1701,9 @@ export default function WhatsAppCrmPage() {
                       </div>
                       <div className="min-w-0">
                         <p className="truncate text-xs font-semibold text-foreground">
-                          {session?.name || session?.id || "Session"}
+                          {session?.phone_number || session?.phone
+                            ? `+${(session.phone_number || session.phone || "").replace(/\D/g, "")}`
+                            : session?.name || session?.id || "Session"}
                         </p>
                         {session && <StatusPill status={session.status} />}
                       </div>
