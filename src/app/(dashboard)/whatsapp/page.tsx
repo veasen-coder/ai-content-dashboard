@@ -1299,6 +1299,7 @@ export default function WhatsAppCrmPage() {
   const socketRef = useRef<Socket | null>(null);
   const selectedChatRef = useRef<WaChat | null>(null);
   useEffect(() => { selectedChatRef.current = selectedChat; }, [selectedChat]);
+  const loadedPicsRef = useRef<Set<string>>(new Set());
 
   // Load backend URL on mount — env var takes priority, then localStorage
   useEffect(() => {
@@ -1548,6 +1549,35 @@ export default function WhatsAppCrmPage() {
   useEffect(() => {
     fetchChats();
   }, [fetchChats]);
+
+  // Load profile pics for all non-group chats progressively in the background
+  useEffect(() => {
+    if (!backendUrl || !session || session.status !== "connected" || chats.length === 0) return;
+    let stopped = false;
+    const toLoad = chats.filter(c => !c.isGroup && !loadedPicsRef.current.has(c.jid));
+    if (toLoad.length === 0) return;
+
+    (async () => {
+      for (const chat of toLoad) {
+        if (stopped) break;
+        loadedPicsRef.current.add(chat.jid);
+        try {
+          const res = await fetch(
+            `${backendUrl}/api/sessions/${session.id}/contacts/${encodeURIComponent(chat.jid)}/info`,
+            { signal: AbortSignal.timeout(5000), headers: authHeaders() }
+          );
+          if (!stopped && res.ok) {
+            const d = await res.json();
+            if (d.profilePicUrl) setPicCache(prev => ({ ...prev, [chat.jid]: d.profilePicUrl }));
+          }
+        } catch { /* no pic */ }
+        await new Promise(r => setTimeout(r, 350));
+      }
+    })();
+
+    return () => { stopped = true; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chats, backendUrl, session?.id, session?.status]);
 
   // Fetch messages when chat selected
   const fetchMessages = useCallback(async () => {
@@ -2256,6 +2286,11 @@ export default function WhatsAppCrmPage() {
                                 </span>
                               )}
                             </div>
+                            {!chat.isGroup && chat.phoneNumber && (
+                              <p className="truncate font-mono text-[10px] text-[#25D366]/70">
+                                +{chat.phoneNumber}
+                              </p>
+                            )}
                             <div className="flex items-center justify-between gap-1">
                               <p className="truncate text-[11px] text-muted-foreground">
                                 {chat.lastMessage || "No messages"}
