@@ -71,6 +71,42 @@ type Tab = "inbox" | "contacts" | "settings";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
+// Baileys stores raw content types — map to our simplified type
+function normalizeType(raw: string | undefined): WaMessage["type"] {
+  switch (raw) {
+    case "conversation":
+    case "extendedTextMessage":
+    case "text": return "text";
+    case "imageMessage":
+    case "image": return "image";
+    case "videoMessage":
+    case "video": return "video";
+    case "audioMessage":
+    case "audio": return "audio";
+    case "pttMessage":
+    case "ptt": return "ptt";
+    case "documentMessage":
+    case "document": return "document";
+    case "stickerMessage":
+    case "sticker": return "sticker";
+    default: return raw?.includes("image") ? "image" : raw?.includes("audio") ? "audio" : raw?.includes("video") ? "video" : raw?.includes("document") ? "document" : "text";
+  }
+}
+
+// Human-readable preview for media types in chat list
+function mediaPreview(type: string): string {
+  const t = normalizeType(type);
+  switch (t) {
+    case "image": return "📷 Photo";
+    case "video": return "🎥 Video";
+    case "audio": return "🎙️ Voice message";
+    case "ptt": return "🎙️ Voice message";
+    case "document": return "📄 Document";
+    case "sticker": return "🎭 Sticker";
+    default: return "";
+  }
+}
+
 function getInitials(name: string): string {
   return name
     .split(" ")
@@ -1315,7 +1351,7 @@ export default function WhatsAppCrmPage() {
           body: msg.content || msg.caption || "",
           timestamp: msg.timestamp || Math.floor(Date.now() / 1000),
           status: msg.fromMe ? "sent" : "delivered",
-          type: (msg.messageType || "text") as WaMessage["type"],
+          type: normalizeType(msg.messageType),
           mediaUrl: msg.mediaUrl || undefined,
           mediaMimetype: msg.mediaMimetype || undefined,
           caption: msg.caption || undefined,
@@ -1336,7 +1372,7 @@ export default function WhatsAppCrmPage() {
           id: jid,
           jid,
           name,
-          lastMessage: msg.content || `[${msg.messageType || "media"}]`,
+          lastMessage: msg.content || msg.caption || mediaPreview(msg.messageType || "") || "Media",
           lastMessageTime: String(msg.timestamp || Math.floor(Date.now() / 1000)),
           unreadCount: (existing?.unreadCount ?? 0) + (msg.fromMe ? 0 : 1),
           isGroup: jid.endsWith("@g.us"),
@@ -1416,7 +1452,7 @@ export default function WhatsAppCrmPage() {
       }> = data.chats || data || [];
       const mapped: WaChat[] = chatList.map((c) => {
         const rawName = c.name || (c.jid ?? "").split("@")[0] || "Unknown";
-        const lastMsg = c.last_message || (c.message_type && c.message_type !== "text" ? `[${c.message_type}]` : "");
+        const lastMsg = c.last_message || (c.message_type ? mediaPreview(c.message_type) : "");
         return {
           id: c.jid || "",
           jid: c.jid || "",
@@ -1462,9 +1498,11 @@ export default function WhatsAppCrmPage() {
         media_url?: string; mediaUrl?: string;
         media_mimetype?: string; mediaMimetype?: string;
         caption?: string;
+        push_name?: string;
       }> = data.messages || data || [];
       const mapped: WaMessage[] = msgList.map((m) => {
-        const msgType = (m.message_type || m.type || "text") as WaMessage["type"];
+        const rawType = m.message_type || m.type || "text";
+        const msgType = normalizeType(rawType);
         const body = m.content || m.body || m.text || m.caption || "";
         return {
           id: m.id || m.message_id || String(Math.random()),
@@ -1984,104 +2022,107 @@ export default function WhatsAppCrmPage() {
                                   )}
                                 >
                                   {/* ── Image / Video ── */}
-                                  {(msg.type === "image" || msg.type === "video") && msg.mediaUrl ? (
+                                  {(msg.type === "image" || msg.type === "video") ? (
                                     <div>
-                                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                                      <img
-                                        src={`${backendUrl}${msg.mediaUrl}`}
-                                        alt={msg.caption || "Image"}
-                                        className="max-w-[280px] max-h-[300px] w-full object-cover rounded-2xl"
-                                        onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
-                                      />
-                                      {msg.caption && (
-                                        <p className="px-3 pt-1.5 pb-0.5 text-xs text-foreground/80">{msg.caption}</p>
-                                      )}
-                                      <div className={cn("px-3 pb-1.5 flex items-center gap-1 text-[10px] text-muted-foreground/60", msg.fromMe ? "justify-end" : "justify-start")}>
+                                      {msg.mediaUrl ? (
+                                        // eslint-disable-next-line @next/next/no-img-element
+                                        <img
+                                          src={`${backendUrl}${msg.mediaUrl}`}
+                                          alt={msg.caption || "Image"}
+                                          className="max-w-[280px] max-h-[300px] w-full object-cover rounded-2xl"
+                                          onError={(e) => {
+                                            const el = e.target as HTMLImageElement;
+                                            el.style.display = "none";
+                                            el.nextElementSibling?.classList.remove("hidden");
+                                          }}
+                                        />
+                                      ) : null}
+                                      {/* Fallback when no URL */}
+                                      <div className={cn("flex items-center gap-2 px-1 py-0.5", msg.mediaUrl ? "hidden" : "")}>
+                                        <span className="text-base">{msg.type === "video" ? "🎥" : "📷"}</span>
+                                        <span className="text-xs text-muted-foreground">{msg.type === "video" ? "Video" : "Photo"}</span>
+                                      </div>
+                                      {msg.caption && <p className="px-3 pt-1.5 pb-0.5 text-xs">{msg.caption}</p>}
+                                      <div className={cn("px-3 pb-1.5 pt-0.5 flex items-center gap-1 text-[10px] text-muted-foreground/60", msg.fromMe ? "justify-end" : "justify-start")}>
                                         <span>{formatTime(msg.timestamp)}</span>
                                         {msg.fromMe && <MsgStatus status={msg.status} />}
                                       </div>
                                     </div>
                                   ) : /* ── Sticker ── */
-                                  msg.type === "sticker" && msg.mediaUrl ? (
-                                    <div className="p-1">
-                                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                                      <img
-                                        src={`${backendUrl}${msg.mediaUrl}`}
-                                        alt="Sticker"
-                                        className="h-24 w-24 object-contain"
-                                        onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
-                                      />
+                                  msg.type === "sticker" ? (
+                                    <div className="p-2">
+                                      {msg.mediaUrl ? (
+                                        // eslint-disable-next-line @next/next/no-img-element
+                                        <img src={`${backendUrl}${msg.mediaUrl}`} alt="Sticker" className="h-24 w-24 object-contain" />
+                                      ) : (
+                                        <span className="text-3xl">🎭</span>
+                                      )}
                                     </div>
                                   ) : /* ── Audio / Voice ── */
                                   (msg.type === "audio" || msg.type === "ptt") ? (
-                                    <div className="flex items-center gap-2.5 min-w-[160px]">
-                                      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#25D366]/20">
-                                        <Mic className="h-4 w-4 text-[#25D366]" />
-                                      </div>
-                                      {msg.mediaUrl ? (
-                                        <audio
-                                          controls
-                                          src={`${backendUrl}${msg.mediaUrl}`}
-                                          className="h-8 max-w-[200px]"
-                                        />
-                                      ) : (
-                                        <div className="flex-1">
-                                          <div className="flex gap-0.5">
-                                            {Array.from({ length: 20 }).map((_, i) => (
-                                              <div key={i} className="w-0.5 rounded-full bg-muted-foreground/40" style={{ height: `${4 + Math.random() * 12}px` }} />
-                                            ))}
-                                          </div>
-                                          <p className="mt-0.5 text-[10px] text-muted-foreground/60">Voice message</p>
+                                    <div>
+                                      <div className="flex items-center gap-2.5 min-w-[180px]">
+                                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#25D366]/20">
+                                          <Mic className="h-4 w-4 text-[#25D366]" />
                                         </div>
-                                      )}
+                                        {msg.mediaUrl ? (
+                                          <audio controls src={`${backendUrl}${msg.mediaUrl}`} className="h-8 w-full max-w-[220px]" />
+                                        ) : (
+                                          <div className="flex-1">
+                                            <div className="flex items-end gap-0.5 h-6">
+                                              {[3,5,8,6,10,7,4,9,6,5,8,4,7,5,9,6,4,8,5,7].map((h, i) => (
+                                                <div key={i} className="w-0.5 rounded-full bg-muted-foreground/40" style={{ height: `${h}px` }} />
+                                              ))}
+                                            </div>
+                                            <p className="mt-0.5 text-[10px] text-muted-foreground/60">Voice message</p>
+                                          </div>
+                                        )}
+                                      </div>
+                                      <div className={cn("mt-1 flex items-center gap-1 text-[10px] text-muted-foreground/60", msg.fromMe ? "justify-end" : "justify-start")}>
+                                        <span>{formatTime(msg.timestamp)}</span>
+                                        {msg.fromMe && <MsgStatus status={msg.status} />}
+                                      </div>
                                     </div>
                                   ) : /* ── Document / PDF ── */
                                   msg.type === "document" ? (
-                                    <div className="flex items-center gap-3">
-                                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-500/20">
-                                        <FileText className="h-5 w-5 text-blue-400" />
+                                    <div>
+                                      <div className="flex items-center gap-3">
+                                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-500/20">
+                                          <FileText className="h-5 w-5 text-blue-400" />
+                                        </div>
+                                        <div className="min-w-0 flex-1">
+                                          <p className="truncate text-xs font-medium text-foreground">
+                                            {msg.body || msg.caption || "Document"}
+                                          </p>
+                                          <p className="text-[10px] text-muted-foreground/60">
+                                            {msg.mediaMimetype?.includes("pdf") ? "PDF" : msg.mediaMimetype?.split("/")[1]?.toUpperCase() || "FILE"}
+                                          </p>
+                                        </div>
+                                        {msg.mediaUrl && (
+                                          <a href={`${backendUrl}${msg.mediaUrl}`} target="_blank" rel="noopener noreferrer"
+                                            className="shrink-0 rounded-lg border border-[#2A2A2A] p-1.5 text-muted-foreground hover:text-foreground transition-colors">
+                                            <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                              <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                                            </svg>
+                                          </a>
+                                        )}
                                       </div>
-                                      <div className="min-w-0 flex-1">
-                                        <p className="truncate text-xs font-medium text-foreground">
-                                          {msg.body || msg.caption || "Document"}
-                                        </p>
-                                        <p className="text-[10px] text-muted-foreground/60">
-                                          {msg.mediaMimetype?.split("/")[1]?.toUpperCase() || "FILE"}
-                                        </p>
+                                      <div className={cn("mt-1.5 flex items-center gap-1 text-[10px] text-muted-foreground/60", msg.fromMe ? "justify-end" : "justify-start")}>
+                                        <span>{formatTime(msg.timestamp)}</span>
+                                        {msg.fromMe && <MsgStatus status={msg.status} />}
                                       </div>
-                                      {msg.mediaUrl && (
-                                        <a
-                                          href={`${backendUrl}${msg.mediaUrl}`}
-                                          target="_blank"
-                                          rel="noopener noreferrer"
-                                          className="shrink-0 rounded-lg border border-[#2A2A2A] p-1.5 text-muted-foreground hover:text-foreground transition-colors"
-                                        >
-                                          <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                                            <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-                                          </svg>
-                                        </a>
-                                      )}
                                     </div>
                                   ) : (
                                     /* ── Text / Emoji (default) ── */
-                                    <p className="whitespace-pre-wrap break-words leading-relaxed">
-                                      {msg.body || <span className="text-muted-foreground/40 italic text-xs">Media message</span>}
-                                    </p>
-                                  )}
-
-                                  {/* Timestamp + tick for non-media or text-only */}
-                                  {msg.type === "text" && (
-                                    <div className={cn("mt-0.5 flex items-center gap-1 text-[10px] text-muted-foreground/60", msg.fromMe ? "justify-end" : "justify-start")}>
-                                      <span>{formatTime(msg.timestamp)}</span>
-                                      {msg.fromMe && <MsgStatus status={msg.status} />}
-                                    </div>
-                                  )}
-                                  {/* Timestamp for doc/audio */}
-                                  {(msg.type === "document" || msg.type === "audio" || msg.type === "ptt") && (
-                                    <div className={cn("mt-1 flex items-center gap-1 text-[10px] text-muted-foreground/60", msg.fromMe ? "justify-end" : "justify-start")}>
-                                      <span>{formatTime(msg.timestamp)}</span>
-                                      {msg.fromMe && <MsgStatus status={msg.status} />}
-                                    </div>
+                                    <>
+                                      <p className="whitespace-pre-wrap break-words leading-relaxed">
+                                        {msg.body || <span className="text-muted-foreground/40 italic text-xs">{mediaPreview(msg.type) || "Message"}</span>}
+                                      </p>
+                                      <div className={cn("mt-0.5 flex items-center gap-1 text-[10px] text-muted-foreground/60", msg.fromMe ? "justify-end" : "justify-start")}>
+                                        <span>{formatTime(msg.timestamp)}</span>
+                                        {msg.fromMe && <MsgStatus status={msg.status} />}
+                                      </div>
+                                    </>
                                   )}
                                 </div>
                               </div>
