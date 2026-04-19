@@ -531,14 +531,14 @@ function SettingsPanel({
   const [aiSaving, setAiSaving] = useState(false);
   const [showApiKey, setShowApiKey] = useState(false);
 
-  const authH = useCallback((): HeadersInit =>
+  const authH = useCallback((): Record<string, string> =>
     jwtToken ? { "Authorization": `Bearer ${jwtToken}` } : {}
   , [jwtToken]);
 
   // Load proxy + AI settings
   useEffect(() => {
     if (!backendUrl || !sessionId) return;
-    const h = jwtToken ? { "Authorization": `Bearer ${jwtToken}` } : {};
+    const h: Record<string, string> = jwtToken ? { "Authorization": `Bearer ${jwtToken}` } : {};
     fetch(`${backendUrl}/api/sessions/${sessionId}/proxy`, { headers: h })
       .then((r) => r.json())
       .then((d) => setProxy({ enabled: !!d.proxy_enabled, type: d.proxy_type ?? "socks5", host: d.proxy_host ?? "", port: d.proxy_port ?? "", username: d.proxy_username ?? "", password: "" }))
@@ -621,7 +621,7 @@ function SettingsPanel({
   function toggleDay(v: string) {
     const s = new Set(activeDays);
     s.has(v) ? s.delete(v) : s.add(v);
-    setA("ai_working_days", [...s].sort().join(","));
+    setA("ai_working_days", Array.from(s).sort().join(","));
   }
 
   function parseKeywords(raw: string): string[] {
