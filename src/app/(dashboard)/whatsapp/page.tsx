@@ -69,6 +69,9 @@ interface WaMessage {
 
 type Tab = "inbox" | "contacts" | "settings";
 
+interface ChatTemplate { id: string; name: string; text: string; }
+interface DocTemplate { id: string; name: string; filename: string; mimetype: string; data: string; }
+
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 // Baileys stores raw content types — map to our simplified type
@@ -104,6 +107,26 @@ function mediaPreview(type: string): string {
     case "document": return "📄 Document";
     case "sticker": return "🎭 Sticker";
     default: return "";
+  }
+}
+
+// Force-download a cross-origin file with the original filename
+async function downloadFile(url: string, filename: string, token?: string) {
+  try {
+    const headers: Record<string, string> = {};
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+    const res = await fetch(url, { headers });
+    const blob = await res.blob();
+    const blobUrl = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = blobUrl;
+    a.download = filename || "download";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(blobUrl);
+  } catch {
+    window.open(url, "_blank");
   }
 }
 
@@ -1225,6 +1248,17 @@ export default function WhatsAppCrmPage() {
   const [messages, setMessages] = useState<WaMessage[]>([]);
   const [messageText, setMessageText] = useState("");
   const [sending, setSending] = useState(false);
+  const [sendingFile, setSendingFile] = useState(false);
+  const [showAttachMenu, setShowAttachMenu] = useState(false);
+  const [showTemplates, setShowTemplates] = useState(false);
+  const [templateTab, setTemplateTab] = useState<"chat" | "doc">("chat");
+  const [chatTemplates, setChatTemplates] = useState<ChatTemplate[]>([]);
+  const [docTemplates, setDocTemplates] = useState<DocTemplate[]>([]);
+  const [addingChatTpl, setAddingChatTpl] = useState(false);
+  const [newTplName, setNewTplName] = useState("");
+  const [newTplText, setNewTplText] = useState("");
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const docTplInputRef = useRef<HTMLInputElement>(null);
   const [loadingChats, setLoadingChats] = useState(false);
   const [loadingMessages, setLoadingMessages] = useState(false);
   const [search, setSearch] = useState("");
@@ -1240,6 +1274,14 @@ export default function WhatsAppCrmPage() {
     const token = localStorage.getItem("wa_jwt_token") || "";
     setBackendUrl(stored);
     setJwtToken(token);
+  }, []);
+
+  // Load templates from localStorage
+  useEffect(() => {
+    try {
+      setChatTemplates(JSON.parse(localStorage.getItem("wa_chat_templates") || "[]"));
+      setDocTemplates(JSON.parse(localStorage.getItem("wa_doc_templates") || "[]"));
+    } catch {}
   }, []);
 
   // Auth headers helper
@@ -1574,6 +1616,104 @@ export default function WhatsAppCrmPage() {
     }
   }
 
+  // ── File / Media sending ───────────────────────────────────────────────────
+  async function sendFile(file: File) {
+    if (!selectedChat || !session) return;
+    const fileType = file.type.startsWith("image/") ? "image"
+      : file.type.startsWith("video/") ? "video"
+      : file.type.startsWith("audio/") ? "audio"
+      : "document";
+
+    const optimistic: WaMessage = {
+      id: `opt_${Date.now()}`,
+      fromMe: true,
+      body: file.name,
+      timestamp: Math.floor(Date.now() / 1000),
+      status: "pending",
+      type: fileType as WaMessage["type"],
+      mediaMimetype: file.type,
+    };
+    setMessages((prev) => [...prev, optimistic]);
+    setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }), 50);
+
+    setSendingFile(true);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("jid", selectedChat.jid);
+      formData.append("type", fileType);
+      const hdrs: Record<string, string> = jwtToken ? { "Authorization": `Bearer ${jwtToken}` } : {};
+      const res = await fetch(`${backendUrl}/api/sessions/${session.id}/messages/send-media`, {
+        method: "POST",
+        headers: hdrs,
+        body: formData,
+      });
+      const data = await res.json().catch(() => ({}));
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === optimistic.id ? { ...m, id: data.messageId || m.id, status: "sent" } : m
+        )
+      );
+    } catch {
+      setMessages((prev) =>
+        prev.map((m) => (m.id === optimistic.id ? { ...m, status: "error" } : m))
+      );
+    } finally {
+      setSendingFile(false);
+    }
+  }
+
+  function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (file) { setShowAttachMenu(false); sendFile(file); }
+    e.target.value = "";
+  }
+
+  // ── Chat templates ─────────────────────────────────────────────────────────
+  function saveChatTemplates(list: ChatTemplate[]) {
+    setChatTemplates(list);
+    localStorage.setItem("wa_chat_templates", JSON.stringify(list));
+  }
+  function addChatTemplate() {
+    if (!newTplName.trim() || !newTplText.trim()) return;
+    saveChatTemplates([...chatTemplates, { id: Date.now().toString(), name: newTplName.trim(), text: newTplText.trim() }]);
+    setNewTplName(""); setNewTplText(""); setAddingChatTpl(false);
+  }
+  function deleteChatTemplate(id: string) { saveChatTemplates(chatTemplates.filter((t) => t.id !== id)); }
+  function applyChatTemplate(tpl: ChatTemplate) { setMessageText(tpl.text); setShowTemplates(false); }
+
+  // ── Doc templates ──────────────────────────────────────────────────────────
+  function saveDocTemplates(list: DocTemplate[]) {
+    setDocTemplates(list);
+    localStorage.setItem("wa_doc_templates", JSON.stringify(list));
+  }
+  function addDocTemplate(file: File) {
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const data = ev.target?.result as string;
+      saveDocTemplates([...docTemplates, {
+        id: Date.now().toString(),
+        name: file.name.replace(/\.[^.]+$/, ""),
+        filename: file.name,
+        mimetype: file.type || "application/octet-stream",
+        data,
+      }]);
+    };
+    reader.readAsDataURL(file);
+  }
+  function deleteDocTemplate(id: string) { saveDocTemplates(docTemplates.filter((t) => t.id !== id)); }
+  async function sendDocTemplate(tpl: DocTemplate) {
+    setShowTemplates(false);
+    const b64 = tpl.data.includes(",") ? tpl.data.split(",")[1] : tpl.data;
+    const byteString = atob(b64);
+    const ab = new ArrayBuffer(byteString.length);
+    const ia = new Uint8Array(ab);
+    for (let i = 0; i < byteString.length; i++) ia[i] = byteString.charCodeAt(i);
+    const blob = new Blob([ab], { type: tpl.mimetype });
+    const file = new File([blob], tpl.filename, { type: tpl.mimetype });
+    await sendFile(file);
+  }
+
   function saveBackendUrl(url: string) {
     setBackendUrl(url);
     localStorage.setItem("wa_backend_url", url);
@@ -1709,6 +1849,103 @@ export default function WhatsAppCrmPage() {
 
   return (
     <PageWrapper title="WhatsApp CRM" headerExtra={headerExtra}>
+      {/* Hidden file inputs */}
+      <input ref={fileInputRef} type="file" accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.zip,.rar,.csv" className="hidden" onChange={handleFileSelect} />
+      <input ref={docTplInputRef} type="file" accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.zip,.rar,.csv,image/*" className="hidden"
+        onChange={(e) => { const f = e.target.files?.[0]; if (f) addDocTemplate(f); e.target.value = ""; }} />
+
+      {/* Templates modal */}
+      {showTemplates && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 sm:items-center" onClick={() => setShowTemplates(false)}>
+          <div className="w-full max-w-lg rounded-t-2xl sm:rounded-2xl bg-[#111] border border-[#2A2A2A] overflow-hidden" onClick={(e) => e.stopPropagation()}>
+            {/* Header */}
+            <div className="flex items-center justify-between px-5 py-4 border-b border-[#1E1E1E]">
+              <h2 className="font-semibold text-sm">Templates</h2>
+              <button onClick={() => setShowTemplates(false)} className="text-muted-foreground hover:text-foreground"><X className="h-4 w-4" /></button>
+            </div>
+            {/* Tabs */}
+            <div className="flex border-b border-[#1E1E1E]">
+              {(["chat", "doc"] as const).map((t) => (
+                <button key={t} onClick={() => setTemplateTab(t)}
+                  className={cn("flex-1 py-2.5 text-xs font-medium transition-colors", templateTab === t ? "text-[#25D366] border-b-2 border-[#25D366]" : "text-muted-foreground hover:text-foreground")}>
+                  {t === "chat" ? "💬 Chat Templates" : "📄 Document Templates"}
+                </button>
+              ))}
+            </div>
+            {/* Content */}
+            <div className="max-h-[60vh] overflow-y-auto p-4 space-y-2">
+              {templateTab === "chat" ? (
+                <>
+                  {chatTemplates.length === 0 && !addingChatTpl && (
+                    <p className="text-center text-xs text-muted-foreground py-6">No chat templates yet. Add one below.</p>
+                  )}
+                  {chatTemplates.map((tpl) => (
+                    <div key={tpl.id} className="flex items-start gap-3 rounded-xl border border-[#2A2A2A] bg-[#0A0A0A] p-3">
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-semibold text-foreground truncate">{tpl.name}</p>
+                        <p className="text-[11px] text-muted-foreground mt-0.5 line-clamp-2">{tpl.text}</p>
+                      </div>
+                      <div className="flex gap-1.5 shrink-0">
+                        <button onClick={() => applyChatTemplate(tpl)}
+                          className="rounded-lg bg-[#25D366]/10 px-2.5 py-1 text-[10px] font-medium text-[#25D366] hover:bg-[#25D366]/20 transition-colors">Use</button>
+                        <button onClick={() => deleteChatTemplate(tpl.id)}
+                          className="rounded-lg bg-red-500/10 px-2.5 py-1 text-[10px] font-medium text-red-400 hover:bg-red-500/20 transition-colors">Del</button>
+                      </div>
+                    </div>
+                  ))}
+                  {addingChatTpl ? (
+                    <div className="rounded-xl border border-[#2A2A2A] bg-[#0A0A0A] p-3 space-y-2">
+                      <input value={newTplName} onChange={(e) => setNewTplName(e.target.value)}
+                        placeholder="Template name (e.g. Greeting)" className="w-full rounded-lg bg-[#111] border border-[#2A2A2A] px-3 py-1.5 text-xs outline-none focus:border-primary" />
+                      <textarea value={newTplText} onChange={(e) => setNewTplText(e.target.value)}
+                        placeholder="Template text..." rows={3}
+                        className="w-full rounded-lg bg-[#111] border border-[#2A2A2A] px-3 py-1.5 text-xs outline-none focus:border-primary resize-none" />
+                      <div className="flex gap-2">
+                        <button onClick={addChatTemplate} className="flex-1 rounded-lg bg-[#25D366] py-1.5 text-xs font-medium text-white hover:opacity-90 transition-opacity">Save</button>
+                        <button onClick={() => { setAddingChatTpl(false); setNewTplName(""); setNewTplText(""); }}
+                          className="flex-1 rounded-lg border border-[#2A2A2A] py-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors">Cancel</button>
+                      </div>
+                    </div>
+                  ) : (
+                    <button onClick={() => setAddingChatTpl(true)}
+                      className="w-full rounded-xl border border-dashed border-[#2A2A2A] py-3 text-xs text-muted-foreground hover:border-[#25D366] hover:text-[#25D366] transition-colors">
+                      + Add chat template
+                    </button>
+                  )}
+                </>
+              ) : (
+                <>
+                  {docTemplates.length === 0 && (
+                    <p className="text-center text-xs text-muted-foreground py-6">No document templates yet. Upload one below.</p>
+                  )}
+                  {docTemplates.map((tpl) => (
+                    <div key={tpl.id} className="flex items-center gap-3 rounded-xl border border-[#2A2A2A] bg-[#0A0A0A] p-3">
+                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-blue-500/20">
+                        <FileText className="h-4 w-4 text-blue-400" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-semibold text-foreground truncate">{tpl.name}</p>
+                        <p className="text-[10px] text-muted-foreground">{tpl.filename}</p>
+                      </div>
+                      <div className="flex gap-1.5 shrink-0">
+                        <button onClick={() => sendDocTemplate(tpl)}
+                          className="rounded-lg bg-[#25D366]/10 px-2.5 py-1 text-[10px] font-medium text-[#25D366] hover:bg-[#25D366]/20 transition-colors">Send</button>
+                        <button onClick={() => deleteDocTemplate(tpl.id)}
+                          className="rounded-lg bg-red-500/10 px-2.5 py-1 text-[10px] font-medium text-red-400 hover:bg-red-500/20 transition-colors">Del</button>
+                      </div>
+                    </div>
+                  ))}
+                  <button onClick={() => docTplInputRef.current?.click()}
+                    className="w-full rounded-xl border border-dashed border-[#2A2A2A] py-3 text-xs text-muted-foreground hover:border-blue-400 hover:text-blue-400 transition-colors">
+                    + Upload document template
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Tab bar */}
       <div className="flex items-center gap-1 border-b border-[#1E1E1E] px-6 pt-0 pb-0 -mt-2">
         {(
@@ -2099,12 +2336,18 @@ export default function WhatsAppCrmPage() {
                                           </p>
                                         </div>
                                         {msg.mediaUrl && (
-                                          <a href={`${backendUrl}${msg.mediaUrl}`} target="_blank" rel="noopener noreferrer"
+                                          <button
+                                            type="button"
+                                            onClick={() => downloadFile(
+                                              `${backendUrl}${msg.mediaUrl}`,
+                                              msg.body || msg.caption || "document",
+                                              jwtToken
+                                            )}
                                             className="shrink-0 rounded-lg border border-[#2A2A2A] p-1.5 text-muted-foreground hover:text-foreground transition-colors">
                                             <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                                               <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
                                             </svg>
-                                          </a>
+                                          </button>
                                         )}
                                       </div>
                                       <div className={cn("mt-1.5 flex items-center gap-1 text-[10px] text-muted-foreground/60", msg.fromMe ? "justify-end" : "justify-start")}>
@@ -2135,8 +2378,36 @@ export default function WhatsAppCrmPage() {
                       {/* Message input */}
                       <div className="border-t border-[#1E1E1E] bg-[#111111] p-3">
                         <div className="flex items-center gap-2">
-                          <button className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-[#1E1E1E] hover:text-foreground">
-                            <Paperclip className="h-4 w-4" />
+                          {/* Attach file button */}
+                          <div className="relative">
+                            <button
+                              type="button"
+                              onClick={() => setShowAttachMenu((v) => !v)}
+                              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-[#1E1E1E] hover:text-foreground">
+                              <Paperclip className="h-4 w-4" />
+                            </button>
+                            {showAttachMenu && (
+                              <div className="absolute bottom-11 left-0 z-30 min-w-[170px] rounded-xl border border-[#2A2A2A] bg-[#111] shadow-xl overflow-hidden">
+                                <button onClick={() => fileInputRef.current?.click()}
+                                  className="flex w-full items-center gap-2.5 px-4 py-2.5 text-xs hover:bg-[#1E1E1E] transition-colors text-left">
+                                  <Paperclip className="h-3.5 w-3.5 text-muted-foreground" /> Attach file
+                                </button>
+                                <button onClick={() => { setShowAttachMenu(false); setTemplateTab("doc"); setShowTemplates(true); }}
+                                  className="flex w-full items-center gap-2.5 px-4 py-2.5 text-xs hover:bg-[#1E1E1E] transition-colors text-left">
+                                  <FileText className="h-3.5 w-3.5 text-muted-foreground" /> Document template
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                          {/* Templates button */}
+                          <button
+                            type="button"
+                            title="Chat templates"
+                            onClick={() => { setTemplateTab("chat"); setShowTemplates(true); }}
+                            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-[#1E1E1E] hover:text-[#25D366]">
+                            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                            </svg>
                           </button>
                           <input
                             type="text"
@@ -2153,10 +2424,10 @@ export default function WhatsAppCrmPage() {
                           />
                           <button
                             onClick={handleSend}
-                            disabled={!messageText.trim() || sending}
+                            disabled={(!messageText.trim() && !sendingFile) || sending || sendingFile}
                             className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#25D366] text-white transition-opacity hover:opacity-90 disabled:opacity-40"
                           >
-                            {sending ? (
+                            {sending || sendingFile ? (
                               <Loader2 className="h-4 w-4 animate-spin" />
                             ) : (
                               <Send className="h-4 w-4" />
