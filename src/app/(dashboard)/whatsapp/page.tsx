@@ -77,6 +77,8 @@ type Tab = "inbox" | "contacts" | "settings";
 
 interface ChatTemplate { id: string; name: string; text: string; }
 interface DocTemplate { id: string; name: string; filename: string; mimetype: string; data: string; }
+interface KnowledgeEntry { id: string; title: string; content: string; source: string; created_at: string; has_embedding: number; }
+interface BotConfig { persona: string; business_name: string; language: string; tone: string; instructions: string; }
 interface ContactInfo {
   jid: string;
   name: string | null;
@@ -685,9 +687,28 @@ function SettingsPanel({
   const [aiSaving, setAiSaving] = useState(false);
   const [showApiKey, setShowApiKey] = useState(false);
 
+  // AI Chatbot Builder state
+  const BOT_DEFAULTS: BotConfig = { persona: "", business_name: "", language: "same as user", tone: "professional", instructions: "" };
+  const [botConfig, setBotConfig] = useState<BotConfig>(BOT_DEFAULTS);
+  const [botSaving, setBotSaving] = useState(false);
+  const [botSaved, setBotSaved] = useState(false);
+  const [showPromptPreview, setShowPromptPreview] = useState(false);
+  const [testOpen, setTestOpen] = useState(false);
+  const [testInput, setTestInput] = useState("");
+  const [testMessages, setTestMessages] = useState<{ role: "user" | "assistant"; content: string }[]>([]);
+  const [testLoading, setTestLoading] = useState(false);
+
+  // Knowledge Base state
+  const [knowledgeEntries, setKnowledgeEntries] = useState<KnowledgeEntry[]>([]);
+  const [addingEntry, setAddingEntry] = useState(false);
+  const [newEntryTitle, setNewEntryTitle] = useState("");
+  const [newEntryContent, setNewEntryContent] = useState("");
+  const [entryAdding, setEntryAdding] = useState(false);
+  const kbFileRef = useRef<HTMLInputElement>(null);
+
   const authH = useCallback((): Record<string, string> => ({}), []);
 
-  // Load proxy + AI settings
+  // Load proxy + AI settings + bot config + knowledge
   useEffect(() => {
     if (!backendUrl || !sessionId) return;
     fetch(`${backendUrl}/api/sessions/${sessionId}/proxy`)
@@ -697,6 +718,14 @@ function SettingsPanel({
     fetch(`${backendUrl}/api/sessions/${sessionId}/ai`)
       .then((r) => r.json())
       .then((d) => setAi((prev) => ({ ...prev, ...d, openai_api_key: "" })))
+      .catch(() => {});
+    fetch(`${backendUrl}/api/sessions/${sessionId}/ai/prompt`)
+      .then((r) => r.json())
+      .then((d) => setBotConfig({ persona: d.persona || "", business_name: d.business_name || "", language: d.language || "same as user", tone: d.tone || "professional", instructions: d.instructions || "" }))
+      .catch(() => {});
+    fetch(`${backendUrl}/api/sessions/${sessionId}/ai/knowledge`)
+      .then((r) => r.json())
+      .then((d) => setKnowledgeEntries(d.entries || []))
       .catch(() => {});
   }, [backendUrl, sessionId]);
 
@@ -736,6 +765,88 @@ function SettingsPanel({
   }
 
   const setA = <K extends keyof AiConfig>(k: K, v: AiConfig[K]) => setAi((p) => ({ ...p, [k]: v }));
+  const setB = <K extends keyof BotConfig>(k: K, v: BotConfig[K]) => setBotConfig((p) => ({ ...p, [k]: v }));
+
+  async function saveBotConfig() {
+    if (!backendUrl || !sessionId) return;
+    setBotSaving(true);
+    try {
+      await fetch(`${backendUrl}/api/sessions/${sessionId}/ai/prompt`, {
+        method: "POST", headers: { "Content-Type": "application/json", ...authH() },
+        body: JSON.stringify(botConfig),
+      });
+      setBotSaved(true);
+      setTimeout(() => setBotSaved(false), 2500);
+    } catch { /* silent */ } finally { setBotSaving(false); }
+  }
+
+  async function addKnowledgeEntry() {
+    if (!backendUrl || !sessionId || !newEntryTitle.trim() || !newEntryContent.trim()) return;
+    setEntryAdding(true);
+    try {
+      const res = await fetch(`${backendUrl}/api/sessions/${sessionId}/ai/knowledge`, {
+        method: "POST", headers: { "Content-Type": "application/json", ...authH() },
+        body: JSON.stringify({ title: newEntryTitle.trim(), content: newEntryContent.trim() }),
+      });
+      const d = await res.json();
+      if (d.success) {
+        setKnowledgeEntries((prev) => [{ id: d.id, title: newEntryTitle.trim(), content: newEntryContent.trim(), source: "manual", created_at: new Date().toISOString(), has_embedding: d.hasEmbedding ? 1 : 0 }, ...prev]);
+        setNewEntryTitle(""); setNewEntryContent(""); setAddingEntry(false);
+      }
+    } catch { /* silent */ } finally { setEntryAdding(false); }
+  }
+
+  async function uploadKbFile(file: File) {
+    if (!backendUrl || !sessionId) return;
+    const fd = new FormData();
+    fd.append("file", file);
+    fd.append("title", file.name.replace(/\.[^.]+$/, ""));
+    try {
+      const res = await fetch(`${backendUrl}/api/sessions/${sessionId}/ai/knowledge/upload`, {
+        method: "POST", headers: authH(), body: fd,
+      });
+      const d = await res.json();
+      if (d.success) {
+        setKnowledgeEntries((prev) => [{ id: d.id, title: file.name.replace(/\.[^.]+$/, ""), content: "", source: file.name, created_at: new Date().toISOString(), has_embedding: d.hasEmbedding ? 1 : 0 }, ...prev]);
+      }
+    } catch { /* silent */ }
+  }
+
+  async function deleteKbEntry(entryId: string) {
+    if (!backendUrl || !sessionId) return;
+    await fetch(`${backendUrl}/api/sessions/${sessionId}/ai/knowledge/${entryId}`, { method: "DELETE", headers: authH() });
+    setKnowledgeEntries((prev) => prev.filter((e) => e.id !== entryId));
+  }
+
+  async function sendTestMessage() {
+    if (!testInput.trim() || testLoading || !backendUrl || !sessionId) return;
+    const userMsg = testInput.trim();
+    setTestInput("");
+    const newHistory = [...testMessages, { role: "user" as const, content: userMsg }];
+    setTestMessages(newHistory);
+    setTestLoading(true);
+    try {
+      const res = await fetch(`${backendUrl}/api/sessions/${sessionId}/ai/test`, {
+        method: "POST", headers: { "Content-Type": "application/json", ...authH() },
+        body: JSON.stringify({ message: userMsg, history: testMessages }),
+      });
+      const d = await res.json();
+      setTestMessages([...newHistory, { role: "assistant", content: d.reply || d.error || "No response" }]);
+    } catch { setTestMessages([...newHistory, { role: "assistant", content: "Error — check your API key and connection." }]); }
+    finally { setTestLoading(false); }
+  }
+
+  function previewBotPrompt(): string {
+    const { persona, business_name, language, tone, instructions } = botConfig;
+    const lines = [`You are ${persona || "a helpful WhatsApp assistant"}.`];
+    if (business_name) lines.push(`You represent: ${business_name}`);
+    if (tone) lines.push(`Tone: ${tone}`);
+    if (language && language !== "same as user") lines.push(`Always respond in: ${language}`);
+    else lines.push("Detect the user's language and always reply in the same language.");
+    lines.push("You are replying via WhatsApp — keep messages concise and natural. Avoid markdown formatting.");
+    if (instructions) lines.push(`\nAdditional instructions:\n${instructions}`);
+    return lines.join("\n");
+  }
 
   function handleProxyToggle(enabled: boolean) {
     if (!enabled && proxy.enabled) { setShowNoProxyModal(true); setPendingConnect(false); return; }
@@ -1111,6 +1222,189 @@ function SettingsPanel({
             {aiSaving ? "Saving…" : aiSaved ? "✓ AI Settings Saved" : "Save AI Settings"}
           </button>
         )}
+
+        {/* ── AI Chatbot Builder ──────────────────────────────── */}
+        <SectionCard title="AI Chatbot Builder" icon="🧠" defaultOpen={false}>
+          <p className="mb-4 text-[11px] text-muted-foreground">Define who your bot is, how it speaks, and what rules it follows. This generates the system prompt used by your AI.</p>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="mb-1 block text-[11px] font-medium uppercase tracking-wider text-muted-foreground">Persona / Name</label>
+              <input value={botConfig.persona} onChange={(e) => setB("persona", e.target.value)}
+                placeholder="e.g. Ava, a friendly sales assistant"
+                className="w-full rounded-lg border border-[#1E1E1E] bg-[#0A0A0A] px-3 py-2 text-sm outline-none focus:border-primary" />
+            </div>
+            <div>
+              <label className="mb-1 block text-[11px] font-medium uppercase tracking-wider text-muted-foreground">Business Name</label>
+              <input value={botConfig.business_name} onChange={(e) => setB("business_name", e.target.value)}
+                placeholder="e.g. Flogen Tech"
+                className="w-full rounded-lg border border-[#1E1E1E] bg-[#0A0A0A] px-3 py-2 text-sm outline-none focus:border-primary" />
+            </div>
+            <div>
+              <label className="mb-1 block text-[11px] font-medium uppercase tracking-wider text-muted-foreground">Tone</label>
+              <select value={botConfig.tone} onChange={(e) => setB("tone", e.target.value)}
+                className="w-full rounded-lg border border-[#1E1E1E] bg-[#0A0A0A] px-3 py-2 text-sm outline-none focus:border-primary">
+                {["professional","friendly","casual","formal","empathetic","playful","direct"].map(t => (
+                  <option key={t} value={t}>{t.charAt(0).toUpperCase() + t.slice(1)}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="mb-1 block text-[11px] font-medium uppercase tracking-wider text-muted-foreground">Language</label>
+              <select value={botConfig.language} onChange={(e) => setB("language", e.target.value)}
+                className="w-full rounded-lg border border-[#1E1E1E] bg-[#0A0A0A] px-3 py-2 text-sm outline-none focus:border-primary">
+                <option value="same as user">Auto-detect (match user)</option>
+                {["English","Bahasa Melayu","Mandarin","Arabic","Indonesian","Thai","Vietnamese","Spanish","French","Hindi","Japanese","Korean"].map(l => (
+                  <option key={l} value={l}>{l}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          <div className="mt-3">
+            <label className="mb-1 block text-[11px] font-medium uppercase tracking-wider text-muted-foreground">Custom Instructions</label>
+            <textarea value={botConfig.instructions} onChange={(e) => setB("instructions", e.target.value)} rows={5}
+              placeholder={"Be specific — this is the most powerful field.\n\nExamples:\n• Always greet users by name\n• Never discuss competitor products\n• If asked about pricing, share the packages below...\n• Collect their email before sending any links"}
+              className="w-full resize-y rounded-lg border border-[#1E1E1E] bg-[#0A0A0A] px-3 py-2 text-sm outline-none focus:border-primary" />
+            <p className="mt-1 text-[10px] text-muted-foreground">The more detail you provide, the better your bot performs.</p>
+          </div>
+
+          {/* Prompt preview */}
+          <div className="mt-3">
+            <button onClick={() => setShowPromptPreview(p => !p)}
+              className="flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground">
+              <span>{showPromptPreview ? "▼" : "▶"}</span> Preview generated system prompt
+            </button>
+            {showPromptPreview && (
+              <pre className="mt-2 max-h-40 overflow-auto rounded-lg border border-[#1E1E1E] bg-[#080808] p-3 text-[11px] text-muted-foreground whitespace-pre-wrap">
+                {previewBotPrompt()}
+              </pre>
+            )}
+          </div>
+
+          <div className="mt-4 flex gap-2">
+            {sessionId && (
+              <button onClick={saveBotConfig} disabled={botSaving}
+                className={cn("flex-1 rounded-xl py-2.5 text-sm font-semibold transition-colors disabled:opacity-50",
+                  botSaved ? "bg-[#25D366] text-white" : "bg-primary/20 text-primary hover:bg-primary/30 border border-primary/20")}>
+                {botSaving ? "Saving…" : botSaved ? "✓ Saved" : "Save Chatbot Config"}
+              </button>
+            )}
+            <button onClick={() => { setTestOpen(p => !p); if (!testOpen) setTestMessages([]); }}
+              className="rounded-xl border border-[#1E1E1E] px-4 py-2.5 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">
+              {testOpen ? "Close Test" : "🧪 Test Chat"}
+            </button>
+          </div>
+
+          {/* Test chat panel */}
+          {testOpen && (
+            <div className="mt-3 overflow-hidden rounded-xl border border-[#1E1E1E] bg-[#080808]">
+              <div className="border-b border-[#1E1E1E] px-4 py-2">
+                <p className="text-[11px] font-medium text-muted-foreground">Live test — talks to your bot using current saved config + knowledge base</p>
+              </div>
+              <div className="flex h-60 flex-col gap-2 overflow-y-auto p-3">
+                {testMessages.length === 0 && (
+                  <p className="mt-auto text-center text-[11px] text-muted-foreground">Send a message to test your chatbot</p>
+                )}
+                {testMessages.map((m, i) => (
+                  <div key={i} className={cn("max-w-[85%] rounded-xl px-3 py-2 text-xs",
+                    m.role === "user" ? "ml-auto bg-primary text-white" : "bg-[#1E1E1E] text-foreground")}>
+                    {m.content}
+                  </div>
+                ))}
+                {testLoading && (
+                  <div className="flex items-center gap-1.5 bg-[#1E1E1E] rounded-xl px-3 py-2 w-16">
+                    <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-muted-foreground [animation-delay:0ms]" />
+                    <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-muted-foreground [animation-delay:150ms]" />
+                    <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-muted-foreground [animation-delay:300ms]" />
+                  </div>
+                )}
+              </div>
+              <div className="flex gap-2 border-t border-[#1E1E1E] p-2">
+                <input value={testInput} onChange={(e) => setTestInput(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && sendTestMessage()}
+                  placeholder="Type a test message…"
+                  className="flex-1 rounded-lg border border-[#1E1E1E] bg-[#111] px-3 py-1.5 text-sm outline-none focus:border-primary" />
+                <button onClick={sendTestMessage} disabled={testLoading || !testInput.trim()}
+                  className="rounded-lg bg-primary px-3 py-1.5 text-sm font-semibold text-white disabled:opacity-40">
+                  Send
+                </button>
+              </div>
+            </div>
+          )}
+        </SectionCard>
+
+        {/* ── Knowledge Base ───────────────────────────────────── */}
+        <SectionCard title="Knowledge Base" icon="📚" defaultOpen={false}>
+          <p className="mb-3 text-[11px] text-muted-foreground">Add documents your bot can reference — FAQs, product info, pricing, policies. The AI will search these when answering questions.</p>
+
+          {/* Entry list */}
+          {knowledgeEntries.length > 0 && (
+            <div className="mb-3 space-y-2">
+              {knowledgeEntries.map((entry) => (
+                <div key={entry.id} className="flex items-start gap-3 rounded-xl border border-[#1E1E1E] bg-[#0A0A0A] p-3">
+                  <div className="flex-1 min-w-0">
+                    <p className="truncate text-sm font-medium text-foreground">{entry.title}</p>
+                    <div className="mt-0.5 flex items-center gap-2">
+                      {entry.source !== "manual" && <span className="text-[10px] text-muted-foreground">{entry.source}</span>}
+                      <span className={cn("rounded-full px-1.5 py-px text-[9px] font-medium",
+                        entry.has_embedding ? "bg-[#25D366]/10 text-[#25D366]" : "bg-amber-500/10 text-amber-400")}>
+                        {entry.has_embedding ? "✓ Searchable" : "⚠ No embedding"}
+                      </span>
+                    </div>
+                  </div>
+                  <button onClick={() => deleteKbEntry(entry.id)}
+                    className="shrink-0 rounded-lg p-1.5 text-muted-foreground hover:bg-red-500/10 hover:text-red-400 transition-colors">
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Add entry form */}
+          {addingEntry ? (
+            <div className="space-y-3 rounded-xl border border-primary/20 bg-primary/5 p-4">
+              <div>
+                <label className="mb-1 block text-[11px] font-medium uppercase tracking-wider text-muted-foreground">Title</label>
+                <input value={newEntryTitle} onChange={(e) => setNewEntryTitle(e.target.value)}
+                  placeholder="e.g. Pricing Plans, FAQ, Return Policy"
+                  className="w-full rounded-lg border border-[#1E1E1E] bg-[#0A0A0A] px-3 py-2 text-sm outline-none focus:border-primary" />
+              </div>
+              <div>
+                <label className="mb-1 block text-[11px] font-medium uppercase tracking-wider text-muted-foreground">Content</label>
+                <textarea value={newEntryContent} onChange={(e) => setNewEntryContent(e.target.value)} rows={7}
+                  placeholder="Paste your content here. The more detailed and structured, the better the AI can use it."
+                  className="w-full resize-y rounded-lg border border-[#1E1E1E] bg-[#0A0A0A] px-3 py-2 text-sm outline-none focus:border-primary" />
+              </div>
+              <div className="flex gap-2">
+                <button onClick={() => { setAddingEntry(false); setNewEntryTitle(""); setNewEntryContent(""); }}
+                  className="rounded-lg border border-[#1E1E1E] px-4 py-2 text-sm text-muted-foreground hover:text-foreground">Cancel</button>
+                <button onClick={addKnowledgeEntry} disabled={entryAdding || !newEntryTitle.trim() || !newEntryContent.trim()}
+                  className="flex-1 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white disabled:opacity-40">
+                  {entryAdding ? "Saving & generating embedding…" : "Save Entry"}
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="flex gap-2">
+              <button onClick={() => setAddingEntry(true)}
+                className="flex-1 rounded-xl border border-dashed border-[#2A2A2A] py-2.5 text-sm text-muted-foreground hover:border-primary/40 hover:text-foreground transition-colors">
+                + Add Text Entry
+              </button>
+              <button onClick={() => kbFileRef.current?.click()}
+                className="rounded-xl border border-dashed border-[#2A2A2A] px-4 py-2.5 text-sm text-muted-foreground hover:border-primary/40 hover:text-foreground transition-colors">
+                Upload .txt
+              </button>
+              <input ref={kbFileRef} type="file" accept=".txt,.md" className="hidden"
+                onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadKbFile(f); e.target.value = ""; }} />
+            </div>
+          )}
+
+          {knowledgeEntries.length === 0 && !addingEntry && (
+            <p className="mt-2 text-center text-[11px] text-muted-foreground/60">No entries yet — add your first document above</p>
+          )}
+        </SectionCard>
 
         {/* ── Backend & Auth ──────────────────────────────────── */}
         <SectionCard title="Backend & Authentication" icon="🔗">
