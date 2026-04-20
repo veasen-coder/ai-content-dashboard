@@ -33,6 +33,10 @@ import {
   Pin,
   PinOff,
   Tag,
+  BotOff,
+  SendHorizonal,
+  XCircle,
+  UserCheck,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -59,6 +63,16 @@ interface WaChat {
   avatarInitials: string;
   chatStatus?: string;
   tags?: string[];
+  aiDisabled?: boolean;
+}
+
+interface PendingAiReply {
+  pendingId: string;
+  sessionId: string;
+  remoteJid: string;
+  reply: string;
+  sendAt: number;
+  sendInMs: number;
 }
 
 interface WaMessage {
@@ -1606,6 +1620,7 @@ export default function WhatsAppCrmPage() {
   const [chatFilter, setChatFilter] = useState<string>("all");
   const [remarkChat, setRemarkChat] = useState<WaChat | null>(null);
   const [hoveredChatId, setHoveredChatId] = useState<string | null>(null);
+  const [pendingAiReplies, setPendingAiReplies] = useState<PendingAiReply[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const docTplInputRef = useRef<HTMLInputElement>(null);
   const [loadingChats, setLoadingChats] = useState(false);
@@ -1807,9 +1822,15 @@ export default function WhatsAppCrmPage() {
 
     // Backend says chats changed — re-fetch
     socket.on("chats:refresh", () => {
-      // trigger fetchChats by resetting session status momentarily isn't great
-      // Instead just set a flag — fetchChats will be called by useEffect
       setChats([]); // clears so useEffect sees change and re-fetches
+    });
+
+    // AI pending reply preview
+    socket.on("ai:pending_reply", (data: PendingAiReply) => {
+      setPendingAiReplies(prev => [...prev.filter(p => p.pendingId !== data.pendingId), data]);
+    });
+    socket.on("ai:pending_resolved", ({ pendingId }: { pendingId: string }) => {
+      setPendingAiReplies(prev => prev.filter(p => p.pendingId !== pendingId));
     });
 
     return () => {
@@ -1841,6 +1862,7 @@ export default function WhatsAppCrmPage() {
         is_group?: number | boolean;
         chat_status?: string;
         tags?: string;
+        ai_disabled?: number | boolean;
       }> = data.chats || data || [];
       const mapped: WaChat[] = chatList.map((c) => {
         const rawName = c.name || c.phone_number || (c.jid ?? "").split("@")[0] || "Unknown";
@@ -1859,6 +1881,7 @@ export default function WhatsAppCrmPage() {
           avatarInitials: getInitials(rawName),
           chatStatus: c.chat_status || "open",
           tags,
+          aiDisabled: !!(c.ai_disabled),
         };
       });
       setChats(mapped);
@@ -2151,6 +2174,15 @@ export default function WhatsAppCrmPage() {
     if (qrPollingRef.current) clearInterval(qrPollingRef.current);
   }, []);
 
+  // Tick countdown for pending AI replies
+  useEffect(() => {
+    if (pendingAiReplies.length === 0) return;
+    const t = setInterval(() => {
+      setPendingAiReplies(prev => prev.filter(p => p.sendAt > Date.now() - 500));
+    }, 500);
+    return () => clearInterval(t);
+  }, [pendingAiReplies.length]);
+
   async function handleConnect() {
     if (!backendUrl) return;
 
@@ -2203,6 +2235,31 @@ export default function WhatsAppCrmPage() {
   }
 
   const isConnected = session?.status === "connected";
+
+  const handlePendingAction = useCallback(async (pendingId: string, action: "cancel" | "send_now" | "manual") => {
+    if (!backendUrl || !session) return;
+    setPendingAiReplies(prev => prev.filter(p => p.pendingId !== pendingId));
+    try {
+      await fetch(`${backendUrl}/api/sessions/${session.id}/ai/pending/${pendingId}/action`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...authHeaders() },
+        body: JSON.stringify({ action }),
+      });
+    } catch { /* silent */ }
+  }, [backendUrl, session]);
+
+  const toggleAiForChat = useCallback(async (jid: string) => {
+    if (!backendUrl || !session) return;
+    try {
+      const res = await fetch(`${backendUrl}/api/sessions/${session.id}/contacts/${encodeURIComponent(jid)}/ai-toggle`, {
+        method: "PATCH", headers: { ...authHeaders() },
+      });
+      if (res.ok) {
+        const d = await res.json();
+        setChats(prev => prev.map(c => c.jid === jid ? { ...c, aiDisabled: d.ai_disabled } : c));
+      }
+    } catch { /* silent */ }
+  }, [backendUrl, session]);
 
   const togglePin = useCallback((jid: string) => {
     setPinnedJids(prev => {
@@ -2706,6 +2763,20 @@ export default function WhatsAppCrmPage() {
                                   {/* Action buttons shown on hover */}
                                   {isHovered && (
                                     <>
+                                      {!chat.isGroup && (
+                                        <button
+                                          onClick={(e) => { e.stopPropagation(); toggleAiForChat(chat.jid); }}
+                                          className={cn(
+                                            "flex h-5 w-5 items-center justify-center rounded",
+                                            chat.aiDisabled
+                                              ? "text-red-400 hover:text-red-300"
+                                              : "text-emerald-400 hover:text-emerald-300"
+                                          )}
+                                          title={chat.aiDisabled ? "AI off — click to enable" : "AI on — click to disable"}
+                                        >
+                                          {chat.aiDisabled ? <BotOff className="h-3 w-3" /> : <Bot className="h-3 w-3" />}
+                                        </button>
+                                      )}
                                       <button
                                         onClick={(e) => { e.stopPropagation(); setRemarkChat(chat); }}
                                         className="flex h-5 w-5 items-center justify-center rounded text-muted-foreground hover:text-foreground"
@@ -2722,8 +2793,15 @@ export default function WhatsAppCrmPage() {
                                       </button>
                                     </>
                                   )}
-                                  {!isHovered && chat.lastMessageTime && (
-                                    <span className="text-[10px] text-muted-foreground">{formatTime(chat.lastMessageTime)}</span>
+                                  {!isHovered && (
+                                    <div className="flex items-center gap-1">
+                                      {chat.aiDisabled && !chat.isGroup && (
+                                        <BotOff className="h-3 w-3 text-red-400/70" title="AI disabled" />
+                                      )}
+                                      {chat.lastMessageTime && (
+                                        <span className="text-[10px] text-muted-foreground">{formatTime(chat.lastMessageTime)}</span>
+                                      )}
+                                    </div>
                                   )}
                                 </div>
                               </div>
@@ -2959,6 +3037,45 @@ export default function WhatsAppCrmPage() {
                           </div>
                         )}
                       </div>
+
+                      {/* AI Pending Reply Banner */}
+                      {pendingAiReplies.filter(p => p.remoteJid === selectedChat?.jid).map(pr => {
+                        const secsLeft = Math.max(0, Math.ceil((pr.sendAt - Date.now()) / 1000));
+                        return (
+                          <div key={pr.pendingId} className="border-t border-amber-800/40 bg-amber-950/30 px-4 py-2.5">
+                            <div className="flex items-center justify-between gap-2 mb-1.5">
+                              <div className="flex items-center gap-1.5">
+                                <Bot className="h-3.5 w-3.5 text-amber-400 shrink-0" />
+                                <span className="text-[11px] font-medium text-amber-300">AI will send in {secsLeft}s</span>
+                              </div>
+                              <div className="flex items-center gap-1">
+                                <button
+                                  onClick={() => handlePendingAction(pr.pendingId, "send_now")}
+                                  className="flex items-center gap-1 rounded px-2 py-0.5 text-[10px] font-medium bg-emerald-700/40 text-emerald-300 hover:bg-emerald-700/60"
+                                  title="Send immediately"
+                                >
+                                  <SendHorizonal className="h-2.5 w-2.5" /> Send now
+                                </button>
+                                <button
+                                  onClick={() => handlePendingAction(pr.pendingId, "manual")}
+                                  className="flex items-center gap-1 rounded px-2 py-0.5 text-[10px] font-medium bg-blue-700/40 text-blue-300 hover:bg-blue-700/60"
+                                  title="Handle manually — cancels AI reply"
+                                >
+                                  <UserCheck className="h-2.5 w-2.5" /> Handle
+                                </button>
+                                <button
+                                  onClick={() => handlePendingAction(pr.pendingId, "cancel")}
+                                  className="flex items-center gap-1 rounded px-2 py-0.5 text-[10px] font-medium bg-red-800/40 text-red-400 hover:bg-red-800/60"
+                                  title="Cancel AI reply"
+                                >
+                                  <XCircle className="h-2.5 w-2.5" /> Cancel
+                                </button>
+                              </div>
+                            </div>
+                            <p className="text-[11px] text-amber-200/70 line-clamp-2 leading-relaxed">{pr.reply}</p>
+                          </div>
+                        );
+                      })}
 
                       {/* Message input */}
                       <div className="border-t border-[#1E1E1E] bg-[#111111] p-3">
