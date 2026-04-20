@@ -64,6 +64,7 @@ interface WaChat {
   chatStatus?: string;
   tags?: string[];
   aiDisabled?: boolean;
+  lastFromMe?: boolean;
 }
 
 interface PendingAiReply {
@@ -1863,6 +1864,7 @@ export default function WhatsAppCrmPage() {
         chat_status?: string;
         tags?: string;
         ai_disabled?: number | boolean;
+        from_me?: number | boolean;
       }> = data.chats || data || [];
       const mapped: WaChat[] = chatList.map((c) => {
         const rawName = c.name || c.phone_number || (c.jid ?? "").split("@")[0] || "Unknown";
@@ -1882,6 +1884,7 @@ export default function WhatsAppCrmPage() {
           chatStatus: c.chat_status || "open",
           tags,
           aiDisabled: !!(c.ai_disabled),
+          lastFromMe: !!(c.from_me),
         };
       });
       setChats(mapped);
@@ -2244,15 +2247,20 @@ export default function WhatsAppCrmPage() {
 
   const handlePendingAction = useCallback(async (pendingId: string, action: "cancel" | "send_now" | "manual") => {
     if (!backendUrl || !session) return;
+    const pending = pendingAiReplies.find(p => p.pendingId === pendingId);
     setPendingAiReplies(prev => prev.filter(p => p.pendingId !== pendingId));
     try {
       await fetch(`${backendUrl}/api/sessions/${session.id}/ai/pending/${pendingId}/action`, {
         method: "POST",
         headers: { "Content-Type": "application/json", ...authHeaders() },
-        body: JSON.stringify({ action }),
+        body: JSON.stringify({ action, remoteJid: pending?.remoteJid }),
       });
+      // Reflect AI-disabled state locally so the "Needs Reply" alert appears immediately
+      if (action === "manual" && pending?.remoteJid) {
+        setChats(prev => prev.map(c => c.jid === pending.remoteJid ? { ...c, aiDisabled: true } : c));
+      }
     } catch { /* silent */ }
-  }, [backendUrl, session]);
+  }, [backendUrl, session, pendingAiReplies]);
 
   const toggleAiForChat = useCallback(async (jid: string) => {
     if (!backendUrl || !session) return;
@@ -2736,19 +2744,23 @@ export default function WhatsAppCrmPage() {
                       filteredChats.map((chat) => {
                         const isPinned = pinnedJids.includes(chat.jid);
                         const isHovered = hoveredChatId === chat.jid;
+                        const needsTakeover = !!chat.aiDisabled && !chat.lastFromMe && !chat.isGroup;
                         return (
                           <div
                             key={chat.id}
                             className={cn(
                               "group relative flex items-center gap-3 border-b border-[#1E1E1E] px-4 py-3 transition-colors cursor-pointer",
-                              selectedChat?.id === chat.id ? "bg-primary/5" : "hover:bg-[#1E1E1E]/40"
+                              needsTakeover && "bg-red-950/30 hover:bg-red-950/40",
+                              !needsTakeover && (selectedChat?.id === chat.id ? "bg-primary/5" : "hover:bg-[#1E1E1E]/40")
                             )}
                             onMouseEnter={() => setHoveredChatId(chat.jid)}
                             onMouseLeave={() => setHoveredChatId(null)}
                             onClick={() => { setSelectedChat(chat); setMessages([]); }}
                           >
+                            {/* Takeover alert stripe (red, pulsing) */}
+                            {needsTakeover && <span className="absolute left-0 top-0 h-full w-1 bg-red-500 rounded-r animate-pulse" />}
                             {/* Pin indicator stripe */}
-                            {isPinned && <span className="absolute left-0 top-0 h-full w-0.5 bg-primary/60 rounded-r" />}
+                            {!needsTakeover && isPinned && <span className="absolute left-0 top-0 h-full w-0.5 bg-primary/60 rounded-r" />}
                             <div className="relative shrink-0">
                               <Avatar name={chat.name} picUrl={picCache[chat.jid]} size={10} />
                               {chat.isGroup && (
@@ -2764,7 +2776,14 @@ export default function WhatsAppCrmPage() {
                             </div>
                             <div className="min-w-0 flex-1">
                               <div className="flex items-baseline justify-between gap-1">
-                                <p className="truncate text-xs font-semibold text-foreground">{chat.name}</p>
+                                <div className="flex min-w-0 items-center gap-1.5">
+                                  <p className="truncate text-xs font-semibold text-foreground">{chat.name}</p>
+                                  {needsTakeover && (
+                                    <span className="shrink-0 rounded bg-red-500 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-white animate-pulse">
+                                      Needs Reply
+                                    </span>
+                                  )}
+                                </div>
                                 <div className="flex shrink-0 items-center gap-1">
                                   {/* Action buttons shown on hover */}
                                   {isHovered && (
