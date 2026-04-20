@@ -2802,7 +2802,7 @@ export default function WhatsAppCrmPage() {
                                   {!isHovered && (
                                     <div className="flex items-center gap-1">
                                       {chat.aiDisabled && !chat.isGroup && (
-                                        <BotOff className="h-3 w-3 text-red-400/70" title="AI disabled" />
+                                        <span title="AI disabled"><BotOff className="h-3 w-3 text-red-400/70" /></span>
                                       )}
                                       {chat.lastMessageTime && (
                                         <span className="text-[10px] text-muted-foreground">{formatTime(chat.lastMessageTime)}</span>
