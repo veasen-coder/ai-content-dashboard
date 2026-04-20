@@ -686,6 +686,8 @@ function SettingsPanel({
   const [aiSaved, setAiSaved] = useState(false);
   const [aiSaving, setAiSaving] = useState(false);
   const [showApiKey, setShowApiKey] = useState(false);
+  const [hasApiKey, setHasApiKey] = useState(false);
+  const [changingApiKey, setChangingApiKey] = useState(false);
 
   // AI Chatbot Builder state
   const BOT_DEFAULTS: BotConfig = { persona: "", business_name: "", language: "same as user", tone: "professional", instructions: "" };
@@ -717,7 +719,7 @@ function SettingsPanel({
       .catch(() => {});
     fetch(`${backendUrl}/api/sessions/${sessionId}/ai`)
       .then((r) => r.json())
-      .then((d) => setAi((prev) => ({ ...prev, ...d, openai_api_key: "" })))
+      .then((d) => { setAi((prev) => ({ ...prev, ...d, openai_api_key: "" })); setHasApiKey(!!d.has_openai_key); })
       .catch(() => {});
     fetch(`${backendUrl}/api/sessions/${sessionId}/ai/prompt`)
       .then((r) => r.json())
@@ -759,6 +761,7 @@ function SettingsPanel({
         method: "PUT", headers: { "Content-Type": "application/json", ...authH() },
         body: JSON.stringify(payload),
       });
+      if (ai.openai_api_key) { setHasApiKey(true); setChangingApiKey(false); setAi((p) => ({ ...p, openai_api_key: "" })); }
       setAiSaved(true);
       setTimeout(() => setAiSaved(false), 2500);
     } catch { /* silent */ } finally { setAiSaving(false); }
@@ -899,18 +902,27 @@ function SettingsPanel({
 
           <div>
             <label className="mb-1 block text-[11px] font-medium uppercase tracking-wider text-muted-foreground">OpenAI API Key</label>
-            <div className="relative">
-              <input
-                type={showApiKey ? "text" : "password"}
-                value={ai.openai_api_key}
-                onChange={(e) => setA("openai_api_key", e.target.value)}
-                placeholder="sk-... (leave blank to keep existing)"
-                className="w-full rounded-lg border border-[#1E1E1E] bg-[#0A0A0A] px-3 py-2 pr-9 font-mono text-xs outline-none transition-colors focus:border-primary"
-              />
-              <button type="button" onClick={() => setShowApiKey((v) => !v)} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground/60 hover:text-muted-foreground">
-                {showApiKey ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
-              </button>
-            </div>
+            {hasApiKey && !changingApiKey ? (
+              <div className="flex items-center gap-2 rounded-lg border border-emerald-800/60 bg-emerald-950/40 px-3 py-2">
+                <span className="h-2 w-2 rounded-full bg-emerald-400 shrink-0" />
+                <span className="flex-1 font-mono text-xs text-emerald-300">API key connected</span>
+                <button type="button" onClick={() => setChangingApiKey(true)} className="text-[10px] text-muted-foreground hover:text-foreground underline">Change</button>
+              </div>
+            ) : (
+              <div className="relative">
+                <input
+                  type={showApiKey ? "text" : "password"}
+                  value={ai.openai_api_key}
+                  onChange={(e) => setA("openai_api_key", e.target.value)}
+                  placeholder={hasApiKey ? "Enter new API key to replace existing" : "sk-..."}
+                  className="w-full rounded-lg border border-[#1E1E1E] bg-[#0A0A0A] px-3 py-2 pr-9 font-mono text-xs outline-none transition-colors focus:border-primary"
+                  autoFocus={changingApiKey}
+                />
+                <button type="button" onClick={() => setShowApiKey((v) => !v)} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground/60 hover:text-muted-foreground">
+                  {showApiKey ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                </button>
+              </div>
+            )}
           </div>
 
           <div>
@@ -2267,7 +2279,7 @@ export default function WhatsAppCrmPage() {
   );
 
   return (
-    <PageWrapper title="WhatsApp CRM" headerExtra={headerExtra} fixed>
+    <PageWrapper title="WhatsApp" headerExtra={headerExtra} fixed>
       {/* Hidden file inputs */}
       <input ref={fileInputRef} type="file" accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.zip,.rar,.csv" className="hidden" onChange={handleFileSelect} />
       <input ref={docTplInputRef} type="file" accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.zip,.rar,.csv,image/*" className="hidden"
