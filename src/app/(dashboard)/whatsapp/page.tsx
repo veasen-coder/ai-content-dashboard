@@ -3142,13 +3142,40 @@ export default function WhatsAppCrmPage() {
                             )}
                           </button>
                         </div>
-                        {/* AI mode indicator */}
-                        <div className="mt-2 flex items-center gap-1.5 px-1">
-                          <Circle className="h-2 w-2 fill-[#25D366] text-[#25D366]" />
-                          <span className="text-[10px] text-muted-foreground/60">
-                            AI auto-reply is active for this session
-                          </span>
-                          <Bot className="h-3 w-3 text-muted-foreground/40" />
+                        {/* AI mode indicator — reflects per-contact toggle */}
+                        <div className="mt-2 flex items-center justify-between gap-1.5 px-1">
+                          <div className="flex items-center gap-1.5">
+                            {selectedChat.aiDisabled ? (
+                              <>
+                                <Circle className="h-2 w-2 fill-red-500 text-red-500" />
+                                <span className="text-[10px] text-red-400/80">
+                                  AI disabled for this chat — you&apos;re handling it
+                                </span>
+                                <BotOff className="h-3 w-3 text-red-400/60" />
+                              </>
+                            ) : (
+                              <>
+                                <Circle className="h-2 w-2 fill-[#25D366] text-[#25D366]" />
+                                <span className="text-[10px] text-muted-foreground/60">
+                                  AI auto-reply is active for this chat
+                                </span>
+                                <Bot className="h-3 w-3 text-muted-foreground/40" />
+                              </>
+                            )}
+                          </div>
+                          {!selectedChat.isGroup && (
+                            <button
+                              onClick={() => toggleAiForChat(selectedChat.jid)}
+                              className={cn(
+                                "rounded px-2 py-0.5 text-[10px] font-medium transition-colors",
+                                selectedChat.aiDisabled
+                                  ? "bg-emerald-700/30 text-emerald-300 hover:bg-emerald-700/50"
+                                  : "bg-red-800/30 text-red-300 hover:bg-red-800/50"
+                              )}
+                            >
+                              {selectedChat.aiDisabled ? "Re-enable AI" : "Disable AI"}
+                            </button>
+                          )}
                         </div>
                       </div>
                     </>
