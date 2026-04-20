@@ -36,7 +36,7 @@ const navItems: NavItem[] = [
   { href: "/dashboard", label: "Overview", icon: LayoutDashboard },
   { href: "/tasks", label: "Tasks", icon: CheckSquare },
   { href: "/clients", label: "Clients", icon: Users },
-  { href: "/whatsapp", label: "WhatsApp CRM", icon: MessageCircle },
+  { href: "/whatsapp", label: "WhatsApp", icon: MessageCircle },
   {
     href: "/finance",
     label: "Finance",

@@ -15,7 +15,7 @@ const SEARCH_ITEMS = [
   { label: "Overview", href: "/dashboard" },
   { label: "Tasks", href: "/tasks" },
   { label: "Clients", href: "/clients" },
-  { label: "WhatsApp CRM", href: "/whatsapp" },
+  { label: "WhatsApp", href: "/whatsapp" },
   { label: "Finance", href: "/finance" },
   { label: "Social Media", href: "/social" },
   { label: "Resources", href: "/resources" },
