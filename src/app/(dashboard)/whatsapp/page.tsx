@@ -1885,6 +1885,12 @@ export default function WhatsAppCrmPage() {
         };
       });
       setChats(mapped);
+      // Keep selectedChat in sync when chats refresh (picks up newly populated phone numbers etc.)
+      setSelectedChat(prev => {
+        if (!prev) return prev;
+        const updated = mapped.find(c => c.jid === prev.jid);
+        return updated ?? prev;
+      });
     } catch {
       /* silent */
     } finally {
@@ -2805,8 +2811,8 @@ export default function WhatsAppCrmPage() {
                                   )}
                                 </div>
                               </div>
-                              {!chat.isGroup && chat.phoneNumber && (
-                                <p className="truncate font-mono text-[10px] text-white/40">+{chat.phoneNumber}</p>
+                              {!chat.isGroup && (chat.phoneNumber || chat.jid.endsWith("@s.whatsapp.net")) && (
+                                <p className="truncate font-mono text-[10px] text-white/40">+{chat.phoneNumber || chat.jid.split("@")[0]}</p>
                               )}
                               {/* Tags/remarks */}
                               {chat.tags && chat.tags.length > 0 && (
