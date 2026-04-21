@@ -65,6 +65,7 @@ interface WaChat {
   tags?: string[];
   aiDisabled?: boolean;
   lastFromMe?: boolean;
+  isPinned?: boolean;
 }
 
 interface PendingAiReply {
@@ -1718,9 +1719,7 @@ export default function WhatsAppCrmPage() {
   const [contactInfo, setContactInfo] = useState<ContactInfo | null>(null);
   const [loadingContactInfo, setLoadingContactInfo] = useState(false);
   const [picCache, setPicCache] = useState<Record<string, string>>({});
-  const [pinnedJids, setPinnedJids] = useState<string[]>(() => {
-    try { return JSON.parse(localStorage.getItem("wa_pinned") || "[]"); } catch { return []; }
-  });
+  // Pinned JIDs are derived from chats[].isPinned which comes from the backend
   const [chatFilter, setChatFilter] = useState<string>("all");
   const [remarkChat, setRemarkChat] = useState<WaChat | null>(null);
   const [hoveredChatId, setHoveredChatId] = useState<string | null>(null);
@@ -1747,13 +1746,20 @@ export default function WhatsAppCrmPage() {
   const audioChunksRef = useRef<Blob[]>([]);
   const recordTickRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const recordStreamRef = useRef<MediaStream | null>(null);
-  // Display toggle for transcripts
-  const [showTranscripts, setShowTranscripts] = useState<boolean>(() => {
-    if (typeof window === "undefined") return true;
-    const v = localStorage.getItem("wa_show_transcripts");
-    return v === null ? true : v === "1";
-  });
-  useEffect(() => { if (typeof window !== "undefined") localStorage.setItem("wa_show_transcripts", showTranscripts ? "1" : "0"); }, [showTranscripts]);
+  // Display toggle for transcripts — persisted on the backend (sessions.show_transcripts)
+  const [showTranscripts, setShowTranscripts] = useState<boolean>(true);
+  const toggleTranscripts = useCallback(async () => {
+    if (!backendUrl || !session) return;
+    const next = !showTranscripts;
+    setShowTranscripts(next);
+    try {
+      await fetch(`${backendUrl}/api/sessions/${session.id}/ai`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", ...authHeaders() },
+        body: JSON.stringify({ show_transcripts: next }),
+      });
+    } catch { /* silent */ }
+  }, [backendUrl, session, showTranscripts]);
 
   // Load backend URL on mount — env var takes priority, then localStorage
   useEffect(() => {
@@ -1764,13 +1770,18 @@ export default function WhatsAppCrmPage() {
     if (url) checkBackend(url);
   }, []);
 
-  // Load templates from localStorage
+  // Load templates from backend when session connects
   useEffect(() => {
-    try {
-      setChatTemplates(JSON.parse(localStorage.getItem("wa_chat_templates") || "[]"));
-      setDocTemplates(JSON.parse(localStorage.getItem("wa_doc_templates") || "[]"));
-    } catch {}
-  }, []);
+    if (!backendUrl || !session?.id) return;
+    fetch(`${backendUrl}/api/sessions/${session.id}/templates/chat`)
+      .then(r => r.json())
+      .then(d => setChatTemplates(d.templates || []))
+      .catch(() => {});
+    fetch(`${backendUrl}/api/sessions/${session.id}/templates/doc`)
+      .then(r => r.json())
+      .then(d => setDocTemplates(d.templates || []))
+      .catch(() => {});
+  }, [backendUrl, session?.id]);
 
   // Auth headers helper — no auth required
   const authHeaders = useCallback((): HeadersInit => {
@@ -1986,6 +1997,7 @@ export default function WhatsAppCrmPage() {
         tags?: string;
         ai_disabled?: number | boolean;
         from_me?: number | boolean;
+        is_pinned?: number | boolean;
       }> = data.chats || data || [];
       const mapped: WaChat[] = chatList.map((c) => {
         const rawName = c.name || c.phone_number || (c.jid ?? "").split("@")[0] || "Unknown";
@@ -2006,6 +2018,7 @@ export default function WhatsAppCrmPage() {
           tags,
           aiDisabled: !!(c.ai_disabled),
           lastFromMe: !!(c.from_me),
+          isPinned: !!(c.is_pinned),
         };
       });
       setChats(mapped);
@@ -2025,6 +2038,15 @@ export default function WhatsAppCrmPage() {
   useEffect(() => {
     fetchChats();
   }, [fetchChats]);
+
+  // Load showTranscripts preference from backend when session connects
+  useEffect(() => {
+    if (!backendUrl || !session?.id) return;
+    fetch(`${backendUrl}/api/sessions/${session.id}/ai`)
+      .then(r => r.json())
+      .then(d => { if (typeof d.show_transcripts === "boolean") setShowTranscripts(d.show_transcripts); })
+      .catch(() => {});
+  }, [backendUrl, session?.id]);
 
   // Load profile pics for all non-group chats progressively in the background
   useEffect(() => {
@@ -2275,39 +2297,64 @@ export default function WhatsAppCrmPage() {
     e.target.value = "";
   }
 
-  // ── Chat templates ─────────────────────────────────────────────────────────
-  function saveChatTemplates(list: ChatTemplate[]) {
-    setChatTemplates(list);
-    localStorage.setItem("wa_chat_templates", JSON.stringify(list));
-  }
-  function addChatTemplate() {
-    if (!newTplName.trim() || !newTplText.trim()) return;
-    saveChatTemplates([...chatTemplates, { id: Date.now().toString(), name: newTplName.trim(), text: newTplText.trim() }]);
+  // ── Chat templates (server-persisted) ──────────────────────────────────────
+  async function addChatTemplate() {
+    if (!newTplName.trim() || !newTplText.trim() || !backendUrl || !session) return;
+    try {
+      const res = await fetch(`${backendUrl}/api/sessions/${session.id}/templates/chat`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...authHeaders() },
+        body: JSON.stringify({ name: newTplName.trim(), text: newTplText.trim() }),
+      });
+      if (res.ok) {
+        const d = await res.json();
+        setChatTemplates([...chatTemplates, { id: d.id, name: newTplName.trim(), text: newTplText.trim() }]);
+      }
+    } catch { /* silent */ }
     setNewTplName(""); setNewTplText(""); setAddingChatTpl(false);
   }
-  function deleteChatTemplate(id: string) { saveChatTemplates(chatTemplates.filter((t) => t.id !== id)); }
+  async function deleteChatTemplate(id: string) {
+    if (!backendUrl || !session) return;
+    try {
+      await fetch(`${backendUrl}/api/sessions/${session.id}/templates/chat/${id}`, { method: "DELETE", headers: authHeaders() });
+      setChatTemplates(chatTemplates.filter((t) => t.id !== id));
+    } catch { /* silent */ }
+  }
   function applyChatTemplate(tpl: ChatTemplate) { setMessageText(tpl.text); setShowTemplates(false); }
 
-  // ── Doc templates ──────────────────────────────────────────────────────────
-  function saveDocTemplates(list: DocTemplate[]) {
-    setDocTemplates(list);
-    localStorage.setItem("wa_doc_templates", JSON.stringify(list));
-  }
+  // ── Doc templates (server-persisted) ───────────────────────────────────────
   function addDocTemplate(file: File) {
+    if (!backendUrl || !session) return;
     const reader = new FileReader();
-    reader.onload = (ev) => {
+    reader.onload = async (ev) => {
       const data = ev.target?.result as string;
-      saveDocTemplates([...docTemplates, {
-        id: Date.now().toString(),
+      const payload = {
         name: file.name.replace(/\.[^.]+$/, ""),
         filename: file.name,
         mimetype: file.type || "application/octet-stream",
         data,
-      }]);
+      };
+      try {
+        const res = await fetch(`${backendUrl}/api/sessions/${session.id}/templates/doc`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", ...authHeaders() },
+          body: JSON.stringify(payload),
+        });
+        if (res.ok) {
+          const d = await res.json();
+          setDocTemplates([...docTemplates, { id: d.id, ...payload }]);
+        }
+      } catch { /* silent */ }
     };
     reader.readAsDataURL(file);
   }
-  function deleteDocTemplate(id: string) { saveDocTemplates(docTemplates.filter((t) => t.id !== id)); }
+  async function deleteDocTemplate(id: string) {
+    if (!backendUrl || !session) return;
+    try {
+      await fetch(`${backendUrl}/api/sessions/${session.id}/templates/doc/${id}`, { method: "DELETE", headers: authHeaders() });
+      setDocTemplates(docTemplates.filter((t) => t.id !== id));
+    } catch { /* silent */ }
+  }
   async function sendDocTemplate(tpl: DocTemplate) {
     setShowTemplates(false);
     const b64 = tpl.data.includes(",") ? tpl.data.split(",")[1] : tpl.data;
@@ -2465,13 +2512,18 @@ export default function WhatsAppCrmPage() {
     } catch { /* silent */ }
   }, [backendUrl, session]);
 
-  const togglePin = useCallback((jid: string) => {
-    setPinnedJids(prev => {
-      const next = prev.includes(jid) ? prev.filter(j => j !== jid) : [...prev, jid];
-      localStorage.setItem("wa_pinned", JSON.stringify(next));
-      return next;
-    });
-  }, []);
+  const togglePin = useCallback(async (jid: string) => {
+    if (!backendUrl || !session) return;
+    try {
+      const res = await fetch(`${backendUrl}/api/sessions/${session.id}/contacts/${encodeURIComponent(jid)}/pin-toggle`, {
+        method: "PATCH", headers: { ...authHeaders() },
+      });
+      if (res.ok) {
+        const d = await res.json();
+        setChats(prev => prev.map(c => c.jid === jid ? { ...c, isPinned: !!d.is_pinned } : c));
+      }
+    } catch { /* silent */ }
+  }, [backendUrl, session]);
 
   const REMARK_OPTIONS = ["🔥 Hot Lead", "❄️ Cold", "⏳ Follow Up", "✅ Closed", "💎 VIP", "🆕 New Customer"];
 
@@ -2490,7 +2542,7 @@ export default function WhatsAppCrmPage() {
 
   const filteredChats = useMemo(() => {
     let list = chats.filter(c => c.name.toLowerCase().includes(search.toLowerCase()));
-    if (chatFilter === "pinned") list = list.filter(c => pinnedJids.includes(c.jid));
+    if (chatFilter === "pinned") list = list.filter(c => c.isPinned);
     else if (chatFilter === "groups") list = list.filter(c => c.isGroup);
     else if (chatFilter === "open") list = list.filter(c => !c.chatStatus || c.chatStatus === "open");
     else if (chatFilter === "pending") list = list.filter(c => c.chatStatus === "pending");
@@ -2498,11 +2550,11 @@ export default function WhatsAppCrmPage() {
     else if (chatFilter === "tagged") list = list.filter(c => c.tags && c.tags.length > 0);
     // Pinned chats always sort to top
     return [...list].sort((a, b) => {
-      const ap = pinnedJids.includes(a.jid) ? 0 : 1;
-      const bp = pinnedJids.includes(b.jid) ? 0 : 1;
+      const ap = a.isPinned ? 0 : 1;
+      const bp = b.isPinned ? 0 : 1;
       return ap - bp;
     });
-  }, [chats, search, chatFilter, pinnedJids]);
+  }, [chats, search, chatFilter]);
 
   // ── Header extra: status + refresh ─────────────────────────────────────────
   const headerExtra = (
@@ -2932,7 +2984,7 @@ export default function WhatsAppCrmPage() {
                       </div>
                     ) : (
                       filteredChats.map((chat) => {
-                        const isPinned = pinnedJids.includes(chat.jid);
+                        const isPinned = !!chat.isPinned;
                         const isHovered = hoveredChatId === chat.jid;
                         const needsTakeover = !!chat.aiDisabled && !chat.lastFromMe && !chat.isGroup;
                         return (
@@ -3094,7 +3146,7 @@ export default function WhatsAppCrmPage() {
                         </button>
                         <div className="flex items-center gap-1">
                           <button
-                            onClick={() => setShowTranscripts(v => !v)}
+                            onClick={toggleTranscripts}
                             title={showTranscripts ? "Hide voice transcripts" : "Show voice transcripts"}
                             className={cn(
                               "flex h-8 items-center gap-1 rounded-lg px-2 text-[10px] font-medium transition-colors",
