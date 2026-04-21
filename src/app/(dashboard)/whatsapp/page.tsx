@@ -1882,6 +1882,14 @@ export default function WhatsAppCrmPage() {
           );
           if (duplicate) return prev;
         }
+        // Tertiary dedup: outgoing audio within 10s — skip (optimistic voice already shown)
+        if (msg.fromMe && (msg.messageType === "audioMessage" || msg.messageType === "audio")) {
+          const cutoff = (msg.timestamp || 0) - 10;
+          const duplicate = prev.some(
+            (m) => m.fromMe && (m.type === "audio" || m.type === "ptt") && m.timestamp >= cutoff
+          );
+          if (duplicate) return prev;
+        }
         const newMsg: WaMessage = {
           id: msg.id || String(Date.now()),
           fromMe: !!msg.fromMe,
@@ -2200,20 +2208,54 @@ export default function WhatsAppCrmPage() {
   async function sendVoiceRecording() {
     if (!recordedBlob || !selectedChat || !session || sendingVoice) return;
     setSendingVoice(true);
+
+    // Optimistically show the voice bubble immediately — use the local blob as mediaUrl
+    // so the user can play it back straight away.
+    const tempId = `opt_voice_${Date.now()}`;
+    const localUrl = URL.createObjectURL(recordedBlob);
+    const chatJid = selectedChat.jid;
+    const optimistic: WaMessage = {
+      id: tempId,
+      fromMe: true,
+      body: "",
+      timestamp: Math.floor(Date.now() / 1000),
+      status: "pending",
+      type: "audio",
+      mediaUrl: localUrl,
+      mediaMimetype: recordedBlob.type,
+    };
+    setMessages(prev => [...prev, optimistic]);
+    setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }), 50);
+
+    // Clear the composer so the user can keep chatting
+    if (recordedBlobUrl) URL.revokeObjectURL(recordedBlobUrl);
+    setRecordedBlob(null);
+    setRecordedBlobUrl(null);
+    setRecordingElapsed(0);
+
     try {
       const ext = recordedBlob.type.includes("ogg") ? "ogg" : "webm";
       const fd = new FormData();
       fd.append("file", recordedBlob, `voice.${ext}`);
-      fd.append("jid", selectedChat.jid);
-      await fetch(`${backendUrl}/api/sessions/${session.id}/messages/send-voice`, {
+      fd.append("jid", chatJid);
+      const res = await fetch(`${backendUrl}/api/sessions/${session.id}/messages/send-voice`, {
         method: "POST", headers: authHeaders(), body: fd,
       });
-      // Clean up; the socket will push message:new for the sent voice
-      if (recordedBlobUrl) URL.revokeObjectURL(recordedBlobUrl);
-      setRecordedBlob(null);
-      setRecordedBlobUrl(null);
-      setRecordingElapsed(0);
-    } catch { /* silent */ } finally { setSendingVoice(false); }
+      if (!res.ok) throw new Error(`send failed: ${res.status}`);
+      const data = await res.json().catch(() => ({}));
+      // Rewrite the optimistic row with the real message id + server-hosted media URL
+      const serverMediaUrl = data.mediaUrl ? `${backendUrl}${data.mediaUrl}` : localUrl;
+      const bodyText = data.transcript ? `[Voice] ${data.transcript}` : "";
+      setMessages(prev => prev.map(m => m.id === tempId ? {
+        ...m,
+        id: data.messageId || m.id,
+        status: "sent",
+        body: bodyText,
+        mediaUrl: serverMediaUrl,
+      } : m));
+    } catch {
+      setMessages(prev => prev.map(m => m.id === tempId ? { ...m, status: "error" } : m));
+    } finally { setSendingVoice(false); }
   }
 
   // Send message
