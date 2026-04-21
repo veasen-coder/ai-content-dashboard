@@ -3089,29 +3089,49 @@ export default function WhatsAppCrmPage() {
                                     </div>
                                   ) : /* ── Audio / Voice ── */
                                   (msg.type === "audio" || msg.type === "ptt") ? (
-                                    <div>
-                                      <div className="flex items-center gap-2.5 min-w-[180px]">
-                                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#25D366]/20">
-                                          <Mic className="h-4 w-4 text-[#25D366]" />
-                                        </div>
-                                        {msg.mediaUrl ? (
-                                          <audio controls src={`${backendUrl}${msg.mediaUrl}`} className="h-8 w-full max-w-[220px]" />
-                                        ) : (
-                                          <div className="flex-1">
-                                            <div className="flex items-end gap-0.5 h-6">
-                                              {[3,5,8,6,10,7,4,9,6,5,8,4,7,5,9,6,4,8,5,7].map((h, i) => (
-                                                <div key={i} className="w-0.5 rounded-full bg-muted-foreground/40" style={{ height: `${h}px` }} />
-                                              ))}
+                                    (() => {
+                                      // Extract transcript: strip "[Voice] " or "[Voice: ...]" prefix markers
+                                      const raw = msg.body?.trim() || "";
+                                      let transcript = raw
+                                        .replace(/^\[Voice\]\s*/i, "")
+                                        .replace(/\[Voice:\s*([^\]]+)\]/gi, "$1")
+                                        .trim();
+                                      if (transcript === "" && raw) transcript = raw;
+                                      return (
+                                        <div>
+                                          <div className="flex items-center gap-2.5 min-w-[180px]">
+                                            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#25D366]/20">
+                                              <Mic className="h-4 w-4 text-[#25D366]" />
                                             </div>
-                                            <p className="mt-0.5 text-[10px] text-muted-foreground/60">Voice message</p>
+                                            {msg.mediaUrl ? (
+                                              <audio controls src={`${backendUrl}${msg.mediaUrl}`} className="h-8 w-full max-w-[220px]" />
+                                            ) : (
+                                              <div className="flex-1">
+                                                <div className="flex items-end gap-0.5 h-6">
+                                                  {[3,5,8,6,10,7,4,9,6,5,8,4,7,5,9,6,4,8,5,7].map((h, i) => (
+                                                    <div key={i} className="w-0.5 rounded-full bg-muted-foreground/40" style={{ height: `${h}px` }} />
+                                                  ))}
+                                                </div>
+                                                <p className="mt-0.5 text-[10px] text-muted-foreground/60">Voice message</p>
+                                              </div>
+                                            )}
                                           </div>
-                                        )}
-                                      </div>
-                                      <div className={cn("mt-1 flex items-center gap-1 text-[10px] text-muted-foreground/60", msg.fromMe ? "justify-end" : "justify-start")}>
-                                        <span>{formatTime(msg.timestamp)}</span>
-                                        {msg.fromMe && <MsgStatus status={msg.status} />}
-                                      </div>
-                                    </div>
+                                          {/* Transcript (Whisper for received, source text for sent) */}
+                                          {transcript && (
+                                            <div className="mt-1.5 rounded-md border border-muted-foreground/10 bg-black/20 px-2 py-1">
+                                              <p className="text-[10px] font-medium text-muted-foreground/50 uppercase tracking-wide mb-0.5">
+                                                {msg.fromMe ? "Spoken text" : "Transcript"}
+                                              </p>
+                                              <p className="text-[11px] leading-snug text-foreground/80 whitespace-pre-wrap break-words">{transcript}</p>
+                                            </div>
+                                          )}
+                                          <div className={cn("mt-1 flex items-center gap-1 text-[10px] text-muted-foreground/60", msg.fromMe ? "justify-end" : "justify-start")}>
+                                            <span>{formatTime(msg.timestamp)}</span>
+                                            {msg.fromMe && <MsgStatus status={msg.status} />}
+                                          </div>
+                                        </div>
+                                      );
+                                    })()
                                   ) : /* ── Document / PDF ── */
                                   msg.type === "document" ? (
                                     <div>
