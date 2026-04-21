@@ -2238,6 +2238,9 @@ export default function WhatsAppCrmPage() {
       const fd = new FormData();
       fd.append("file", recordedBlob, `voice.${ext}`);
       fd.append("jid", chatJid);
+      // Duration (seconds) measured client-side so Baileys doesn't have to
+      // guess from the Opus container — without this WhatsApp rejects playback.
+      fd.append("seconds", String(Math.max(1, recordingElapsed)));
       const res = await fetch(`${backendUrl}/api/sessions/${session.id}/messages/send-voice`, {
         method: "POST", headers: authHeaders(), body: fd,
       });
