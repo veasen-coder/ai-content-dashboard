@@ -1920,16 +1920,23 @@ export default function WhatsAppCrmPage() {
       });
     });
 
-    // Message status update (sent → delivered → read ticks)
+    // Message status update (sent → delivered → read ticks) + metadata refresh
     socket.on("message:update", (payload: { sessionId: string; updates: Array<{ key: { id?: string }; update: { status?: number } }> }) => {
       const STATUS_MAP: Record<number, WaMessage["status"]> = { 1: "sent", 2: "delivered", 3: "delivered", 4: "read" };
+      let needsRefetch = false;
       setMessages((prev) =>
         prev.map((m) => {
           const hit = payload.updates?.find((u) => u.key?.id === m.id);
-          if (!hit?.update?.status) return m;
-          return { ...m, status: STATUS_MAP[hit.update.status] ?? m.status };
+          if (!hit) return m;
+          // Empty update = metadata change (mediaUrl, transcript) — refetch
+          if (!hit.update || Object.keys(hit.update).length === 0) { needsRefetch = true; return m; }
+          if (hit.update.status) return { ...m, status: STATUS_MAP[hit.update.status] ?? m.status };
+          return m;
         })
       );
+      if (needsRefetch && selectedChatRef.current) {
+        setTimeout(() => fetchMessages(), 200);
+      }
     });
 
     // Session status changed (connected / disconnected / qr_ready)
