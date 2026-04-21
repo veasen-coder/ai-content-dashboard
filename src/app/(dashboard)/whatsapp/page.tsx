@@ -1931,22 +1931,21 @@ export default function WhatsAppCrmPage() {
       }>;
     }) => {
       const NUM_STATUS_MAP: Record<number, WaMessage["status"]> = { 0: "error", 1: "pending", 2: "sent", 3: "delivered", 4: "read", 5: "read" };
-      let needsRefetch = false;
+      // Determine refetch BEFORE setMessages so we don't depend on closure timing
+      const needsRefetch = (payload.updates || []).some(u =>
+        !u.status && (!u.update || Object.keys(u.update).length === 0)
+      );
       setMessages((prev) =>
         prev.map((m) => {
           const hit = payload.updates?.find((u) => u.key?.id === m.id);
           if (!hit) return m;
-          // String status (new format)
           if (hit.status) return { ...m, status: hit.status };
-          // Numeric status (old format) — still supported
           if (hit.update?.status) return { ...m, status: NUM_STATUS_MAP[hit.update.status] ?? m.status };
-          // Empty update = metadata change (mediaUrl, transcript) — refetch
-          if (!hit.update || Object.keys(hit.update).length === 0) needsRefetch = true;
           return m;
         })
       );
       if (needsRefetch && selectedChatRef.current) {
-        setTimeout(() => fetchMessages(), 200);
+        setTimeout(() => fetchMessages(), 250);
       }
     });
 
