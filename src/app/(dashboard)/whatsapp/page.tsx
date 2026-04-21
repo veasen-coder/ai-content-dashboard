@@ -1921,16 +1921,27 @@ export default function WhatsAppCrmPage() {
     });
 
     // Message status update (sent → delivered → read ticks) + metadata refresh
-    socket.on("message:update", (payload: { sessionId: string; updates: Array<{ key: { id?: string }; update: { status?: number } }> }) => {
-      const STATUS_MAP: Record<number, WaMessage["status"]> = { 1: "sent", 2: "delivered", 3: "delivered", 4: "read" };
+    socket.on("message:update", (payload: {
+      sessionId: string;
+      updates: Array<{
+        key: { id?: string };
+        // Backend now sends string status directly; keep old numeric field for compat
+        status?: WaMessage["status"];
+        update?: { status?: number };
+      }>;
+    }) => {
+      const NUM_STATUS_MAP: Record<number, WaMessage["status"]> = { 0: "error", 1: "pending", 2: "sent", 3: "delivered", 4: "read", 5: "read" };
       let needsRefetch = false;
       setMessages((prev) =>
         prev.map((m) => {
           const hit = payload.updates?.find((u) => u.key?.id === m.id);
           if (!hit) return m;
+          // String status (new format)
+          if (hit.status) return { ...m, status: hit.status };
+          // Numeric status (old format) — still supported
+          if (hit.update?.status) return { ...m, status: NUM_STATUS_MAP[hit.update.status] ?? m.status };
           // Empty update = metadata change (mediaUrl, transcript) — refetch
-          if (!hit.update || Object.keys(hit.update).length === 0) { needsRefetch = true; return m; }
-          if (hit.update.status) return { ...m, status: STATUS_MAP[hit.update.status] ?? m.status };
+          if (!hit.update || Object.keys(hit.update).length === 0) needsRefetch = true;
           return m;
         })
       );
