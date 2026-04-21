@@ -2243,15 +2243,15 @@ export default function WhatsAppCrmPage() {
       });
       if (!res.ok) throw new Error(`send failed: ${res.status}`);
       const data = await res.json().catch(() => ({}));
-      // Keep the local blob URL for the sender's own playback — it's guaranteed
-      // to work. The server-hosted ogg is used by the recipient's WhatsApp.
       const bodyText = data.transcript ? `[Voice] ${data.transcript}` : "";
+      // Prefer the server URL (survives refresh). Fall back to local blob if server saved nothing.
+      const finalMediaUrl = data.mediaUrl ? data.mediaUrl : localUrl;
       setMessages(prev => prev.map(m => m.id === tempId ? {
         ...m,
         id: data.messageId || m.id,
         status: "sent",
         body: bodyText,
-        // mediaUrl stays as the localUrl blob so the sender can always replay
+        mediaUrl: finalMediaUrl,
       } : m));
     } catch {
       setMessages(prev => prev.map(m => m.id === tempId ? { ...m, status: "error" } : m));
@@ -3314,7 +3314,7 @@ export default function WhatsAppCrmPage() {
                                               <Mic className="h-4 w-4 text-[#25D366]" />
                                             </div>
                                             {msg.mediaUrl ? (
-                                              <audio controls src={`${backendUrl}${msg.mediaUrl}`} className="h-8 w-full max-w-[220px]" />
+                                              <audio controls src={msg.mediaUrl.startsWith("blob:") || msg.mediaUrl.startsWith("http") ? msg.mediaUrl : `${backendUrl}${msg.mediaUrl}`} className="h-8 w-full max-w-[220px]" />
                                             ) : (
                                               <div className="flex-1">
                                                 <div className="flex items-end gap-0.5 h-6">
