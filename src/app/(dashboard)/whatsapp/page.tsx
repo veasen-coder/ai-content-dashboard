@@ -1281,6 +1281,7 @@ function SettingsPanel({
               <select value={botConfig.language} onChange={(e) => setB("language", e.target.value)}
                 className="w-full rounded-lg border border-[#1E1E1E] bg-[#0A0A0A] px-3 py-2 text-sm outline-none focus:border-primary">
                 <option value="same as user">Auto-detect (match user)</option>
+                <option value="malaysia-trilingual">🇲🇾 Malaysia (EN / BM / 中文 only)</option>
                 {["English","Bahasa Melayu","Mandarin","Arabic","Indonesian","Thai","Vietnamese","Spanish","French","Hindi","Japanese","Korean"].map(l => (
                   <option key={l} value={l}>{l}</option>
                 ))}
