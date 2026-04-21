@@ -1737,6 +1737,24 @@ export default function WhatsAppCrmPage() {
   useEffect(() => { selectedChatRef.current = selectedChat; }, [selectedChat]);
   const loadedPicsRef = useRef<Set<string>>(new Set());
 
+  // Voice recording state
+  const [recording, setRecording] = useState(false);
+  const [recordingElapsed, setRecordingElapsed] = useState(0);
+  const [recordedBlob, setRecordedBlob] = useState<Blob | null>(null);
+  const [recordedBlobUrl, setRecordedBlobUrl] = useState<string | null>(null);
+  const [sendingVoice, setSendingVoice] = useState(false);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
+  const recordTickRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const recordStreamRef = useRef<MediaStream | null>(null);
+  // Display toggle for transcripts
+  const [showTranscripts, setShowTranscripts] = useState<boolean>(() => {
+    if (typeof window === "undefined") return true;
+    const v = localStorage.getItem("wa_show_transcripts");
+    return v === null ? true : v === "1";
+  });
+  useEffect(() => { if (typeof window !== "undefined") localStorage.setItem("wa_show_transcripts", showTranscripts ? "1" : "0"); }, [showTranscripts]);
+
   // Load backend URL on mount — env var takes priority, then localStorage
   useEffect(() => {
     const envUrl = process.env.NEXT_PUBLIC_WA_BACKEND_URL || "";
@@ -2089,6 +2107,75 @@ export default function WhatsAppCrmPage() {
   useEffect(() => {
     fetchMessages();
   }, [fetchMessages]);
+
+  // ── Voice recording ───────────────────────────────────────────────────────
+  async function startRecording() {
+    if (recording || !selectedChat) return;
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      recordStreamRef.current = stream;
+      const mime = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
+        ? "audio/webm;codecs=opus"
+        : MediaRecorder.isTypeSupported("audio/ogg;codecs=opus")
+          ? "audio/ogg;codecs=opus"
+          : "";
+      const recorder = mime ? new MediaRecorder(stream, { mimeType: mime }) : new MediaRecorder(stream);
+      audioChunksRef.current = [];
+      recorder.ondataavailable = (e) => { if (e.data.size > 0) audioChunksRef.current.push(e.data); };
+      recorder.onstop = () => {
+        const blob = new Blob(audioChunksRef.current, { type: recorder.mimeType || "audio/webm" });
+        setRecordedBlob(blob);
+        setRecordedBlobUrl(URL.createObjectURL(blob));
+        recordStreamRef.current?.getTracks().forEach(t => t.stop());
+        recordStreamRef.current = null;
+      };
+      mediaRecorderRef.current = recorder;
+      recorder.start();
+      setRecording(true);
+      setRecordingElapsed(0);
+      recordTickRef.current = setInterval(() => setRecordingElapsed(e => e + 1), 1000);
+    } catch {
+      alert("Microphone access denied or unavailable.");
+    }
+  }
+
+  function stopRecording() {
+    if (!recording) return;
+    mediaRecorderRef.current?.stop();
+    if (recordTickRef.current) { clearInterval(recordTickRef.current); recordTickRef.current = null; }
+    setRecording(false);
+  }
+
+  function cancelRecording() {
+    if (recording) {
+      try { mediaRecorderRef.current?.stop(); } catch { /* noop */ }
+      if (recordTickRef.current) { clearInterval(recordTickRef.current); recordTickRef.current = null; }
+      setRecording(false);
+    }
+    if (recordedBlobUrl) URL.revokeObjectURL(recordedBlobUrl);
+    setRecordedBlob(null);
+    setRecordedBlobUrl(null);
+    setRecordingElapsed(0);
+  }
+
+  async function sendVoiceRecording() {
+    if (!recordedBlob || !selectedChat || !session || sendingVoice) return;
+    setSendingVoice(true);
+    try {
+      const ext = recordedBlob.type.includes("ogg") ? "ogg" : "webm";
+      const fd = new FormData();
+      fd.append("file", recordedBlob, `voice.${ext}`);
+      fd.append("jid", selectedChat.jid);
+      await fetch(`${backendUrl}/api/sessions/${session.id}/messages/send-voice`, {
+        method: "POST", headers: authHeaders(), body: fd,
+      });
+      // Clean up; the socket will push message:new for the sent voice
+      if (recordedBlobUrl) URL.revokeObjectURL(recordedBlobUrl);
+      setRecordedBlob(null);
+      setRecordedBlobUrl(null);
+      setRecordingElapsed(0);
+    } catch { /* silent */ } finally { setSendingVoice(false); }
+  }
 
   // Send message
   async function handleSend() {
@@ -3006,6 +3093,18 @@ export default function WhatsAppCrmPage() {
                           </div>
                         </button>
                         <div className="flex items-center gap-1">
+                          <button
+                            onClick={() => setShowTranscripts(v => !v)}
+                            title={showTranscripts ? "Hide voice transcripts" : "Show voice transcripts"}
+                            className={cn(
+                              "flex h-8 items-center gap-1 rounded-lg px-2 text-[10px] font-medium transition-colors",
+                              showTranscripts
+                                ? "bg-emerald-700/30 text-emerald-300 hover:bg-emerald-700/50"
+                                : "text-muted-foreground hover:bg-[#1E1E1E] hover:text-foreground"
+                            )}
+                          >
+                            <FileText className="h-3 w-3" /> Transcripts
+                          </button>
                           <button onClick={fetchMessages}
                             className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-[#1E1E1E] hover:text-foreground">
                             <RefreshCw className={cn("h-3.5 w-3.5", loadingMessages && "animate-spin")} />
@@ -3117,7 +3216,7 @@ export default function WhatsAppCrmPage() {
                                             )}
                                           </div>
                                           {/* Transcript (Whisper for received, source text for sent) */}
-                                          {transcript && (
+                                          {transcript && showTranscripts && (
                                             <div className="mt-1.5 rounded-md border border-muted-foreground/10 bg-black/20 px-2 py-1">
                                               <p className="text-[10px] font-medium text-muted-foreground/50 uppercase tracking-wide mb-0.5">
                                                 {msg.fromMe ? "Spoken text" : "Transcript"}
@@ -3259,30 +3358,58 @@ export default function WhatsAppCrmPage() {
                               <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
                             </svg>
                           </button>
-                          <input
-                            type="text"
-                            value={messageText}
-                            onChange={(e) => setMessageText(e.target.value)}
-                            onKeyDown={(e) => {
-                              if (e.key === "Enter" && !e.shiftKey) {
-                                e.preventDefault();
-                                handleSend();
-                              }
-                            }}
-                            placeholder={`Message ${selectedChat.name}…`}
-                            className="flex-1 rounded-xl border border-[#1E1E1E] bg-[#0A0A0A] px-4 py-2 text-sm outline-none transition-colors focus:border-primary"
-                          />
-                          <button
-                            onClick={handleSend}
-                            disabled={(!messageText.trim() && !sendingFile) || sending || sendingFile}
-                            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#25D366] text-white transition-opacity hover:opacity-90 disabled:opacity-40"
-                          >
-                            {sending || sendingFile ? (
-                              <Loader2 className="h-4 w-4 animate-spin" />
-                            ) : (
-                              <Send className="h-4 w-4" />
-                            )}
-                          </button>
+                          {recording ? (
+                            <div className="flex flex-1 items-center gap-3 rounded-xl border border-red-800/50 bg-red-950/20 px-4 py-2">
+                              <span className="relative flex h-2.5 w-2.5 shrink-0">
+                                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-500 opacity-75" />
+                                <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-red-500" />
+                              </span>
+                              <span className="flex-1 text-xs text-red-300 font-mono">Recording… {Math.floor(recordingElapsed / 60).toString().padStart(2, "0")}:{(recordingElapsed % 60).toString().padStart(2, "0")}</span>
+                              <button onClick={cancelRecording} className="rounded-lg px-2.5 py-1 text-xs text-red-300 hover:bg-red-900/40" title="Cancel"><X className="h-3.5 w-3.5" /></button>
+                              <button onClick={stopRecording} className="rounded-lg bg-red-600 px-3 py-1 text-xs text-white hover:bg-red-500">Stop</button>
+                            </div>
+                          ) : recordedBlob ? (
+                            <div className="flex flex-1 items-center gap-2 rounded-xl border border-[#25D366]/40 bg-[#25D366]/5 px-3 py-1.5">
+                              <audio src={recordedBlobUrl || undefined} controls className="h-8 flex-1" />
+                              <button onClick={cancelRecording} disabled={sendingVoice} className="rounded-lg px-2 py-1 text-xs text-muted-foreground hover:bg-[#1E1E1E]" title="Discard"><X className="h-3.5 w-3.5" /></button>
+                              <button onClick={sendVoiceRecording} disabled={sendingVoice} className="flex items-center gap-1 rounded-lg bg-[#25D366] px-3 py-1.5 text-xs text-white hover:opacity-90 disabled:opacity-50">
+                                {sendingVoice ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <><Send className="h-3 w-3" /> Send</>}
+                              </button>
+                            </div>
+                          ) : (
+                            <>
+                              <input
+                                type="text"
+                                value={messageText}
+                                onChange={(e) => setMessageText(e.target.value)}
+                                onKeyDown={(e) => {
+                                  if (e.key === "Enter" && !e.shiftKey) {
+                                    e.preventDefault();
+                                    handleSend();
+                                  }
+                                }}
+                                placeholder={`Message ${selectedChat.name}…`}
+                                className="flex-1 rounded-xl border border-[#1E1E1E] bg-[#0A0A0A] px-4 py-2 text-sm outline-none transition-colors focus:border-primary"
+                              />
+                              {messageText.trim() ? (
+                                <button
+                                  onClick={handleSend}
+                                  disabled={sending || sendingFile}
+                                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#25D366] text-white transition-opacity hover:opacity-90 disabled:opacity-40"
+                                >
+                                  {sending || sendingFile ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                                </button>
+                              ) : (
+                                <button
+                                  onClick={startRecording}
+                                  title="Record voice message"
+                                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#25D366] text-white transition-opacity hover:opacity-90"
+                                >
+                                  <Mic className="h-4 w-4" />
+                                </button>
+                              )}
+                            </>
+                          )}
                         </div>
                         {/* AI mode indicator — reflects per-contact toggle */}
                         <div className="mt-2 flex items-center justify-between gap-1.5 px-1">
