@@ -93,7 +93,7 @@ type Tab = "inbox" | "contacts" | "settings";
 interface ChatTemplate { id: string; name: string; text: string; }
 interface DocTemplate { id: string; name: string; filename: string; mimetype: string; data: string; }
 interface KnowledgeEntry { id: string; title: string; content: string; source: string; created_at: string; has_embedding: number; }
-interface BotConfig { persona: string; business_name: string; language: string; tone: string; instructions: string; }
+interface BotConfig { persona: string; business_name: string; language: string; tone: string; instructions: string; emoji_mode: string; }
 interface ContactInfo {
   jid: string;
   name: string | null;
@@ -579,6 +579,11 @@ interface AiConfig {
   ai_split_delay_ms: number;
   ai_add_filler_phrases: boolean;
   ai_avoid_duplicate_replies: boolean;
+  // Voice
+  ai_voice_reply_mode: "text" | "match_input" | "always";
+  ai_voice_name: string;
+  ai_voice_speed: number;
+  ai_voice_model: string;
   // Rate limits
   ai_max_replies_per_hour: number;
   ai_max_replies_per_day: number;
@@ -611,6 +616,7 @@ const AI_DEFAULTS: AiConfig = {
   ai_typing_speed_wpm: 45, ai_read_delay_ms: 1500, ai_send_typing_indicator: true,
   ai_mark_read_before_reply: true, ai_simulate_online: true, ai_split_long_messages: true,
   ai_split_delay_ms: 2000, ai_add_filler_phrases: false, ai_avoid_duplicate_replies: true,
+  ai_voice_reply_mode: "text", ai_voice_name: "nova", ai_voice_speed: 1.0, ai_voice_model: "tts-1",
   ai_max_replies_per_hour: 0, ai_max_replies_per_day: 0, ai_cooldown_same_contact_ms: 5000,
   ai_ignore_broadcast: true, ai_ignore_forwarded: false, ai_reply_to_groups: false,
   ai_working_hours_enabled: false, ai_working_hours_start: "09:00", ai_working_hours_end: "18:00",
@@ -705,7 +711,7 @@ function SettingsPanel({
   const [changingApiKey, setChangingApiKey] = useState(false);
 
   // AI Chatbot Builder state
-  const BOT_DEFAULTS: BotConfig = { persona: "", business_name: "", language: "same as user", tone: "professional", instructions: "" };
+  const BOT_DEFAULTS: BotConfig = { persona: "", business_name: "", language: "same as user", tone: "professional", instructions: "", emoji_mode: "natural" };
   const [botConfig, setBotConfig] = useState<BotConfig>(BOT_DEFAULTS);
   const [botSaving, setBotSaving] = useState(false);
   const [botSaved, setBotSaved] = useState(false);
@@ -738,7 +744,7 @@ function SettingsPanel({
       .catch(() => {});
     fetch(`${backendUrl}/api/sessions/${sessionId}/ai/prompt`)
       .then((r) => r.json())
-      .then((d) => setBotConfig({ persona: d.persona || "", business_name: d.business_name || "", language: d.language || "same as user", tone: d.tone || "professional", instructions: d.instructions || "" }))
+      .then((d) => setBotConfig({ persona: d.persona || "", business_name: d.business_name || "", language: d.language || "same as user", tone: d.tone || "professional", instructions: d.instructions || "", emoji_mode: d.emoji_mode || "natural" }))
       .catch(() => {});
     fetch(`${backendUrl}/api/sessions/${sessionId}/ai/knowledge`)
       .then((r) => r.json())
@@ -988,6 +994,92 @@ function SettingsPanel({
               <label className="mb-1 block text-[11px] font-medium uppercase tracking-wider text-muted-foreground">Fallback Message</label>
               <input type="text" value={ai.ai_fallback_message} onChange={(e) => setA("ai_fallback_message", e.target.value)} placeholder="Sorry, I couldn't understand that."
                 className="w-full rounded-lg border border-[#1E1E1E] bg-[#0A0A0A] px-3 py-2 text-sm outline-none focus:border-primary" />
+            </div>
+
+            {/* Voice reply settings — full customization */}
+            <div className="rounded-xl border border-purple-800/40 bg-purple-950/20 p-3">
+              <div className="mb-2 flex items-center gap-2">
+                <Mic className="h-3.5 w-3.5 text-purple-300" />
+                <label className="text-[11px] font-medium uppercase tracking-wider text-purple-200">Voice Reply</label>
+              </div>
+
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                <div className="sm:col-span-2">
+                  <label className="mb-1 block text-[10px] text-muted-foreground">Mode</label>
+                  <select value={ai.ai_voice_reply_mode} onChange={(e) => setA("ai_voice_reply_mode", e.target.value as "text" | "match_input" | "always")}
+                    className="w-full rounded-lg border border-[#1E1E1E] bg-[#0A0A0A] px-3 py-2 text-xs outline-none focus:border-primary">
+                    <option value="text">Text only (default)</option>
+                    <option value="match_input">Match input — voice → voice, text → text</option>
+                    <option value="always">Always voice</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="mb-1 block text-[10px] text-muted-foreground">Voice</label>
+                  <select value={ai.ai_voice_name} onChange={(e) => setA("ai_voice_name", e.target.value)}
+                    className="w-full rounded-lg border border-[#1E1E1E] bg-[#0A0A0A] px-3 py-2 text-xs outline-none focus:border-primary">
+                    <option value="alloy">Alloy (neutral)</option>
+                    <option value="echo">Echo (male)</option>
+                    <option value="fable">Fable (British male)</option>
+                    <option value="onyx">Onyx (deep male)</option>
+                    <option value="nova">Nova (female, warm)</option>
+                    <option value="shimmer">Shimmer (female, soft)</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="mb-1 block text-[10px] text-muted-foreground">Quality</label>
+                  <select value={ai.ai_voice_model} onChange={(e) => setA("ai_voice_model", e.target.value)}
+                    className="w-full rounded-lg border border-[#1E1E1E] bg-[#0A0A0A] px-3 py-2 text-xs outline-none focus:border-primary">
+                    <option value="tts-1">Standard (faster, $0.015/1k)</option>
+                    <option value="tts-1-hd">HD (higher quality, $0.030/1k)</option>
+                  </select>
+                </div>
+
+                <div className="sm:col-span-2">
+                  <label className="mb-1 flex items-center justify-between text-[10px] text-muted-foreground">
+                    <span>Speed</span>
+                    <span className="font-mono text-purple-300">{ai.ai_voice_speed.toFixed(2)}×</span>
+                  </label>
+                  <input type="range" min={0.25} max={4.0} step={0.05}
+                    value={ai.ai_voice_speed}
+                    onChange={(e) => setA("ai_voice_speed", parseFloat(e.target.value))}
+                    className="w-full accent-purple-400" />
+                  <div className="mt-0.5 flex justify-between text-[9px] text-muted-foreground/60">
+                    <span>0.25× slow</span><span>1.0× normal</span><span>4.0× fast</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-3 flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={async () => {
+                    if (!backendUrl || !sessionId) return;
+                    try {
+                      const res = await fetch(`${backendUrl}/api/sessions/${sessionId}/ai/voice-preview`, {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json", ...authH() },
+                        body: JSON.stringify({
+                          text: "Hi there! This is how your voice will sound on WhatsApp. I can help your customers right away.",
+                          voice: ai.ai_voice_name,
+                          speed: ai.ai_voice_speed,
+                          model: ai.ai_voice_model,
+                        }),
+                      });
+                      if (!res.ok) return;
+                      const blob = await res.blob();
+                      const url = URL.createObjectURL(blob);
+                      const audio = new Audio(url);
+                      audio.play();
+                    } catch { /* silent */ }
+                  }}
+                  className="flex items-center gap-1.5 rounded-lg bg-purple-700/40 px-3 py-1.5 text-xs font-medium text-purple-200 hover:bg-purple-700/60"
+                >
+                  <Mic className="h-3 w-3" /> Preview voice
+                </button>
+                <p className="text-[10px] text-purple-300/70">Customer voice notes are transcribed with Whisper automatically.</p>
+              </div>
             </div>
           </div>
         </SectionCard>
@@ -1285,6 +1377,16 @@ function SettingsPanel({
                 {["English","Bahasa Melayu","Mandarin","Arabic","Indonesian","Thai","Vietnamese","Spanish","French","Hindi","Japanese","Korean"].map(l => (
                   <option key={l} value={l}>{l}</option>
                 ))}
+              </select>
+            </div>
+            <div>
+              <label className="mb-1 block text-[11px] font-medium uppercase tracking-wider text-muted-foreground">Emoji Usage</label>
+              <select value={botConfig.emoji_mode} onChange={(e) => setB("emoji_mode", e.target.value)}
+                className="w-full rounded-lg border border-[#1E1E1E] bg-[#0A0A0A] px-3 py-2 text-sm outline-none focus:border-primary">
+                <option value="none">🚫 None — plain text only</option>
+                <option value="minimal">🙂 Minimal — rarely</option>
+                <option value="natural">😊 Natural — like a human</option>
+                <option value="frequent">🎉 Frequent — lots</option>
               </select>
             </div>
           </div>
