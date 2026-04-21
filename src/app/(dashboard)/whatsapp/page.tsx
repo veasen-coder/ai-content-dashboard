@@ -2243,15 +2243,15 @@ export default function WhatsAppCrmPage() {
       });
       if (!res.ok) throw new Error(`send failed: ${res.status}`);
       const data = await res.json().catch(() => ({}));
-      // Rewrite the optimistic row with the real message id + server-hosted media URL
-      const serverMediaUrl = data.mediaUrl ? `${backendUrl}${data.mediaUrl}` : localUrl;
+      // Keep the local blob URL for the sender's own playback — it's guaranteed
+      // to work. The server-hosted ogg is used by the recipient's WhatsApp.
       const bodyText = data.transcript ? `[Voice] ${data.transcript}` : "";
       setMessages(prev => prev.map(m => m.id === tempId ? {
         ...m,
         id: data.messageId || m.id,
         status: "sent",
         body: bodyText,
-        mediaUrl: serverMediaUrl,
+        // mediaUrl stays as the localUrl blob so the sender can always replay
       } : m));
     } catch {
       setMessages(prev => prev.map(m => m.id === tempId ? { ...m, status: "error" } : m));
