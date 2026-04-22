@@ -1,6 +1,7 @@
 "use client";
 
 import { Topbar } from "./topbar";
+import { DemoModeRibbon } from "./demo-mode-toggle";
 
 interface PageWrapperProps {
   title: string;
@@ -15,6 +16,7 @@ export function PageWrapper({ title, lastSynced, headerExtra, children, fixed }:
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <Topbar title={title} lastSynced={lastSynced} headerExtra={headerExtra} />
+      <DemoModeRibbon />
       {fixed ? (
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden">{children}</div>
       ) : (

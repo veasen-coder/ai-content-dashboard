@@ -24,6 +24,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { toast } from "sonner";
+import { useDemoModeStore } from "@/store/demo-mode-store";
 import {
   BarChart,
   Bar,
@@ -109,11 +110,17 @@ const PIE_COLORS = [
 // --------------- Helpers ---------------
 
 function formatMYR(amount: number): string {
-  return new Intl.NumberFormat("en-MY", {
+  const formatted = new Intl.NumberFormat("en-MY", {
     style: "currency",
     currency: "MYR",
     minimumFractionDigits: 2,
   }).format(amount);
+  // Demo Mode: replace digits with X so format/shape stays but values hide.
+  // Subscribing happens at the page level so React re-renders propagate here.
+  if (typeof window !== "undefined" && useDemoModeStore.getState().isCensorMode) {
+    return formatted.replace(/\d/g, "X");
+  }
+  return formatted;
 }
 
 function formatShortDate(date: string): string {
@@ -203,7 +210,13 @@ function TransactionRow({
         <Icon className="h-4 w-4" style={{ color }} />
       </div>
       <div className="flex min-w-0 flex-1 flex-col">
-        <span className="truncate text-sm font-medium text-foreground">
+        <span
+          className={`truncate text-sm font-medium text-foreground ${
+            entry.description && useDemoModeStore.getState().isCensorMode
+              ? "demo-blur"
+              : ""
+          }`}
+        >
           {entry.description || entry.category || entry.type}
         </span>
         <span className="text-xs text-muted-foreground">
@@ -1063,6 +1076,10 @@ function ReceiptUploadModal({
 // --------------- Main Page ---------------
 
 export default function FinancePage() {
+  // Subscribe to censor mode so the entire tree re-renders when it toggles
+  // (formatMYR reads useDemoModeStore.getState() non-reactively).
+  useDemoModeStore((s) => s.isCensorMode);
+
   const [entries, setEntries] = useState<FinanceEntry[]>([]);
   const [balances, setBalances] = useState<AccountBalance[]>([]);
   const [loading, setLoading] = useState(true);
