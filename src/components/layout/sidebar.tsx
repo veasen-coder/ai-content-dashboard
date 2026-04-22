@@ -21,9 +21,11 @@ import {
   BarChart3,
   Calendar,
   MessageCircle,
+  Plug,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useSidebarStore } from "@/store/sidebar-store";
+import { useDemoModeStore } from "@/store/demo-mode-store";
 
 interface NavItem {
   href: string;
@@ -32,7 +34,7 @@ interface NavItem {
   children?: { href: string; label: string; icon: React.ElementType }[];
 }
 
-const navItems: NavItem[] = [
+const regularNavItems: NavItem[] = [
   { href: "/dashboard", label: "Overview", icon: LayoutDashboard },
   { href: "/tasks", label: "Tasks", icon: CheckSquare },
   { href: "/clients", label: "Clients", icon: Users },
@@ -53,13 +55,23 @@ const navItems: NavItem[] = [
   { href: "/assistant", label: "Assistant", icon: Bot },
 ];
 
+const demoNavItems: NavItem[] = [
+  { href: "/demo-mode/crm", label: "CRM Dashboard", icon: LayoutDashboard },
+  { href: "/demo-mode/whatsapp", label: "WhatsApp", icon: MessageCircle },
+  { href: "/demo-mode/calendar", label: "Calendar & Bookings", icon: Calendar },
+  { href: "/demo-mode/clients", label: "Client List", icon: Users },
+  { href: "/demo-mode/integrations", label: "Integrations", icon: Plug },
+];
+
 export function Sidebar() {
   const pathname = usePathname();
-  const { isCollapsed, toggle, isMobileOpen, closeMobile } =
-    useSidebarStore();
+  const { isCollapsed, toggle, isMobileOpen, closeMobile } = useSidebarStore();
+  const { isDemoMode } = useDemoModeStore();
+
+  const navItems = isDemoMode ? demoNavItems : regularNavItems;
+
   const [expandedMenus, setExpandedMenus] = useState<Record<string, boolean>>(
     () => {
-      // Auto-expand Finance if we're on a finance sub-page
       const initial: Record<string, boolean> = {};
       navItems.forEach((item) => {
         if (item.children && pathname.startsWith(item.href)) {
@@ -102,6 +114,30 @@ export function Sidebar() {
           )}
         </div>
       </div>
+
+      {/* Demo mode banner */}
+      {isDemoMode && (!isCollapsed || isMobileOpen) && (
+        <div className="mx-2 mt-2 flex items-center gap-2 rounded-lg border border-primary/30 bg-primary/10 px-3 py-2">
+          <div className="relative flex h-2 w-2 items-center justify-center">
+            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary opacity-75"></span>
+            <span className="relative inline-flex h-2 w-2 rounded-full bg-primary"></span>
+          </div>
+          <span className="text-[11px] font-semibold uppercase tracking-wider text-primary">
+            Demo Mode
+          </span>
+        </div>
+      )}
+      {isDemoMode && isCollapsed && !isMobileOpen && (
+        <div
+          className="mx-2 mt-2 flex h-8 items-center justify-center rounded-lg border border-primary/30 bg-primary/10"
+          title="Demo Mode"
+        >
+          <div className="relative flex h-2 w-2 items-center justify-center">
+            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary opacity-75"></span>
+            <span className="relative inline-flex h-2 w-2 rounded-full bg-primary"></span>
+          </div>
+        </div>
+      )}
 
       {/* Navigation */}
       <nav className="flex-1 space-y-1 px-2 py-4">
@@ -190,36 +226,40 @@ export function Sidebar() {
 
       {/* Footer */}
       <div className="border-t border-border p-2">
-        <Link
-          href="/chat"
-          onClick={closeMobile}
-          className={cn(
-            "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors",
-            pathname === "/chat"
-              ? "bg-primary/10 text-primary"
-              : "text-muted-foreground hover:bg-muted hover:text-foreground",
-            isCollapsed && !isMobileOpen && "justify-center px-2"
-          )}
-          title={isCollapsed && !isMobileOpen ? "Team Chat" : undefined}
-        >
-          <MessageSquare className="h-5 w-5 shrink-0" />
-          {(!isCollapsed || isMobileOpen) && <span>Team Chat</span>}
-        </Link>
-        <Link
-          href="/calendar"
-          onClick={closeMobile}
-          className={cn(
-            "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors",
-            pathname === "/calendar"
-              ? "bg-primary/10 text-primary"
-              : "text-muted-foreground hover:bg-muted hover:text-foreground",
-            isCollapsed && !isMobileOpen && "justify-center px-2"
-          )}
-          title={isCollapsed && !isMobileOpen ? "Calendar" : undefined}
-        >
-          <Calendar className="h-5 w-5 shrink-0" />
-          {(!isCollapsed || isMobileOpen) && <span>Calendar</span>}
-        </Link>
+        {!isDemoMode && (
+          <>
+            <Link
+              href="/chat"
+              onClick={closeMobile}
+              className={cn(
+                "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors",
+                pathname === "/chat"
+                  ? "bg-primary/10 text-primary"
+                  : "text-muted-foreground hover:bg-muted hover:text-foreground",
+                isCollapsed && !isMobileOpen && "justify-center px-2"
+              )}
+              title={isCollapsed && !isMobileOpen ? "Team Chat" : undefined}
+            >
+              <MessageSquare className="h-5 w-5 shrink-0" />
+              {(!isCollapsed || isMobileOpen) && <span>Team Chat</span>}
+            </Link>
+            <Link
+              href="/calendar"
+              onClick={closeMobile}
+              className={cn(
+                "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors",
+                pathname === "/calendar"
+                  ? "bg-primary/10 text-primary"
+                  : "text-muted-foreground hover:bg-muted hover:text-foreground",
+                isCollapsed && !isMobileOpen && "justify-center px-2"
+              )}
+              title={isCollapsed && !isMobileOpen ? "Calendar" : undefined}
+            >
+              <Calendar className="h-5 w-5 shrink-0" />
+              {(!isCollapsed || isMobileOpen) && <span>Calendar</span>}
+            </Link>
+          </>
+        )}
         <Link
           href="/settings"
           onClick={closeMobile}
