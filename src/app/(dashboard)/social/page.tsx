@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { PageWrapper } from "@/components/layout/page-wrapper";
+import { useCensor } from "@/hooks/use-censor";
 import {
   Camera,
   RefreshCw,
@@ -185,6 +186,7 @@ function MetricItem({ label, value }: { label: string; value: string }) {
 }
 
 function IGPostCard({ post }: { post: IGMedia }) {
+  const censor = useCensor();
   return (
     <a
       href={post.permalink}
@@ -199,7 +201,7 @@ function IGPostCard({ post }: { post: IGMedia }) {
           <img
             src={post.thumbnail_url || post.media_url}
             alt={post.caption?.slice(0, 50) || "Instagram post"}
-            className="h-full w-full object-cover"
+            className={`h-full w-full object-cover ${censor.imageBlurClass}`}
           />
         ) : (
           <div className="flex h-full w-full items-center justify-center">
@@ -219,7 +221,7 @@ function IGPostCard({ post }: { post: IGMedia }) {
       </div>
       {/* Caption */}
       <div className="p-3">
-        <p className="line-clamp-2 text-xs text-muted-foreground">
+        <p className={`line-clamp-2 text-xs text-muted-foreground ${censor.blurClass}`}>
           {post.caption || "No caption"}
         </p>
         <p className="mt-1 text-[10px] text-muted-foreground/60">
@@ -231,6 +233,7 @@ function IGPostCard({ post }: { post: IGMedia }) {
 }
 
 function FBPostRow({ post }: { post: FacebookPost }) {
+  const censor = useCensor();
   const likes = post.likes?.summary?.total_count ?? 0;
   const comments = post.comments?.summary?.total_count ?? 0;
   const shares = post.shares?.count ?? 0;
@@ -238,7 +241,7 @@ function FBPostRow({ post }: { post: FacebookPost }) {
   return (
     <div className="group flex items-start gap-4 border-b border-[#1E1E1E] px-4 py-4 transition-colors hover:bg-[#1A1A1A]">
       <div className="flex min-w-0 flex-1 flex-col gap-1">
-        <p className="line-clamp-2 text-sm text-foreground">
+        <p className={`line-clamp-2 text-sm text-foreground ${censor.blurClass}`}>
           {post.message || "(No text)"}
         </p>
         <p className="text-xs text-muted-foreground">
@@ -1102,6 +1105,7 @@ function ContentCalendarView({
 }: {
   onOpenScheduler: (opts: { date?: string; post?: ScheduledPost; idea?: ContentIdea }) => void;
 }) {
+  const censor = useCensor();
   const today = new Date();
   const [year, setYear] = useState(today.getFullYear());
   const [month, setMonth] = useState(today.getMonth());
@@ -1293,9 +1297,9 @@ function ContentCalendarView({
                             }}
                             className="block w-full truncate rounded px-1 py-0.5 text-[9px] font-medium text-white transition-opacity hover:opacity-80"
                             style={{ backgroundColor: color }}
-                            title={post.caption}
+                            title={censor.short(post.caption, 10)}
                           >
-                            {post.caption.length > 30 ? post.caption.slice(0, 30) + "..." : post.caption}
+                            {censor.short(post.caption.length > 30 ? post.caption.slice(0, 30) + "..." : post.caption, 10)}
                           </button>
                         );
                       })}
@@ -1363,6 +1367,7 @@ function PostSchedulerView({
 }: {
   onOpenScheduler: (opts: { post?: ScheduledPost }) => void;
 }) {
+  const censor = useCensor();
   const [posts, setPosts] = useState<ScheduledPost[]>([]);
   const [loading, setLoading] = useState(true);
   const [setupRequired, setSetupRequired] = useState(false);
@@ -1525,7 +1530,7 @@ function PostSchedulerView({
 
               {/* Caption */}
               <div className="min-w-0 flex-1">
-                <p className="truncate text-sm text-[#F5F5F5]">
+                <p className={`truncate text-sm text-[#F5F5F5] ${censor.blurClass}`}>
                   {post.caption}
                 </p>
                 {post.status === "failed" && post.error_message && (
@@ -1577,6 +1582,7 @@ function PostSchedulerView({
 // --------------- Main Page ---------------
 
 export default function SocialPage() {
+  const censor = useCensor();
   const [activeTab, setActiveTab] = useState<SocialTab>("overview");
 
   // Account Overview state
@@ -1726,7 +1732,7 @@ export default function SocialPage() {
                       <div>
                         <h3 className="font-semibold">
                           {igConnected
-                            ? `@${igProfile.username}`
+                            ? `@${censor.name(igProfile.username, "ig-username")}`
                             : "Instagram"}
                         </h3>
                         <p className="text-xs text-muted-foreground">

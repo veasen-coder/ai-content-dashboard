@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { io as ioConnect, Socket } from "socket.io-client";
 import { PageWrapper } from "@/components/layout/page-wrapper";
+import { useCensor } from "@/hooks/use-censor";
 import {
   WifiOff,
   Loader2,
@@ -292,17 +293,18 @@ function StatusPill({ status }: { status: WaSession["status"] }) {
 
 function Avatar({ name, picUrl, size = 9 }: { name: string; picUrl?: string | null; size?: number }) {
   const [err, setErr] = useState(false);
+  const censor = useCensor();
   const cls = `h-${size} w-${size}`;
   if (picUrl && !err) {
     return (
       // eslint-disable-next-line @next/next/no-img-element
       <img src={picUrl} alt={name} onError={() => setErr(true)}
-        className={`${cls} shrink-0 rounded-full object-cover`} />
+        className={`${cls} shrink-0 rounded-full object-cover ${censor.imageBlurClass}`} />
     );
   }
   return (
     <div className={`${cls} shrink-0 flex items-center justify-center rounded-full text-xs font-semibold text-white ${avatarColor(name)}`}>
-      {getInitials(name)}
+      {getInitials(censor.name(name, name))}
     </div>
   );
 }
@@ -692,6 +694,7 @@ function SettingsPanel({
   sessionId?: string;
   onSave: (url: string) => void;
 }) {
+  const censor = useCensor();
   const [url, setUrl] = useState(backendUrl);
   const [urlSaved, setUrlSaved] = useState(false);
 
@@ -1439,7 +1442,8 @@ function SettingsPanel({
                 )}
                 {testMessages.map((m, i) => (
                   <div key={i} className={cn("max-w-[85%] rounded-xl px-3 py-2 text-xs",
-                    m.role === "user" ? "ml-auto bg-primary text-white" : "bg-[#1E1E1E] text-foreground")}>
+                    m.role === "user" ? "ml-auto bg-primary text-white" : "bg-[#1E1E1E] text-foreground",
+                    censor.blurClass)}>
                     {m.content}
                   </div>
                 ))}
@@ -1475,7 +1479,7 @@ function SettingsPanel({
               {knowledgeEntries.map((entry) => (
                 <div key={entry.id} className="flex items-start gap-3 rounded-xl border border-[#1E1E1E] bg-[#0A0A0A] p-3">
                   <div className="flex-1 min-w-0">
-                    <p className="truncate text-sm font-medium text-foreground">{entry.title}</p>
+                    <p className={`truncate text-sm font-medium text-foreground ${censor.blurClass}`}>{entry.title}</p>
                     <div className="mt-0.5 flex items-center gap-2">
                       {entry.source !== "manual" && <span className="text-[10px] text-muted-foreground">{entry.source}</span>}
                       <span className={cn("rounded-full px-1.5 py-px text-[9px] font-medium",
@@ -1634,6 +1638,7 @@ function SettingsPanel({
 
 function ContactsPanel({ contacts }: { contacts: WaChat[] }) {
   const [search, setSearch] = useState("");
+  const censor = useCensor();
   const filtered = contacts.filter((c) =>
     c.name.toLowerCase().includes(search.toLowerCase())
   );
@@ -1675,10 +1680,10 @@ function ContactsPanel({ contacts }: { contacts: WaChat[] }) {
               </div>
               <div className="min-w-0 flex-1">
                 <p className="truncate text-sm font-medium text-foreground">
-                  {c.name}
+                  {c.isGroup ? censor.business(c.name, c.jid) : censor.name(c.name, c.jid)}
                 </p>
                 <p className="truncate font-mono text-xs text-muted-foreground">
-                  {c.phoneNumber ? `+${c.phoneNumber}` : c.isGroup ? "Group" : c.jid.endsWith("@s.whatsapp.net") ? `+${c.jid.split("@")[0]}` : "WhatsApp Contact"}
+                  {c.phoneNumber ? censor.phone(`+${c.phoneNumber}`, c.jid) : c.isGroup ? "Group" : c.jid.endsWith("@s.whatsapp.net") ? censor.phone(`+${c.jid.split("@")[0]}`, c.jid) : "WhatsApp Contact"}
                 </p>
               </div>
               {c.isGroup && (
@@ -1697,6 +1702,7 @@ function ContactsPanel({ contacts }: { contacts: WaChat[] }) {
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function WhatsAppCrmPage() {
+  const censor = useCensor();
   const [tab, setTab] = useState<Tab>("inbox");
   const [backendUrl, setBackendUrl] = useState<string>("");
   const [backendOnline, setBackendOnline] = useState<boolean | null>(null); // null = checking
@@ -2688,8 +2694,8 @@ export default function WhatsAppCrmPage() {
                   {chatTemplates.map((tpl) => (
                     <div key={tpl.id} className="flex items-start gap-3 rounded-xl border border-[#2A2A2A] bg-[#0A0A0A] p-3">
                       <div className="flex-1 min-w-0">
-                        <p className="text-xs font-semibold text-foreground truncate">{tpl.name}</p>
-                        <p className="text-[11px] text-muted-foreground mt-0.5 line-clamp-2">{tpl.text}</p>
+                        <p className="text-xs font-semibold text-foreground truncate">{censor.short(tpl.name, 10)}</p>
+                        <p className={`text-[11px] text-muted-foreground mt-0.5 line-clamp-2 ${censor.blurClass}`}>{tpl.text}</p>
                       </div>
                       <div className="flex gap-1.5 shrink-0">
                         <button onClick={() => applyChatTemplate(tpl)}
@@ -2730,8 +2736,8 @@ export default function WhatsAppCrmPage() {
                         <FileText className="h-4 w-4 text-blue-400" />
                       </div>
                       <div className="flex-1 min-w-0">
-                        <p className="text-xs font-semibold text-foreground truncate">{tpl.name}</p>
-                        <p className="text-[10px] text-muted-foreground">{tpl.filename}</p>
+                        <p className="text-xs font-semibold text-foreground truncate">{censor.short(tpl.name, 10)}</p>
+                        <p className="text-[10px] text-muted-foreground">{censor.short(tpl.filename, 6)}</p>
                       </div>
                       <div className="flex gap-1.5 shrink-0">
                         <button onClick={() => sendDocTemplate(tpl)}
@@ -3081,7 +3087,7 @@ export default function WhatsAppCrmPage() {
                             <div className="min-w-0 flex-1">
                               <div className="flex items-baseline justify-between gap-1">
                                 <div className="flex min-w-0 items-center gap-1.5">
-                                  <p className="truncate text-xs font-semibold text-foreground">{chat.name}</p>
+                                  <p className="truncate text-xs font-semibold text-foreground">{chat.isGroup ? censor.business(chat.name, chat.jid) : censor.name(chat.name, chat.jid)}</p>
                                   {needsTakeover && (
                                     <span className="shrink-0 rounded bg-red-500 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-white animate-pulse">
                                       Needs Reply
@@ -3135,18 +3141,18 @@ export default function WhatsAppCrmPage() {
                                 </div>
                               </div>
                               {!chat.isGroup && (chat.phoneNumber || chat.jid.endsWith("@s.whatsapp.net")) && (
-                                <p className="truncate font-mono text-[10px] text-white/40">+{chat.phoneNumber || chat.jid.split("@")[0]}</p>
+                                <p className="truncate font-mono text-[10px] text-white/40">{censor.phone(`+${chat.phoneNumber || chat.jid.split("@")[0]}`, chat.jid)}</p>
                               )}
                               {/* Tags/remarks */}
                               {chat.tags && chat.tags.length > 0 && (
                                 <div className="mt-0.5 flex flex-wrap gap-1">
                                   {chat.tags.map(tag => (
-                                    <span key={tag} className="rounded-full bg-primary/10 px-1.5 py-px text-[9px] text-primary/80">{tag}</span>
+                                    <span key={tag} className="rounded-full bg-primary/10 px-1.5 py-px text-[9px] text-primary/80">{censor.short(tag, 4)}</span>
                                   ))}
                                 </div>
                               )}
                               <div className="flex items-center justify-between gap-1">
-                                <p className="truncate text-[11px] text-muted-foreground">{chat.lastMessage || "No messages"}</p>
+                                <p className={`truncate text-[11px] text-muted-foreground ${censor.blurClass}`}>{chat.lastMessage || "No messages"}</p>
                                 {chat.unreadCount > 0 && (
                                   <span className="flex h-4 min-w-[1rem] shrink-0 items-center justify-center rounded-full bg-[#25D366] px-1 text-[10px] font-bold text-white">
                                     {chat.unreadCount > 99 ? "99+" : chat.unreadCount}
@@ -3194,14 +3200,14 @@ export default function WhatsAppCrmPage() {
                           onClick={() => fetchContactInfo(selectedChat.jid)}>
                           <Avatar name={selectedChat.name} picUrl={picCache[selectedChat.jid]} size={9} />
                           <div>
-                            <p className="text-sm font-semibold text-foreground">{selectedChat.name}</p>
+                            <p className="text-sm font-semibold text-foreground">{selectedChat.isGroup ? censor.business(selectedChat.name, selectedChat.jid) : censor.name(selectedChat.name, selectedChat.jid)}</p>
                             <p className="text-[11px] text-muted-foreground">
                               {selectedChat.phoneNumber
-                                ? `+${selectedChat.phoneNumber}`
+                                ? censor.phone(`+${selectedChat.phoneNumber}`, selectedChat.jid)
                                 : selectedChat.isGroup
                                   ? "Group"
                                   : selectedChat.jid.endsWith("@s.whatsapp.net")
-                                    ? `+${selectedChat.jid.split("@")[0]}`
+                                    ? censor.phone(`+${selectedChat.jid.split("@")[0]}`, selectedChat.jid)
                                     : "WhatsApp Contact"}
                             </p>
                           </div>
@@ -3284,7 +3290,7 @@ export default function WhatsAppCrmPage() {
                                         <span className="text-base">{msg.type === "video" ? "🎥" : "📷"}</span>
                                         <span className="text-xs text-muted-foreground">{msg.type === "video" ? "Video" : "Photo"}</span>
                                       </div>
-                                      {msg.caption && <p className="px-3 pt-1.5 pb-0.5 text-xs">{msg.caption}</p>}
+                                      {msg.caption && <p className={`px-3 pt-1.5 pb-0.5 text-xs ${censor.blurClass}`}>{msg.caption}</p>}
                                       <div className={cn("px-3 pb-1.5 pt-0.5 flex items-center gap-1 text-[10px] text-muted-foreground/60", msg.fromMe ? "justify-end" : "justify-start")}>
                                         <span>{formatTime(msg.timestamp)}</span>
                                         {msg.fromMe && <MsgStatus status={msg.status} />}
@@ -3335,7 +3341,7 @@ export default function WhatsAppCrmPage() {
                                               <p className="text-[10px] font-medium text-muted-foreground/50 uppercase tracking-wide mb-0.5">
                                                 {msg.fromMe ? "Spoken text" : "Transcript"}
                                               </p>
-                                              <p className="text-[11px] leading-snug text-foreground/80 whitespace-pre-wrap break-words">{transcript}</p>
+                                              <p className={`text-[11px] leading-snug text-foreground/80 whitespace-pre-wrap break-words ${censor.blurClass}`}>{transcript}</p>
                                             </div>
                                           )}
                                           <div className={cn("mt-1 flex items-center gap-1 text-[10px] text-muted-foreground/60", msg.fromMe ? "justify-end" : "justify-start")}>
@@ -3382,7 +3388,7 @@ export default function WhatsAppCrmPage() {
                                   ) : (
                                     /* ── Text / Emoji (default) ── */
                                     <>
-                                      <p className="whitespace-pre-wrap break-words leading-relaxed">
+                                      <p className={`whitespace-pre-wrap break-words leading-relaxed ${censor.blurClass}`}>
                                         {msg.body || <span className="text-muted-foreground/40 italic text-xs">{mediaPreview(msg.type) || "Message"}</span>}
                                       </p>
                                       <div className={cn("mt-0.5 flex items-center gap-1 text-[10px] text-muted-foreground/60", msg.fromMe ? "justify-end" : "justify-start")}>
@@ -3502,7 +3508,7 @@ export default function WhatsAppCrmPage() {
                                     handleSend();
                                   }
                                 }}
-                                placeholder={`Message ${selectedChat.name}…`}
+                                placeholder={`Message ${selectedChat.isGroup ? censor.business(selectedChat.name, selectedChat.jid) : censor.name(selectedChat.name, selectedChat.jid)}…`}
                                 className="flex-1 rounded-xl border border-[#1E1E1E] bg-[#0A0A0A] px-4 py-2 text-sm outline-none transition-colors focus:border-primary"
                               />
                               {messageText.trim() ? (

@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { PageWrapper } from "@/components/layout/page-wrapper";
+import { useCensor } from "@/hooks/use-censor";
 import {
   Send,
   Hash,
@@ -44,6 +45,7 @@ interface Message {
 }
 
 export default function ChatPage() {
+  const censor = useCensor();
   const [channels, setChannels] = useState<Channel[]>([]);
   const [selectedChannel, setSelectedChannel] = useState<Channel | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -243,7 +245,7 @@ export default function ChatPage() {
                   }`}
                 >
                   <Hash className="h-4 w-4 shrink-0" />
-                  <span className="truncate">{channel.name}</span>
+                  <span className="truncate">{censor.short(channel.name, 10)}</span>
                 </button>
               ))
             )}
@@ -259,7 +261,7 @@ export default function ChatPage() {
                 <div className="flex items-center gap-2">
                   <Hash className="h-4 w-4 text-[#6B7280]" />
                   <h3 className="text-sm font-semibold text-[#F5F5F5]">
-                    {selectedChannel.name}
+                    {censor.short(selectedChannel.name, 10)}
                   </h3>
                 </div>
                 <div className="flex items-center gap-2">
@@ -314,13 +316,13 @@ export default function ChatPage() {
                               <div className="min-w-0 flex-1">
                                 <div className="flex items-baseline gap-2">
                                   <span className="text-sm font-semibold text-[#F5F5F5]">
-                                    {msg.user?.name || getMemberName(userId)}
+                                    {censor.name(msg.user?.name || getMemberName(userId), String(userId))}
                                   </span>
                                   <span className="text-xs text-[#6B7280]">
                                     {formatMessageDate(msg.date)}
                                   </span>
                                 </div>
-                                <p className="mt-0.5 whitespace-pre-wrap break-words text-sm text-[#D1D5DB]">
+                                <p className={`mt-0.5 whitespace-pre-wrap break-words text-sm text-[#D1D5DB] ${censor.blurClass}`}>
                                   {msg.content}
                                 </p>
                                 {msg.replies_count && msg.replies_count > 0 && (
@@ -393,7 +395,7 @@ export default function ChatPage() {
                           </div>
                           <div className="min-w-0">
                             <p className="truncate text-sm text-[#F5F5F5]">
-                              {member.name}
+                              {censor.name(member.name, String(member.id))}
                             </p>
                           </div>
                         </div>

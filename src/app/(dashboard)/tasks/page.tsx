@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { PageWrapper } from "@/components/layout/page-wrapper";
+import { useCensor } from "@/hooks/use-censor";
 import {
   ChevronDown,
   ChevronRight,
@@ -139,12 +140,13 @@ async function updateTask(taskId: string, fields: Record<string, unknown>) {
 // --------------- Sub-components ---------------
 
 function AssigneeBadge({ assignee }: { assignee: Assignee }) {
+  const censor = useCensor();
   const bgColor = assignee.color || "#6B7280";
   return (
     <div
       className="flex h-7 w-7 items-center justify-center rounded-full text-[10px] font-bold text-white"
       style={{ backgroundColor: bgColor }}
-      title={assignee.username}
+      title={censor.name(assignee.username, String(assignee.id))}
     >
       {assignee.initials}
     </div>
@@ -385,6 +387,7 @@ function TaskDetailDrawer({
   onClose: () => void;
   onUpdate: () => void;
 }) {
+  const censor = useCensor();
   const [editingName, setEditingName] = useState(false);
   const [nameValue, setNameValue] = useState("");
   const [saving, setSaving] = useState(false);
@@ -524,7 +527,7 @@ function TaskDetailDrawer({
               className="cursor-pointer rounded-lg px-1 py-0.5 text-lg font-semibold leading-snug transition-colors hover:bg-[#111111]"
               title="Click to edit"
             >
-              {task.name}
+              {censor.short(task.name, 10)}
             </h3>
           )}
 
@@ -642,7 +645,7 @@ function TaskDetailDrawer({
                     >
                       {member.initials}
                     </div>
-                    {member.username}
+                    {censor.name(member.username, String(member.id))}
                   </button>
                 );
               })}
@@ -678,7 +681,7 @@ function TaskDetailDrawer({
               <label className="mb-1.5 block text-xs font-medium uppercase tracking-wider text-muted-foreground">
                 Description
               </label>
-              <div className="rounded-lg border border-[#1E1E1E] bg-[#111111] p-3 text-sm text-muted-foreground whitespace-pre-wrap">
+              <div className={`rounded-lg border border-[#1E1E1E] bg-[#111111] p-3 text-sm text-muted-foreground whitespace-pre-wrap ${censor.blurClass}`}>
                 {task.description}
               </div>
             </div>
@@ -729,6 +732,7 @@ function TaskRow({
   onUpdate: () => void;
   onAddSubtask?: (id: string) => void;
 }) {
+  const censor = useCensor();
   const due = formatDueDate(task.due_date);
 
   return (
@@ -789,7 +793,7 @@ function TaskRow({
         <span
           className={`truncate text-sm font-medium ${indent ? "text-muted-foreground" : "text-foreground"}`}
         >
-          {task.name}
+          {censor.short(task.name, 10)}
         </span>
         {!indent && task.subtask_count && task.subtask_count > 0 && !hasChildren ? (
           <span className="flex shrink-0 items-center gap-0.5 text-xs text-muted-foreground">
@@ -1237,6 +1241,7 @@ function AddTaskModal({ isOpen, onClose, onCreated }: AddTaskModalProps) {
 // --------------- Main Page ---------------
 
 export default function TasksPage() {
+  const censor = useCensor();
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -1670,7 +1675,7 @@ export default function TasksPage() {
                       >
                         {member.initials}
                       </div>
-                      {member.username}
+                      {censor.name(member.username, String(member.id))}
                     </button>
                   ))}
                   <div className="my-1 border-t border-[#1E1E1E]" />

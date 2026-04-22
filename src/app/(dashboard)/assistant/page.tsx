@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect, useCallback } from "react";
 import { PageWrapper } from "@/components/layout/page-wrapper";
+import { useCensor } from "@/hooks/use-censor";
 import {
   Send,
   Plus,
@@ -116,6 +117,7 @@ function MessageBubble({
   isLoading?: boolean;
 }) {
   const [copied, setCopied] = useState(false);
+  const censor = useCensor();
   const isUser = message.role === "user";
 
   function handleCopy() {
@@ -145,9 +147,9 @@ function MessageBubble({
         }`}
       >
         {isUser ? (
-          <p className="text-sm whitespace-pre-wrap">{message.content}</p>
+          <p className={`text-sm whitespace-pre-wrap ${censor.blurClass}`}>{message.content}</p>
         ) : (
-          <div className="prose prose-sm prose-invert max-w-none text-sm [&_p]:my-1.5 [&_ul]:my-1.5 [&_ol]:my-1.5 [&_li]:my-0.5 [&_h1]:text-base [&_h2]:text-sm [&_h3]:text-sm [&_code]:bg-[#0A0A0A] [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:rounded [&_code]:text-xs [&_pre]:bg-[#0A0A0A] [&_pre]:rounded-lg [&_pre]:p-3 [&_pre_code]:p-0 [&_a]:text-primary [&_table]:border-collapse [&_th]:border [&_th]:border-[#1E1E1E] [&_th]:px-3 [&_th]:py-1.5 [&_th]:text-left [&_td]:border [&_td]:border-[#1E1E1E] [&_td]:px-3 [&_td]:py-1.5 [&_strong]:text-foreground">
+          <div className={`prose prose-sm prose-invert max-w-none text-sm [&_p]:my-1.5 [&_ul]:my-1.5 [&_ol]:my-1.5 [&_li]:my-0.5 [&_h1]:text-base [&_h2]:text-sm [&_h3]:text-sm [&_code]:bg-[#0A0A0A] [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:rounded [&_code]:text-xs [&_pre]:bg-[#0A0A0A] [&_pre]:rounded-lg [&_pre]:p-3 [&_pre_code]:p-0 [&_a]:text-primary [&_table]:border-collapse [&_th]:border [&_th]:border-[#1E1E1E] [&_th]:px-3 [&_th]:py-1.5 [&_th]:text-left [&_td]:border [&_td]:border-[#1E1E1E] [&_td]:px-3 [&_td]:py-1.5 [&_strong]:text-foreground ${censor.blurClass}`}>
             <ReactMarkdown remarkPlugins={[remarkGfm]}>
               {message.content}
             </ReactMarkdown>
@@ -207,6 +209,7 @@ function ConversationItem({
   onClick: () => void;
   onDelete: () => void;
 }) {
+  const censor = useCensor();
   return (
     <div
       onClick={onClick}
@@ -219,7 +222,7 @@ function ConversationItem({
       }`}
     >
       <Brain className="h-3.5 w-3.5 shrink-0" />
-      <span className="flex-1 truncate">{conversation.title}</span>
+      <span className="flex-1 truncate">{censor.short(conversation.title, 10)}</span>
       <button
         onClick={(e) => {
           e.stopPropagation();

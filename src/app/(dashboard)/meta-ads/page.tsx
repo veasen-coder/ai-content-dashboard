@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { PageWrapper } from "@/components/layout/page-wrapper";
+import { useCensor } from "@/hooks/use-censor";
 import {
   Megaphone,
   RefreshCw,
@@ -544,6 +545,7 @@ function DateRangePicker({
 // --------------- Component ---------------
 
 export default function MetaAdsPage() {
+  const censor = useCensor();
   const [flogen, setFlogen] = useState<AccountState>({ ...INITIAL_STATE });
   const [bv, setBv] = useState<AccountState>({ ...INITIAL_STATE });
 
@@ -654,7 +656,7 @@ export default function MetaAdsPage() {
               <DollarSign className="h-4 w-4" />
               Total Ad Spend (All Accounts)
             </div>
-            <p className="mt-2 text-3xl font-bold font-mono">{formatMoney(combinedSpend)}</p>
+            <p className="mt-2 text-3xl font-bold font-mono">{censor.amount(formatMoney(combinedSpend))}</p>
           </div>
           <div className="rounded-xl border border-[#1E1E1E] bg-[#111111] p-5">
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -674,7 +676,7 @@ export default function MetaAdsPage() {
 
         {/* Flogen AI Section */}
         <AccountSection
-          title="Flogen AI"
+          title={censor.business("Flogen AI", "flogen")}
           accent="violet"
           account="flogen"
           state={flogen}
@@ -687,7 +689,7 @@ export default function MetaAdsPage() {
 
         {/* Bundle Vaults Section */}
         <AccountSection
-          title="Bundle Vaults"
+          title={censor.business("Bundle Vaults", "bv")}
           accent="amber"
           account="bv"
           state={bv}
@@ -724,6 +726,7 @@ function AccountSection({
   fetchAds: (adsetId: string) => void;
   fetchCampaigns: () => void;
 }) {
+  const censor = useCensor();
   const accentColors = accent === "violet"
     ? { bg: "bg-violet-500/20", text: "text-violet-400", border: "border-violet-500/30" }
     : { bg: "bg-amber-500/20", text: "text-amber-400", border: "border-amber-500/30" };
@@ -787,14 +790,14 @@ function AccountSection({
                 onClick={() => { if (state.level === "ads") goBack(); }}
                 className={state.level === "ads" ? `${accentColors.text} hover:opacity-80 transition-opacity` : "text-foreground"}
               >
-                {state.selectedCampaign.name}
+                {censor.short(state.selectedCampaign.name, 8)}
               </button>
             </>
           )}
           {state.selectedAdset && (
             <>
               <ChevronRight className="h-4 w-4 text-muted-foreground" />
-              <span className="text-foreground">{state.selectedAdset.name}</span>
+              <span className="text-foreground">{censor.short(state.selectedAdset.name, 8)}</span>
             </>
           )}
         </div>
@@ -807,7 +810,7 @@ function AccountSection({
             <DollarSign className="h-3.5 w-3.5" />
             Spend
           </div>
-          <p className="mt-1 text-xl font-bold font-mono">{formatMoney(totals.totalSpend)}</p>
+          <p className="mt-1 text-xl font-bold font-mono">{censor.amount(formatMoney(totals.totalSpend))}</p>
         </div>
         <div className="rounded-xl border border-[#1E1E1E] bg-[#111111] p-3">
           <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
@@ -835,7 +838,7 @@ function AccountSection({
             <DollarSign className="h-3.5 w-3.5" />
             Avg CPM
           </div>
-          <p className="mt-1 text-xl font-bold font-mono">{formatMoney(totals.avgCpm)}</p>
+          <p className="mt-1 text-xl font-bold font-mono">{censor.amount(formatMoney(totals.avgCpm))}</p>
         </div>
       </div>
 
@@ -896,14 +899,14 @@ function AccountSection({
                     >
                       <td className="px-4 py-3 font-medium max-w-[240px] truncate">
                         <div className="flex items-center gap-2">
-                          {row.name}
+                          {censor.short(row.name, 10)}
                           {clickable && <ChevronRight className="h-3.5 w-3.5 text-muted-foreground shrink-0" />}
                         </div>
                       </td>
                       <td className="px-4 py-3">{statusBadge(row.status)}</td>
                       <td className="px-4 py-3 text-right font-mono">{formatNum(row.impressions)}</td>
-                      <td className="px-4 py-3 text-right font-mono">{formatMoney(row.cpm)}</td>
-                      <td className="px-4 py-3 text-right font-mono">{formatMoney(row.cpc)}</td>
+                      <td className="px-4 py-3 text-right font-mono">{censor.amount(formatMoney(row.cpm))}</td>
+                      <td className="px-4 py-3 text-right font-mono">{censor.amount(formatMoney(row.cpc))}</td>
                       <td className="px-4 py-3 text-right font-mono">{row.ctr.toFixed(2)}%</td>
                       <td className="px-4 py-3 text-right font-mono">{formatNum(row.clicks)}</td>
                       <td className="px-4 py-3 text-right font-mono">{formatNum(row.atc)}</td>
@@ -914,7 +917,7 @@ function AccountSection({
                           {row.roas.toFixed(2)}x
                         </span>
                       </td>
-                      <td className="px-4 py-3 text-right font-mono">{formatMoney(row.spend)}</td>
+                      <td className="px-4 py-3 text-right font-mono">{censor.amount(formatMoney(row.spend))}</td>
                     </tr>
                   );
                 })

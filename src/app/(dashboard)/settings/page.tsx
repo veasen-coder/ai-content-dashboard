@@ -3,6 +3,7 @@
 import { PageWrapper } from "@/components/layout/page-wrapper";
 import { User, Key, Palette, Bell, Sun, Moon, Monitor } from "lucide-react";
 import { useThemeStore } from "@/store/theme-store";
+import { useCensor } from "@/hooks/use-censor";
 import { cn } from "@/lib/utils";
 
 const INTEGRATIONS = [
@@ -36,6 +37,7 @@ function SettingSection({
 
 export default function SettingsPage() {
   const { theme, setTheme } = useThemeStore();
+  const censor = useCensor();
 
   return (
     <PageWrapper title="Settings">
@@ -47,19 +49,19 @@ export default function SettingsPage() {
               <label className="mb-1 block text-xs font-medium uppercase tracking-wider text-muted-foreground">
                 Business Name
               </label>
-              <p className="text-sm text-foreground">Flogen AI</p>
+              <p className="text-sm text-foreground">{censor.business("Flogen AI", "account-business")}</p>
             </div>
             <div>
               <label className="mb-1 block text-xs font-medium uppercase tracking-wider text-muted-foreground">
                 Owner
               </label>
-              <p className="text-sm text-foreground">Haikal</p>
+              <p className="text-sm text-foreground">{censor.name("Haikal", "account-owner")}</p>
             </div>
             <div>
               <label className="mb-1 block text-xs font-medium uppercase tracking-wider text-muted-foreground">
                 Email
               </label>
-              <p className="text-sm text-foreground">flogen.team@gmail.com</p>
+              <p className="text-sm text-foreground">{censor.email("flogen.team@gmail.com", "account-email")}</p>
             </div>
           </div>
         </SettingSection>

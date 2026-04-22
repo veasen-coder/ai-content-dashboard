@@ -21,6 +21,7 @@ import {
   Upload,
 } from "lucide-react";
 import { toast } from "sonner";
+import { useCensor } from "@/hooks/use-censor";
 
 // --------------- Types ---------------
 
@@ -102,6 +103,7 @@ function formatDate(dateString: string) {
 // --------------- Component ---------------
 
 export default function ResourcesPage() {
+  const censor = useCensor();
   const [resources, setResources] = useState<Resource[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeCategory, setActiveCategory] = useState("all");
@@ -373,7 +375,7 @@ export default function ResourcesPage() {
                   <img
                     src={resource.image_url}
                     alt={resource.title}
-                    className="h-36 w-full object-cover"
+                    className={`h-36 w-full object-cover ${censor.imageBlurClass}`}
                   />
                 </div>
               )}
@@ -392,7 +394,7 @@ export default function ResourcesPage() {
                 </div>
                 <div className="min-w-0 flex-1">
                   <h3 className="truncate text-sm font-medium text-foreground">
-                    {resource.title}
+                    {censor.short(resource.title, 10)}
                   </h3>
                   <div className="mt-1 flex items-center gap-2">
                     <span
@@ -410,7 +412,7 @@ export default function ResourcesPage() {
 
               {/* Description */}
               {resource.description && (
-                <p className="mb-3 line-clamp-2 text-xs leading-relaxed text-muted-foreground">
+                <p className={`mb-3 line-clamp-2 text-xs leading-relaxed text-muted-foreground ${censor.blurClass}`}>
                   {resource.description}
                 </p>
               )}

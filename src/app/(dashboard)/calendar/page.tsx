@@ -15,6 +15,7 @@ import {
   Trash2,
 } from "lucide-react";
 import { toast } from "sonner";
+import { useCensor } from "@/hooks/use-censor";
 
 // --------------- Types ---------------
 
@@ -454,6 +455,7 @@ function EventModal({
 // --------------- Main Page ---------------
 
 export default function CalendarPage() {
+  const censor = useCensor();
   const today = new Date();
   const [year, setYear] = useState(today.getFullYear());
   const [month, setMonth] = useState(today.getMonth());
@@ -640,14 +642,14 @@ export default function CalendarPage() {
                             e.stopPropagation();
                             setModal({ mode: "edit", event: ev });
                           }}
-                          title={ev.name}
+                          title={censor.short(ev.name, 10)}
                         >
                           <div
                             className="h-1.5 w-1.5 rounded-full shrink-0"
                             style={{ backgroundColor: ev.statusColor }}
                           />
                           <span className="text-[10px] font-medium truncate">
-                            {ev.name}
+                            {censor.short(ev.name, 10)}
                           </span>
                         </div>
                       ))}
@@ -729,7 +731,7 @@ export default function CalendarPage() {
                               }}
                             />
                             <p className="text-xs font-semibold truncate">
-                              {ev.name}
+                              {censor.short(ev.name, 10)}
                             </p>
                           </div>
 
@@ -761,7 +763,7 @@ export default function CalendarPage() {
 
                           {/* Description */}
                           {ev.description && (
-                            <p className="text-[10px] text-muted-foreground mt-1.5 line-clamp-2">
+                            <p className={`text-[10px] text-muted-foreground mt-1.5 line-clamp-2 ${censor.blurClass}`}>
                               {ev.description}
                             </p>
                           )}
@@ -854,7 +856,7 @@ export default function CalendarPage() {
                             style={{ backgroundColor: ev.statusColor }}
                           />
                           <span className="text-[10px] font-medium truncate flex-1">
-                            {ev.name}
+                            {censor.short(ev.name, 10)}
                           </span>
                           <span className="text-[9px] text-muted-foreground shrink-0">
                             {d
