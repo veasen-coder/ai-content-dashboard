@@ -3,6 +3,7 @@
 import { Sidebar } from "@/components/layout/sidebar";
 import { ClaudeBalance } from "@/components/claude-balance";
 import { DemoToggle } from "@/components/demo-toggle";
+import { DemoIndustrySwitcher } from "@/components/demo-industry-switcher";
 import { useSidebarStore } from "@/store/sidebar-store";
 import { useDemoModeStore } from "@/store/demo-mode-store";
 import { cn } from "@/lib/utils";
@@ -63,6 +64,7 @@ export default function DashboardLayout({
           )}
 
           <div className="flex items-center gap-2">
+            <DemoIndustrySwitcher />
             <DemoToggle />
             {!isDemoMode && <ClaudeBalance />}
           </div>

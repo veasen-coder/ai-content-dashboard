@@ -1,6 +1,16 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
+export type DemoIndustry = "F&B" | "Clinic" | "Real Estate" | "Salon" | "Retail";
+
+export const DEMO_INDUSTRIES: DemoIndustry[] = [
+  "F&B",
+  "Clinic",
+  "Real Estate",
+  "Salon",
+  "Retail",
+];
+
 interface DemoModeState {
   // ─── Demo Mode (pre-built pages) ─────────────────────────────
   // When on: sidebar swaps to demo-mode nav, user is redirected to
@@ -8,8 +18,10 @@ interface DemoModeState {
   // canned data for a specific prospect.
   isDemoMode: boolean;
   demoClientName: string;
+  selectedIndustry: DemoIndustry;
   toggleDemoMode: () => void;
   setDemoClientName: (name: string) => void;
+  setSelectedIndustry: (industry: DemoIndustry) => void;
 
   // ─── Censor Mode (blur real data in place) ───────────────────
   // When on: the REAL live dashboard pages stay active but sensitive
@@ -27,9 +39,11 @@ export const useDemoModeStore = create<DemoModeState>()(
     (set) => ({
       isDemoMode: false,
       demoClientName: "Acme Restaurant Sdn Bhd",
+      selectedIndustry: "F&B",
       toggleDemoMode: () =>
         set((state) => ({ isDemoMode: !state.isDemoMode })),
       setDemoClientName: (name) => set({ demoClientName: name }),
+      setSelectedIndustry: (industry) => set({ selectedIndustry: industry }),
 
       isCensorMode: false,
       toggleCensorMode: () =>
