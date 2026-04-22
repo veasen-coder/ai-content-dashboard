@@ -32,7 +32,6 @@ import {
   getClientStatus,
   STATUS_TONE_CLASSES,
 } from "@/lib/client-status";
-import { useCensor } from "@/hooks/use-censor";
 
 // --------------- Types ---------------
 
@@ -186,7 +185,6 @@ function getChecklistProgress(checklist: Record<string, boolean>): number {
 // --------------- Pipeline Summary Stats ---------------
 
 function PipelineSummaryStats({ clients }: { clients: Client[] }) {
-  const censor = useCensor();
   const nonClosed = clients.filter((c) => c.stage !== "closed");
   const closed = clients.filter((c) => c.stage === "closed");
 
@@ -218,13 +216,13 @@ function PipelineSummaryStats({ clients }: { clients: Client[] }) {
   const stats = [
     {
       label: "Pipeline Value",
-      value: censor.amount(formatMYR(totalPipelineValue)),
+      value: formatMYR(totalPipelineValue),
       icon: DollarSign,
       color: "#7C3AED",
     },
     {
       label: "Weighted Forecast",
-      value: censor.amount(formatMYR(weightedForecast)),
+      value: formatMYR(weightedForecast),
       icon: Target,
       color: "#3B82F6",
     },
@@ -236,7 +234,7 @@ function PipelineSummaryStats({ clients }: { clients: Client[] }) {
     },
     {
       label: "Avg Deal Size",
-      value: censor.amount(formatMYR(avgDealSize)),
+      value: formatMYR(avgDealSize),
       icon: DollarSign,
       color: "#F59E0B",
     },
@@ -463,7 +461,6 @@ function ClientCard({
   hasDemoScript: boolean;
 }) {
   const [confirmDel, setConfirmDel] = useState(false);
-  const censor = useCensor();
   const isClosed = client.stage === "closed";
   const nextStage = getNextStage(client.stage);
   const prevStage = getPrevStage(client.stage);
@@ -476,10 +473,6 @@ function ClientCard({
     close_probability: client.close_probability,
     status: client.status,
   });
-
-  const displayName = censor.name(client.name, client.id);
-  const displayBusiness = censor.business(client.business, client.id, client.industry);
-  const displayDealValue = censor.amount(client.deal_value || "");
 
   return (
     <div
@@ -525,7 +518,7 @@ function ClientCard({
       {/* Header — Name + alert */}
       <div className="mb-1.5 flex items-start justify-between gap-2 pr-6">
         <h4 className="text-sm font-semibold text-foreground leading-tight truncate">
-          {displayName}
+          {client.name}
         </h4>
         {isStalled && (
           <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-[#F59E0B]" />
@@ -535,7 +528,7 @@ function ClientCard({
       {/* Business — secondary line */}
       {client.business && (
         <p className="mb-2 truncate text-[11px] text-muted-foreground">
-          {displayBusiness}
+          {client.business}
         </p>
       )}
 
@@ -568,9 +561,7 @@ function ClientCard({
 
       {/* Short AI summary — single line with ellipsis */}
       {client.ai_summary ? (
-        <p
-          className={`mb-2 text-[11px] text-muted-foreground/80 leading-relaxed line-clamp-2 ${censor.blurClass}`}
-        >
+        <p className="mb-2 text-[11px] text-muted-foreground/80 leading-relaxed line-clamp-2">
           {client.ai_summary}
         </p>
       ) : client.notes ? (
@@ -586,7 +577,7 @@ function ClientCard({
         </span>
         {client.deal_value && !isClosed && (
           <span className="text-[11px] font-mono font-semibold text-primary truncate ml-2">
-            {displayDealValue}
+            {client.deal_value}
           </span>
         )}
         {isClosed && (

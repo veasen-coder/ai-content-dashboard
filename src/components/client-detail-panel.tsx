@@ -20,7 +20,6 @@ import {
   STATUS_TONE_CLASSES,
   shouldShowDemoButton,
 } from "@/lib/client-status";
-import { useCensor } from "@/hooks/use-censor";
 
 interface Client {
   id: string;
@@ -56,8 +55,6 @@ export function ClientDetailPanel({
   onOpenFullEdit,
   hasDemoScript = false,
 }: Props) {
-  const censor = useCensor();
-
   // Inline editable fields
   const [summary, setSummary] = useState(client.ai_summary || "");
   const [notes, setNotes] = useState(client.notes || "");
@@ -158,11 +155,11 @@ export function ClientDetailPanel({
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0 flex-1">
               <h2 className="text-base font-semibold text-foreground truncate">
-                {censor.name(client.name, client.id)}
+                {client.name}
               </h2>
               {client.business && (
                 <p className="text-xs text-muted-foreground truncate">
-                  {censor.business(client.business, client.id, client.industry)}
+                  {client.business}
                 </p>
               )}
               <div className="mt-1.5 flex items-center gap-1.5">
@@ -245,9 +242,7 @@ export function ClientDetailPanel({
                 className="w-full resize-none rounded-lg border border-primary/30 bg-[#0A0A0A] px-3 py-2 text-sm outline-none focus:border-primary"
               />
             ) : (
-              <p
-                className={`text-sm text-foreground/80 leading-relaxed min-h-[1.5rem] ${client.ai_summary ? censor.blurClass : ""}`}
-              >
+              <p className="text-sm text-foreground/80 leading-relaxed min-h-[1.5rem]">
                 {client.ai_summary || (
                   <span className="italic text-muted-foreground/60">
                     No summary yet — click Generate.
@@ -261,17 +256,17 @@ export function ClientDetailPanel({
           <section className="grid grid-cols-2 gap-3">
             {client.business && (
               <Info icon={<Building2 className="h-3 w-3" />} label="Business">
-                {censor.business(client.business, client.id, client.industry)}
+                {client.business}
               </Info>
             )}
             {client.email && (
               <Info icon={<Mail className="h-3 w-3" />} label="Email">
-                {censor.email(client.email, client.id)}
+                {client.email}
               </Info>
             )}
             {client.phone && (
               <Info icon={<Phone className="h-3 w-3" />} label="Phone">
-                {censor.phone(client.phone, client.id)}
+                {client.phone}
               </Info>
             )}
             {client.source && (
@@ -280,7 +275,7 @@ export function ClientDetailPanel({
             {client.deal_value && (
               <Info label="Deal Value">
                 <span className="font-mono text-primary">
-                  {censor.amount(client.deal_value)}
+                  {client.deal_value}
                 </span>
               </Info>
             )}
@@ -323,9 +318,7 @@ export function ClientDetailPanel({
                 className="w-full resize-y rounded-lg border border-primary/30 bg-[#0A0A0A] px-3 py-2 text-sm outline-none focus:border-primary"
               />
             ) : (
-              <p
-                className={`rounded-lg bg-[#0A0A0A] px-3 py-2 text-xs text-muted-foreground leading-relaxed whitespace-pre-wrap min-h-[3rem] ${client.notes ? censor.blurClass : ""}`}
-              >
+              <p className="rounded-lg bg-[#0A0A0A] px-3 py-2 text-xs text-muted-foreground leading-relaxed whitespace-pre-wrap min-h-[3rem]">
                 {client.notes || (
                   <span className="italic text-muted-foreground/60">
                     No notes yet.

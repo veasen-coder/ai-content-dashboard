@@ -25,7 +25,6 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import Link from "next/link";
-import { useCensor } from "@/hooks/use-censor";
 
 // --------------- Types ---------------
 
@@ -434,7 +433,6 @@ function AddEventModal({
 // --------------- Main Page ---------------
 
 export default function DashboardPage() {
-  const censor = useCensor();
   const [balances, setBalances] = useState<AccountBalance[]>([]);
   const [entries, setEntries] = useState<FinanceEntry[]>([]);
   const [clients, setClients] = useState<Client[]>([]);
@@ -598,25 +596,25 @@ export default function DashboardPage() {
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <MetricCard
             title="Total Balance"
-            value={censor.amount(formatMYR(totalBalance))}
+            value={formatMYR(totalBalance)}
             icon={Wallet}
             subtitle={`Across ${balances.length} accounts`}
             href="/finance"
           />
           <MetricCard
             title="Monthly Profit"
-            value={censor.amount(formatMYR(netProfit))}
+            value={formatMYR(netProfit)}
             icon={netProfit >= 0 ? TrendingUp : TrendingDown}
             href="/finance"
             trend={
               monthlyIncome > 0
-                ? `${censor.amount(formatMYR(monthlyIncome))} in`
+                ? `${formatMYR(monthlyIncome)} in`
                 : undefined
             }
             trendDown={netProfit < 0}
             subtitle={
               monthlyExpense > 0
-                ? `${censor.amount(formatMYR(monthlyExpense))} out`
+                ? `${formatMYR(monthlyExpense)} out`
                 : "April 2026"
             }
           />
@@ -853,7 +851,7 @@ export default function DashboardPage() {
                       }}
                     />
                     <span className="text-sm font-medium truncate">
-                      {censor.name(c.name, c.id)}
+                      {c.name}
                     </span>
                   </div>
                   <div className="flex items-center gap-2 shrink-0 ml-2">
@@ -862,7 +860,7 @@ export default function DashboardPage() {
                     )}
                     {c.deal_value && (
                       <span className="text-xs font-mono text-primary">
-                        {censor.amount(c.deal_value)}
+                        {c.deal_value}
                       </span>
                     )}
                   </div>
@@ -891,7 +889,7 @@ export default function DashboardPage() {
                       {b.account}
                     </p>
                     <p className="mt-1 text-sm font-bold font-mono">
-                      {censor.amount(formatMYR(b.balance || 0))}
+                      {formatMYR(b.balance || 0)}
                     </p>
                   </div>
                 ))}
@@ -902,7 +900,7 @@ export default function DashboardPage() {
                 <div className="flex items-center justify-between text-xs">
                   <span className="text-muted-foreground">Income</span>
                   <span className="font-mono text-[#10B981]">
-                    {censor.amount(formatMYR(monthlyIncome))}
+                    {formatMYR(monthlyIncome)}
                   </span>
                 </div>
                 <div className="h-2 rounded-full bg-[#1E1E1E] overflow-hidden">
@@ -920,7 +918,7 @@ export default function DashboardPage() {
                 <div className="flex items-center justify-between text-xs">
                   <span className="text-muted-foreground">Expenses</span>
                   <span className="font-mono text-[#EF4444]">
-                    {censor.amount(formatMYR(monthlyExpense))}
+                    {formatMYR(monthlyExpense)}
                   </span>
                 </div>
                 <div className="h-2 rounded-full bg-[#1E1E1E] overflow-hidden">
@@ -944,9 +942,7 @@ export default function DashboardPage() {
                   className="flex items-center justify-between rounded-lg border border-[#1E1E1E] bg-[#0A0A0A] px-3 py-2"
                 >
                   <div className="min-w-0">
-                    <p
-                      className={`text-xs font-medium truncate ${e.description ? censor.blurClass : ""}`}
-                    >
+                    <p className="text-xs font-medium truncate">
                       {e.description || e.category || "Entry"}
                     </p>
                     <p className="text-[10px] text-muted-foreground">
@@ -959,7 +955,7 @@ export default function DashboardPage() {
                     }`}
                   >
                     {e.type === "income" ? "+" : "-"}
-                    {censor.amount(formatMYR(e.amount))}
+                    {formatMYR(e.amount)}
                   </span>
                 </div>
               ))}
@@ -1094,7 +1090,7 @@ export default function DashboardPage() {
                     Spend (30d)
                   </p>
                   <p className="mt-1 text-sm font-bold font-mono">
-                    {censor.amount(formatMYR(metaAds.spend))}
+                    {formatMYR(metaAds.spend)}
                   </p>
                 </div>
                 <div className="rounded-lg bg-[#0A0A0A] p-3 text-center">

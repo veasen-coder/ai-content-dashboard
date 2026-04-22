@@ -18,7 +18,6 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { PasteBridge } from "@/components/paste-bridge";
-import { useCensor } from "@/hooks/use-censor";
 import type { ImageDump, ProgressUpdate } from "@/types";
 
 // ─── Types ───────────────────────────────────────────────────
@@ -540,7 +539,6 @@ function ProgressCard({
   onDelete: () => void;
 }) {
   const [open, setOpen] = useState(false);
-  const censor = useCensor();
 
   // Progress updates have `kind: "progress_update"`; anything else we render raw
   const update =
@@ -580,9 +578,7 @@ function ProgressCard({
               <ChevronRight className="mt-0.5 h-3 w-3 shrink-0 text-muted-foreground" />
             )}
             <div className="min-w-0 flex-1">
-              <p
-                className={`text-xs font-medium text-foreground ${update?.summary ? censor.blurClass : ""}`}
-              >
+              <p className="text-xs font-medium text-foreground">
                 {update?.summary || dump.title || "Progress update"}
               </p>
               <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[10px] text-muted-foreground">
@@ -627,7 +623,7 @@ function ProgressCard({
               <p className="mb-1 text-[10px] uppercase tracking-wider text-muted-foreground">
                 Key points
               </p>
-              <ul className={`space-y-1 ${censor.blurClass}`}>
+              <ul className="space-y-1">
                 {update.key_points.map((point, i) => (
                   <li
                     key={i}
@@ -644,7 +640,7 @@ function ProgressCard({
               <p className="mb-1 text-[10px] uppercase tracking-wider text-muted-foreground">
                 Next actions
               </p>
-              <ul className={`space-y-1 ${censor.blurClass}`}>
+              <ul className="space-y-1">
                 {update.next_actions.map((a, i) => (
                   <li
                     key={i}
@@ -661,9 +657,7 @@ function ProgressCard({
               <summary className="cursor-pointer text-[10px] uppercase tracking-wider text-muted-foreground transition-colors hover:text-foreground">
                 Raw extract
               </summary>
-              <pre
-                className={`mt-1 whitespace-pre-wrap rounded bg-[#111111] p-2 font-mono text-[10px] text-muted-foreground ${censor.blurClass}`}
-              >
+              <pre className="mt-1 whitespace-pre-wrap rounded bg-[#111111] p-2 font-mono text-[10px] text-muted-foreground">
                 {update.raw_extract}
               </pre>
             </details>
@@ -673,9 +667,7 @@ function ProgressCard({
               <p className="mb-1 text-[10px] uppercase tracking-wider text-muted-foreground">
                 Your notes
               </p>
-              <p
-                className={`text-xs text-muted-foreground italic ${censor.blurClass}`}
-              >
+              <p className="text-xs text-muted-foreground italic">
                 {dump.notes}
               </p>
             </div>

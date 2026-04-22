@@ -4,7 +4,6 @@ import { useState, useRef, useEffect } from "react";
 import { Bell, Search, X } from "lucide-react";
 import { formatRelativeTime } from "@/lib/utils";
 import { useRouter } from "next/navigation";
-import { DemoModeToggle } from "./demo-mode-toggle";
 
 interface TopbarProps {
   title: string;
@@ -88,8 +87,6 @@ export function Topbar({ title, lastSynced, headerExtra }: TopbarProps) {
         )}
 
         <div className="flex shrink-0 items-center gap-2">
-          <DemoModeToggle />
-
           <button
             onClick={() => setSearchOpen(true)}
             className="flex h-9 w-9 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
