@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useMemo } from "react";
+import { toast } from "sonner";
 import { PageWrapper } from "@/components/layout/page-wrapper";
 import { useDemoModeStore } from "@/store/demo-mode-store";
 import {
@@ -12,6 +13,12 @@ import {
   ChevronDown,
   ChevronRight,
   Crown,
+  Download,
+  ArrowUpDown,
+  ArrowUp,
+  ArrowDown,
+  X,
+  Loader2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -29,7 +36,7 @@ interface Client {
   status: Status;
 }
 
-const CLIENTS: Client[] = [
+const INITIAL_CLIENTS: Client[] = [
   { name: "Ahmad Rahman", phone: "+60 12-345-6789", email: "ahmad.r@gmail.com", lastVisit: "21 Apr 2026", totalSpent: 4850, visits: 18, tier: "Gold", status: "VIP" },
   { name: "Siti Nurhaliza", phone: "+60 19-876-5432", email: "siti.n@outlook.com", lastVisit: "19 Apr 2026", totalSpent: 2340, visits: 9, tier: "Silver", status: "Active" },
   { name: "Raj Kumar", phone: "+60 16-234-5678", email: "raj.kumar@gmail.com", lastVisit: "22 Apr 2026", totalSpent: 12400, visits: 42, tier: "Platinum", status: "VIP" },
@@ -65,25 +72,135 @@ const STATUS_STYLE: Record<Status, string> = {
 };
 
 const FILTERS = ["All", "VIP", "Inactive", "New This Month"] as const;
+const TIER_CYCLE: Tier[] = ["Bronze", "Silver", "Gold", "Platinum"];
+
+type SortKey = "name" | "lastVisit" | "totalSpent";
+type SortDir = "asc" | "desc";
+
+// "21 Apr 2026" -> Date
+function parseDate(s: string): Date {
+  const [d, m, y] = s.split(" ");
+  const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  return new Date(parseInt(y), months.indexOf(m), parseInt(d));
+}
+
+function daysSince(s: string): number {
+  const now = new Date("2026-04-22");
+  return Math.floor((now.getTime() - parseDate(s).getTime()) / (1000 * 60 * 60 * 24));
+}
 
 export default function DemoClientsPage() {
   const { demoClientName } = useDemoModeStore();
+  const [clients, setClients] = useState<Client[]>(INITIAL_CLIENTS);
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<(typeof FILTERS)[number]>("All");
   const [expanded, setExpanded] = useState<string | null>(null);
-
-  const filtered = CLIENTS.filter((c) => {
-    const matchesSearch =
-      c.name.toLowerCase().includes(search.toLowerCase()) ||
-      c.phone.includes(search) ||
-      c.email.toLowerCase().includes(search.toLowerCase());
-    if (!matchesSearch) return false;
-    if (filter === "All") return true;
-    if (filter === "VIP") return c.status === "VIP";
-    if (filter === "Inactive") return c.status === "Inactive";
-    if (filter === "New This Month") return c.status === "New";
-    return true;
+  const [addOpen, setAddOpen] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const [sortKey, setSortKey] = useState<SortKey | null>(null);
+  const [sortDir, setSortDir] = useState<SortDir>("asc");
+  const [form, setForm] = useState({
+    name: "",
+    phone: "",
+    email: "",
+    tier: "Bronze" as Tier,
   });
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setAddOpen(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
+  const filtered = useMemo(() => {
+    let list = clients.filter((c) => {
+      const q = search.toLowerCase();
+      const matchesSearch =
+        c.name.toLowerCase().includes(q) ||
+        c.phone.includes(search) ||
+        c.email.toLowerCase().includes(q);
+      if (!matchesSearch) return false;
+      if (filter === "All") return true;
+      if (filter === "VIP") return c.tier === "Gold" || c.tier === "Platinum";
+      if (filter === "Inactive") return daysSince(c.lastVisit) > 60 || c.status === "Inactive";
+      if (filter === "New This Month") {
+        const d = parseDate(c.lastVisit);
+        return d.getMonth() === 3 && d.getFullYear() === 2026 && c.status === "New";
+      }
+      return true;
+    });
+
+    if (sortKey) {
+      list = [...list].sort((a, b) => {
+        let cmp = 0;
+        if (sortKey === "name") cmp = a.name.localeCompare(b.name);
+        else if (sortKey === "totalSpent") cmp = a.totalSpent - b.totalSpent;
+        else if (sortKey === "lastVisit")
+          cmp = parseDate(a.lastVisit).getTime() - parseDate(b.lastVisit).getTime();
+        return sortDir === "asc" ? cmp : -cmp;
+      });
+    }
+
+    return list;
+  }, [clients, search, filter, sortKey, sortDir]);
+
+  function toggleSort(key: SortKey) {
+    if (sortKey === key) {
+      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    } else {
+      setSortKey(key);
+      setSortDir("asc");
+    }
+  }
+
+  function cycleTier(c: Client, e: React.MouseEvent) {
+    e.stopPropagation();
+    const idx = TIER_CYCLE.indexOf(c.tier);
+    const next = TIER_CYCLE[(idx + 1) % TIER_CYCLE.length];
+    setClients((prev) =>
+      prev.map((x) => (x.phone === c.phone ? { ...x, tier: next } : x))
+    );
+    toast.success(`Upgraded ${c.name} to ${next}`);
+  }
+
+  function handleAdd(e: React.FormEvent) {
+    e.preventDefault();
+    if (!form.name.trim() || !form.phone.trim()) {
+      toast.error("Name and phone are required");
+      return;
+    }
+    const newClient: Client = {
+      name: form.name,
+      phone: form.phone,
+      email: form.email || "—",
+      lastVisit: "22 Apr 2026",
+      totalSpent: 0,
+      visits: 0,
+      tier: form.tier,
+      status: "New",
+    };
+    setClients((prev) => [newClient, ...prev]);
+    setAddOpen(false);
+    setForm({ name: "", phone: "", email: "", tier: "Bronze" });
+    toast.success(`Client ${newClient.name} added`);
+  }
+
+  function handleExport() {
+    if (exporting) return;
+    setExporting(true);
+    toast(`Exporting ${filtered.length} clients to CSV...`, { icon: "⬇️" });
+    setTimeout(() => {
+      setExporting(false);
+      toast.success("Export complete");
+    }, 1100);
+  }
+
+  const SortIcon = ({ k }: { k: SortKey }) => {
+    if (sortKey !== k) return <ArrowUpDown className="h-3 w-3 opacity-40" />;
+    return sortDir === "asc" ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />;
+  };
 
   return (
     <PageWrapper title="Client List">
@@ -121,10 +238,27 @@ export default function DemoClientsPage() {
               VIP Members
             </div>
           </div>
-          <button className="ml-auto flex items-center gap-2 rounded-lg bg-primary px-3 py-2 text-xs font-semibold text-white shadow-lg shadow-primary/20 hover:bg-primary/90">
-            <Plus className="h-4 w-4" />
-            Add Client
-          </button>
+          <div className="ml-auto flex items-center gap-2">
+            <button
+              onClick={handleExport}
+              disabled={exporting}
+              className="flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-2 text-xs font-medium hover:bg-muted disabled:opacity-60"
+            >
+              {exporting ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Download className="h-3.5 w-3.5" />
+              )}
+              Export
+            </button>
+            <button
+              onClick={() => setAddOpen(true)}
+              className="flex items-center gap-2 rounded-lg bg-primary px-3 py-2 text-xs font-semibold text-white shadow-lg shadow-primary/20 hover:bg-primary/90"
+            >
+              <Plus className="h-4 w-4" />
+              Add Client
+            </button>
+          </div>
         </div>
 
         {/* Filters + search */}
@@ -150,7 +284,7 @@ export default function DemoClientsPage() {
             <input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search clients..."
+              placeholder="Search by name, phone, email..."
               className="w-full rounded-lg border border-border bg-card pl-9 pr-3 py-2 text-xs focus:border-primary/50 focus:outline-none"
             />
           </div>
@@ -160,10 +294,25 @@ export default function DemoClientsPage() {
         <div className="overflow-hidden rounded-xl border border-border bg-card">
           <div className="border-b border-border bg-muted/30 px-4 py-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
             <div className="grid grid-cols-[1fr_1fr_1fr_1fr_0.8fr_0.8fr_24px] gap-4">
-              <div>Name</div>
+              <button
+                onClick={() => toggleSort("name")}
+                className="flex items-center gap-1 hover:text-foreground"
+              >
+                Name <SortIcon k="name" />
+              </button>
               <div>Phone</div>
-              <div>Last Visit</div>
-              <div className="text-right">Total Spent</div>
+              <button
+                onClick={() => toggleSort("lastVisit")}
+                className="flex items-center gap-1 hover:text-foreground"
+              >
+                Last Visit <SortIcon k="lastVisit" />
+              </button>
+              <button
+                onClick={() => toggleSort("totalSpent")}
+                className="flex items-center justify-end gap-1 hover:text-foreground"
+              >
+                Total Spent <SortIcon k="totalSpent" />
+              </button>
               <div>Loyalty</div>
               <div>Status</div>
               <div />
@@ -200,8 +349,10 @@ export default function DemoClientsPage() {
                       </div>
                       <div>
                         <span
+                          onClick={(e) => cycleTier(c, e)}
+                          role="button"
                           className={cn(
-                            "rounded-full border px-2 py-0.5 text-[10px] font-medium",
+                            "cursor-pointer rounded-full border px-2 py-0.5 text-[10px] font-medium transition-transform hover:scale-105",
                             TIER_STYLE[c.tier]
                           )}
                         >
@@ -252,19 +403,28 @@ export default function DemoClientsPage() {
                             Avg per visit
                           </div>
                           <div className="mt-1 font-mono text-sm font-semibold">
-                            RM {Math.round(c.totalSpent / c.visits)}
+                            RM {c.visits > 0 ? Math.round(c.totalSpent / c.visits) : 0}
                           </div>
                         </div>
                         <div className="flex items-center gap-1.5">
-                          <button className="flex items-center gap-1 rounded-lg border border-border bg-card px-2.5 py-1.5 text-xs hover:bg-muted">
+                          <button
+                            onClick={() => toast(`Calling ${c.name}...`, { icon: "📞" })}
+                            className="flex items-center gap-1 rounded-lg border border-border bg-card px-2.5 py-1.5 text-xs hover:bg-muted"
+                          >
                             <Phone className="h-3 w-3" />
                             Call
                           </button>
-                          <button className="flex items-center gap-1 rounded-lg border border-border bg-card px-2.5 py-1.5 text-xs hover:bg-muted">
+                          <button
+                            onClick={() => toast(`Chat opened with ${c.name}`, { icon: "💬" })}
+                            className="flex items-center gap-1 rounded-lg border border-border bg-card px-2.5 py-1.5 text-xs hover:bg-muted"
+                          >
                             <MessageCircle className="h-3 w-3" />
                             Chat
                           </button>
-                          <button className="rounded-lg bg-primary px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-primary/90">
+                          <button
+                            onClick={() => toast.success(`Viewing profile of ${c.name}`)}
+                            className="rounded-lg bg-primary px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-primary/90"
+                          >
                             View Profile
                           </button>
                         </div>
@@ -288,6 +448,98 @@ export default function DemoClientsPage() {
           </div>
         </div>
       </div>
+
+      {/* Add Client modal */}
+      {addOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
+          onClick={() => setAddOpen(false)}
+        >
+          <form
+            onSubmit={handleAdd}
+            onClick={(e) => e.stopPropagation()}
+            className="w-full max-w-md rounded-xl border border-border bg-card p-6 shadow-2xl"
+          >
+            <div className="flex items-center justify-between">
+              <h3 className="text-base font-semibold">Add Client</h3>
+              <button
+                type="button"
+                onClick={() => setAddOpen(false)}
+                className="rounded-lg p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="mt-5 space-y-3">
+              <div>
+                <label className="text-[11px] font-medium text-muted-foreground">
+                  Name *
+                </label>
+                <input
+                  value={form.name}
+                  onChange={(e) => setForm({ ...form, name: e.target.value })}
+                  placeholder="e.g. Ahmad Rahman"
+                  className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary focus:ring-1 focus:ring-primary"
+                  autoFocus
+                />
+              </div>
+              <div>
+                <label className="text-[11px] font-medium text-muted-foreground">
+                  Phone *
+                </label>
+                <input
+                  value={form.phone}
+                  onChange={(e) => setForm({ ...form, phone: e.target.value })}
+                  placeholder="+60 12-345-6789"
+                  className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm font-mono outline-none focus:border-primary focus:ring-1 focus:ring-primary"
+                />
+              </div>
+              <div>
+                <label className="text-[11px] font-medium text-muted-foreground">
+                  Email
+                </label>
+                <input
+                  value={form.email}
+                  onChange={(e) => setForm({ ...form, email: e.target.value })}
+                  placeholder="name@email.com"
+                  className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary focus:ring-1 focus:ring-primary"
+                />
+              </div>
+              <div>
+                <label className="text-[11px] font-medium text-muted-foreground">
+                  Initial tier
+                </label>
+                <select
+                  value={form.tier}
+                  onChange={(e) => setForm({ ...form, tier: e.target.value as Tier })}
+                  className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary focus:ring-1 focus:ring-primary"
+                >
+                  {TIER_CYCLE.map((t) => (
+                    <option key={t}>{t}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <div className="mt-6 flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setAddOpen(false)}
+                className="rounded-lg px-3 py-2 text-xs font-medium text-muted-foreground hover:text-foreground"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                className="rounded-lg bg-primary px-4 py-2 text-xs font-semibold text-white hover:bg-primary/90"
+              >
+                Add Client
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
     </PageWrapper>
   );
 }
