@@ -5,14 +5,24 @@ import { Eye, EyeOff } from "lucide-react";
 import { useDemoModeStore } from "@/store/demo-mode-store";
 import { toast } from "sonner";
 
+/**
+ * CensorModeToggle — in-place censoring of the live dashboard.
+ *
+ * Distinct from the "Demo Mode" feature (which redirects to pre-built
+ * fake pages under `/demo-mode/*`). This toggle leaves you on the real
+ * pages but blurs/replaces sensitive fields so you can safely showcase
+ * the dashboard's structure + behaviour to a prospective client.
+ *
+ * Lives in the per-page Topbar (top-right). Shortcut: Cmd/Ctrl + Shift + X.
+ */
 export function DemoModeToggle() {
-  const enabled = useDemoModeStore((s) => s.enabled);
-  const toggle = useDemoModeStore((s) => s.toggle);
+  const enabled = useDemoModeStore((s) => s.isCensorMode);
+  const toggle = useDemoModeStore((s) => s.toggleCensorMode);
 
-  // Keyboard shortcut: Cmd/Ctrl + Shift + D
+  // Keyboard shortcut: Cmd/Ctrl + Shift + X (X = censor)
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
-      if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === "d") {
+      if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === "x") {
         e.preventDefault();
         toggle();
       }
@@ -24,7 +34,7 @@ export function DemoModeToggle() {
   function handleClick() {
     toggle();
     toast.success(
-      enabled ? "Demo mode off — real data visible" : "Demo mode on — sensitive data censored",
+      enabled ? "Censor off — real data visible" : "Censor on — sensitive data hidden",
       { duration: 1800 }
     );
   }
@@ -34,8 +44,8 @@ export function DemoModeToggle() {
       onClick={handleClick}
       title={
         enabled
-          ? "Demo mode ON — click to disable (⌘⇧D)"
-          : "Enable demo mode for client showcase (⌘⇧D)"
+          ? "Censor ON — click to disable (⌘⇧X)"
+          : "Enable censor for client showcase (⌘⇧X)"
       }
       className={`group flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-medium transition-colors ${
         enabled
@@ -49,7 +59,7 @@ export function DemoModeToggle() {
         <Eye className="h-3.5 w-3.5" />
       )}
       <span className="hidden sm:inline">
-        {enabled ? "Demo: ON" : "Demo"}
+        {enabled ? "Censor: ON" : "Censor"}
       </span>
       <span
         className={`h-1.5 w-1.5 rounded-full transition-colors ${
@@ -62,15 +72,15 @@ export function DemoModeToggle() {
   );
 }
 
-/** Optional: a banner ribbon shown across the top of the page while demo is on. */
+/** Optional: a banner ribbon shown across the top of the page while censor is on. */
 export function DemoModeRibbon() {
-  const enabled = useDemoModeStore((s) => s.enabled);
+  const enabled = useDemoModeStore((s) => s.isCensorMode);
   if (!enabled) return null;
 
   return (
     <div className="demo-mode-ribbon flex items-center justify-center gap-2 px-4 py-1.5 text-[11px] font-medium text-primary">
       <Eye className="h-3 w-3" />
-      <span>Demo mode — sensitive data is censored. Hover blurred text to preview.</span>
+      <span>Censor mode — sensitive data is hidden. Hover blurred text to preview.</span>
     </div>
   );
 }

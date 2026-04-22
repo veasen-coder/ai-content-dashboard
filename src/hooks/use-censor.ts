@@ -22,7 +22,7 @@ import {
  * to apply a CSS blur effect via globals.css `.demo-blur`.
  */
 export function useCensor() {
-  const enabled = useDemoModeStore((s) => s.enabled);
+  const enabled = useDemoModeStore((s) => s.isCensorMode);
 
   return {
     enabled,

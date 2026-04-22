@@ -2,7 +2,9 @@
 
 import { Sidebar } from "@/components/layout/sidebar";
 import { ClaudeBalance } from "@/components/claude-balance";
+import { DemoToggle } from "@/components/demo-toggle";
 import { useSidebarStore } from "@/store/sidebar-store";
+import { useDemoModeStore } from "@/store/demo-mode-store";
 import { cn } from "@/lib/utils";
 import { Menu } from "lucide-react";
 
@@ -12,6 +14,7 @@ export default function DashboardLayout({
   children: React.ReactNode;
 }) {
   const { isCollapsed, isMobileOpen, toggleMobile } = useSidebarStore();
+  const { isDemoMode, demoClientName } = useDemoModeStore();
 
   return (
     <div className="flex h-screen overflow-hidden">
@@ -34,7 +37,7 @@ export default function DashboardLayout({
           "ml-0"
         )}
       >
-        <div className="flex items-center justify-between border-b border-border bg-background px-4 py-2">
+        <div className="flex items-center justify-between gap-3 border-b border-border bg-background px-4 py-2">
           {/* Mobile menu button */}
           <button
             onClick={toggleMobile}
@@ -42,8 +45,27 @@ export default function DashboardLayout({
           >
             <Menu className="h-5 w-5" />
           </button>
-          <div className="md:hidden" />
-          <ClaudeBalance />
+
+          {/* Demo mode banner text */}
+          {isDemoMode ? (
+            <div className="hidden min-w-0 flex-1 items-center gap-2 text-xs font-medium text-primary md:flex">
+              <span className="uppercase tracking-wider">Demo Mode</span>
+              <span className="text-muted-foreground">—</span>
+              <span className="truncate">
+                Showing demo for:{" "}
+                <span className="font-semibold text-foreground">
+                  {demoClientName}
+                </span>
+              </span>
+            </div>
+          ) : (
+            <div className="md:hidden" />
+          )}
+
+          <div className="flex items-center gap-2">
+            <DemoToggle />
+            {!isDemoMode && <ClaudeBalance />}
+          </div>
         </div>
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden">{children}</div>
       </div>

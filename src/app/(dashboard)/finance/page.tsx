@@ -117,7 +117,7 @@ function formatMYR(amount: number): string {
   }).format(amount);
   // Demo Mode: replace digits with X so format/shape stays but values hide.
   // Subscribing happens at the page level so React re-renders propagate here.
-  if (typeof window !== "undefined" && useDemoModeStore.getState().enabled) {
+  if (typeof window !== "undefined" && useDemoModeStore.getState().isCensorMode) {
     return formatted.replace(/\d/g, "X");
   }
   return formatted;
@@ -212,7 +212,7 @@ function TransactionRow({
       <div className="flex min-w-0 flex-1 flex-col">
         <span
           className={`truncate text-sm font-medium text-foreground ${
-            entry.description && useDemoModeStore.getState().enabled
+            entry.description && useDemoModeStore.getState().isCensorMode
               ? "demo-blur"
               : ""
           }`}
@@ -1076,9 +1076,9 @@ function ReceiptUploadModal({
 // --------------- Main Page ---------------
 
 export default function FinancePage() {
-  // Subscribe to demo mode so the entire tree re-renders when it toggles
+  // Subscribe to censor mode so the entire tree re-renders when it toggles
   // (formatMYR reads useDemoModeStore.getState() non-reactively).
-  useDemoModeStore((s) => s.enabled);
+  useDemoModeStore((s) => s.isCensorMode);
 
   const [entries, setEntries] = useState<FinanceEntry[]>([]);
   const [balances, setBalances] = useState<AccountBalance[]>([]);
