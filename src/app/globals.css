@@ -113,3 +113,36 @@
     text-wrap: balance;
   }
 }
+
+/* ─── Demo Mode ───────────────────────────────────────────── */
+/* Blur class for free-form sensitive text (notes, summaries, chat). */
+.demo-blur {
+  filter: blur(5px);
+  transition: filter 0.25s ease;
+  user-select: none;
+  cursor: not-allowed;
+}
+.demo-blur:hover {
+  filter: blur(0px);
+}
+
+/* Stronger blur for images / screenshots */
+.demo-blur-strong {
+  filter: blur(14px) saturate(0.6);
+  transition: filter 0.25s ease;
+  user-select: none;
+}
+.demo-blur-strong:hover {
+  filter: blur(10px) saturate(0.7);
+}
+
+/* Ribbon shown at top of page while demo mode is active */
+.demo-mode-ribbon {
+  background: linear-gradient(
+    90deg,
+    rgba(124, 58, 237, 0.15),
+    rgba(124, 58, 237, 0.08) 50%,
+    rgba(124, 58, 237, 0.15)
+  );
+  border-bottom: 1px solid rgba(124, 58, 237, 0.4);
+}
