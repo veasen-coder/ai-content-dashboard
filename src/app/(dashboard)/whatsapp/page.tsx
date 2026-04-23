@@ -636,6 +636,17 @@ interface AiConfig {
   booking_trigger_keywords: string;
   booking_collect_email: boolean;
   booking_custom_questions: string;
+  // Spam / relevance filter — protect OpenAI budget from junk messages
+  spam_filter_enabled: boolean;
+  spam_min_message_length: number;
+  spam_max_message_length: number;
+  spam_ignore_emoji_only: boolean;
+  spam_ignore_phrases: string;
+  spam_skip_duplicate_mins: number;
+  spam_max_urls: number;
+  spam_relevance_check_enabled: boolean;
+  spam_relevance_prompt: string;
+  spam_relevance_model: string;
 }
 
 const AI_DEFAULTS: AiConfig = {
@@ -680,6 +691,16 @@ const AI_DEFAULTS: AiConfig = {
   booking_trigger_keywords: JSON.stringify(["book","schedule","appointment","meeting","consult"]),
   booking_collect_email: false,
   booking_custom_questions: "[]",
+  spam_filter_enabled: true,
+  spam_min_message_length: 3,
+  spam_max_message_length: 2000,
+  spam_ignore_emoji_only: true,
+  spam_ignore_phrases: JSON.stringify(["ok","okay","thanks","thank you","thx","ty","lol","haha","k","yes","no","yeah","yep","nope","hi","hey","hello","👍","🙏","👌","😂"]),
+  spam_skip_duplicate_mins: 5,
+  spam_max_urls: 3,
+  spam_relevance_check_enabled: false,
+  spam_relevance_prompt: "You are a relevance filter for a WhatsApp business assistant. A user just sent the message below. Decide if it is a real enquiry or question worth replying to (a prospective customer, support request, or genuine question). Reply with only YES or NO. If unsure, reply YES.",
+  spam_relevance_model: "gpt-4o-mini",
 };
 
 function Toggle({ value, onChange }: { value: boolean; onChange: (v: boolean) => void }) {
@@ -1595,6 +1616,98 @@ function SettingsPanel({
                     rows={2}
                     className="w-full rounded-lg border border-[#1E1E1E] bg-[#0A0A0A] px-3 py-2 font-mono text-[11px] outline-none focus:border-primary resize-none" />
                 </div>
+              </div>
+            </div>
+          )}
+        </SectionCard>
+
+        {/* ── Spam / Relevance Filter ───────────────────────────────────── */}
+        <SectionCard title="Spam & Relevance Filter — protect your token budget" icon="🛡️" defaultOpen={false}>
+          <p className="mb-3 text-[11px] text-muted-foreground">Block junk messages <em>before</em> they hit the OpenAI API. Cheap rule-based filters run first for free. Optional LLM classifier gates with a much cheaper model (~100× less than the main reply call).</p>
+
+          <SettingRow label="Enable filter" hint="Master switch — turn off to skip all checks">
+            <Toggle value={ai.spam_filter_enabled} onChange={(v) => setA("spam_filter_enabled", v)} />
+          </SettingRow>
+
+          {ai.spam_filter_enabled && (
+            <div className="space-y-4 mt-2">
+              {/* Length bounds */}
+              <div>
+                <h4 className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Length bounds (free)</h4>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="mb-1 block text-[10px] text-muted-foreground">Min characters (0=off)</label>
+                    <input type="number" min={0} value={ai.spam_min_message_length}
+                      onChange={(e) => setA("spam_min_message_length", parseInt(e.target.value) || 0)}
+                      className="w-full rounded-lg border border-[#1E1E1E] bg-[#0A0A0A] px-3 py-2 text-xs outline-none focus:border-primary" />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-[10px] text-muted-foreground">Max characters (0=off)</label>
+                    <input type="number" min={0} value={ai.spam_max_message_length}
+                      onChange={(e) => setA("spam_max_message_length", parseInt(e.target.value) || 0)}
+                      className="w-full rounded-lg border border-[#1E1E1E] bg-[#0A0A0A] px-3 py-2 text-xs outline-none focus:border-primary" />
+                  </div>
+                </div>
+                <p className="mt-1 text-[10px] text-muted-foreground/50">Typical spam: 1–2 chars (&ldquo;k&rdquo;, &ldquo;?&rdquo;) or walls &gt;2000 chars</p>
+              </div>
+
+              {/* Content filters */}
+              <div>
+                <h4 className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Content filters (free)</h4>
+                <SettingRow label="Skip emoji-only messages" hint="Blocks pure reactions like '👍' or '😂😂😂'">
+                  <Toggle value={ai.spam_ignore_emoji_only} onChange={(v) => setA("spam_ignore_emoji_only", v)} />
+                </SettingRow>
+                <div className="mt-2">
+                  <label className="mb-1 block text-[10px] text-muted-foreground">Exact-match ignore phrases (JSON array, case-insensitive)</label>
+                  <textarea value={ai.spam_ignore_phrases}
+                    onChange={(e) => setA("spam_ignore_phrases", e.target.value)}
+                    rows={3}
+                    className="w-full rounded-lg border border-[#1E1E1E] bg-[#0A0A0A] px-3 py-2 font-mono text-[11px] outline-none focus:border-primary resize-none" />
+                  <p className="mt-0.5 text-[10px] text-muted-foreground/50">Matches the whole message only — &ldquo;ok&rdquo; blocks &ldquo;ok&rdquo; but not &ldquo;ok can you help me?&rdquo;</p>
+                </div>
+                <div className="grid grid-cols-2 gap-3 mt-2">
+                  <div>
+                    <label className="mb-1 block text-[10px] text-muted-foreground">Max URLs per message (0=off)</label>
+                    <input type="number" min={0} value={ai.spam_max_urls}
+                      onChange={(e) => setA("spam_max_urls", parseInt(e.target.value) || 0)}
+                      className="w-full rounded-lg border border-[#1E1E1E] bg-[#0A0A0A] px-3 py-2 text-xs outline-none focus:border-primary" />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-[10px] text-muted-foreground">Skip duplicates within (mins, 0=off)</label>
+                    <input type="number" min={0} value={ai.spam_skip_duplicate_mins}
+                      onChange={(e) => setA("spam_skip_duplicate_mins", parseInt(e.target.value) || 0)}
+                      className="w-full rounded-lg border border-[#1E1E1E] bg-[#0A0A0A] px-3 py-2 text-xs outline-none focus:border-primary" />
+                  </div>
+                </div>
+              </div>
+
+              {/* LLM classifier */}
+              <div>
+                <h4 className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">LLM relevance classifier (optional, ~100× cheaper than the main reply)</h4>
+                <SettingRow label="Enable classifier" hint="Runs one cheap model call to decide if the message is worth a full reply">
+                  <Toggle value={ai.spam_relevance_check_enabled} onChange={(v) => setA("spam_relevance_check_enabled", v)} />
+                </SettingRow>
+                {ai.spam_relevance_check_enabled && (
+                  <div className="mt-2 space-y-2">
+                    <div>
+                      <label className="mb-1 block text-[10px] text-muted-foreground">Classifier prompt — tailor to your business</label>
+                      <textarea value={ai.spam_relevance_prompt}
+                        onChange={(e) => setA("spam_relevance_prompt", e.target.value)}
+                        rows={4}
+                        className="w-full rounded-lg border border-[#1E1E1E] bg-[#0A0A0A] px-3 py-2 text-xs outline-none focus:border-primary resize-none" />
+                      <p className="mt-0.5 text-[10px] text-muted-foreground/50">Must instruct the model to answer only YES or NO. Example: &ldquo;You run a hair salon booking service. Reply YES only if the message is a genuine customer enquiry (about booking, services, pricing). Otherwise NO.&rdquo;</p>
+                    </div>
+                    <div>
+                      <label className="mb-1 block text-[10px] text-muted-foreground">Classifier model (use cheapest)</label>
+                      <select value={ai.spam_relevance_model}
+                        onChange={(e) => setA("spam_relevance_model", e.target.value)}
+                        className="w-full rounded-lg border border-[#1E1E1E] bg-[#0A0A0A] px-3 py-2 text-xs outline-none focus:border-primary">
+                        <option value="gpt-4o-mini">gpt-4o-mini (cheapest, recommended)</option>
+                        <option value="gpt-4o">gpt-4o (more accurate, 10× cost)</option>
+                      </select>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           )}
