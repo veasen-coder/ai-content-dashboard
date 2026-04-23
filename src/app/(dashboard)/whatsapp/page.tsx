@@ -615,6 +615,27 @@ interface AiConfig {
   cta_message: string;
   cta_booking_link: string;
   cta_cooldown_hours: number;
+  // Booking / scheduling
+  booking_enabled: boolean;
+  booking_timezone: string;
+  booking_hours_start: string;
+  booking_hours_end: string;
+  booking_days: string;
+  booking_meeting_types: string;
+  booking_buffer_mins: number;
+  booking_max_per_day: number;
+  booking_min_notice_hours: number;
+  booking_max_advance_days: number;
+  booking_auto_confirm: boolean;
+  booking_default_location: string;
+  booking_location_link: string;
+  booking_confirmation_template: string;
+  booking_reminder_template: string;
+  booking_reminder_hours_before: number;
+  booking_cancelled_template: string;
+  booking_trigger_keywords: string;
+  booking_collect_email: boolean;
+  booking_custom_questions: string;
 }
 
 const AI_DEFAULTS: AiConfig = {
@@ -636,6 +657,29 @@ const AI_DEFAULTS: AiConfig = {
   cta_enabled: false, cta_threshold: 3,
   cta_message: "Want to see what the bot experience looks like from your customers' side? Try it live: {link} 🤖",
   cta_booking_link: "https://demo.flogenai.com", cta_cooldown_hours: 48,
+  booking_enabled: false,
+  booking_timezone: "Asia/Kuala_Lumpur",
+  booking_hours_start: "09:00",
+  booking_hours_end: "18:00",
+  booking_days: "1,2,3,4,5",
+  booking_meeting_types: JSON.stringify([
+    { name: "Discovery Call", duration: 15, description: "Intro chat" },
+    { name: "Strategy Session", duration: 45, description: "Deep-dive on your workflow" },
+  ]),
+  booking_buffer_mins: 15,
+  booking_max_per_day: 0,
+  booking_min_notice_hours: 2,
+  booking_max_advance_days: 30,
+  booking_auto_confirm: false,
+  booking_default_location: "Google Meet",
+  booking_location_link: "",
+  booking_confirmation_template: "✅ Booked! {meeting_type} on {datetime} ({duration}min). Location: {location}",
+  booking_reminder_template: "⏰ Reminder: {meeting_type} in {hours_before}h at {datetime}. Location: {location}",
+  booking_reminder_hours_before: 24,
+  booking_cancelled_template: "❌ Your booking on {datetime} has been cancelled. Want to rebook?",
+  booking_trigger_keywords: JSON.stringify(["book","schedule","appointment","meeting","consult"]),
+  booking_collect_email: false,
+  booking_custom_questions: "[]",
 };
 
 function Toggle({ value, onChange }: { value: boolean; onChange: (v: boolean) => void }) {
@@ -1387,6 +1431,172 @@ function SettingsPanel({
                 </div>
               </div>
             </>
+          )}
+        </SectionCard>
+
+        {/* ── Bookings ──────────────────────────────────────────────────── */}
+        <SectionCard title="Bookings — AI-scheduled meetings" icon="📅" defaultOpen={false}>
+          <p className="mb-3 text-[11px] text-muted-foreground">When a prospect asks to book (trigger keywords below), the bot appends available time slots from your availability window. Confirmed bookings show up on the Calendar page with a notification.</p>
+
+          <SettingRow label="Enable bookings" hint="Bot can propose slots and create pending bookings">
+            <Toggle value={ai.booking_enabled} onChange={(v) => setA("booking_enabled", v)} />
+          </SettingRow>
+
+          {ai.booking_enabled && (
+            <div className="space-y-4 mt-2">
+              {/* Availability */}
+              <div>
+                <h4 className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Availability</h4>
+                <div className="grid grid-cols-3 gap-3">
+                  <div>
+                    <label className="mb-1 block text-[10px] text-muted-foreground">Timezone</label>
+                    <input type="text" value={ai.booking_timezone} onChange={(e) => setA("booking_timezone", e.target.value)}
+                      placeholder="Asia/Kuala_Lumpur"
+                      className="w-full rounded-lg border border-[#1E1E1E] bg-[#0A0A0A] px-3 py-2 font-mono text-xs outline-none focus:border-primary" />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-[10px] text-muted-foreground">Start</label>
+                    <input type="time" value={ai.booking_hours_start} onChange={(e) => setA("booking_hours_start", e.target.value)}
+                      className="w-full rounded-lg border border-[#1E1E1E] bg-[#0A0A0A] px-3 py-2 text-xs outline-none focus:border-primary" />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-[10px] text-muted-foreground">End</label>
+                    <input type="time" value={ai.booking_hours_end} onChange={(e) => setA("booking_hours_end", e.target.value)}
+                      className="w-full rounded-lg border border-[#1E1E1E] bg-[#0A0A0A] px-3 py-2 text-xs outline-none focus:border-primary" />
+                  </div>
+                </div>
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {(["Mon","Tue","Wed","Thu","Fri","Sat","Sun"] as const).map((d, i) => {
+                    const dayNum = i + 1;
+                    const active = ai.booking_days.split(",").map(Number).includes(dayNum);
+                    return (
+                      <button key={d} type="button"
+                        onClick={() => {
+                          const cur = ai.booking_days.split(",").map(Number).filter(Boolean);
+                          const next = active ? cur.filter(n => n !== dayNum) : [...cur, dayNum].sort();
+                          setA("booking_days", next.join(","));
+                        }}
+                        className={cn("rounded-md border px-2.5 py-1 text-[11px] font-medium transition-colors",
+                          active ? "bg-primary text-white border-primary" : "bg-[#0A0A0A] text-muted-foreground border-[#1E1E1E]")}>
+                        {d}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Meeting types */}
+              <div>
+                <h4 className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Meeting types</h4>
+                <textarea value={ai.booking_meeting_types} onChange={(e) => setA("booking_meeting_types", e.target.value)}
+                  placeholder='[{"name":"Discovery Call","duration":15,"description":"Intro"}]'
+                  rows={4}
+                  className="w-full rounded-lg border border-[#1E1E1E] bg-[#0A0A0A] px-3 py-2 font-mono text-[11px] outline-none focus:border-primary resize-none" />
+                <p className="mt-0.5 text-[10px] text-muted-foreground/50">JSON array of {`{name, duration, description}`} — duration in minutes</p>
+              </div>
+
+              {/* Constraints */}
+              <div>
+                <h4 className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Constraints</h4>
+                <div className="grid grid-cols-4 gap-3">
+                  <div>
+                    <label className="mb-1 block text-[10px] text-muted-foreground">Buffer (min)</label>
+                    <input type="number" min={0} value={ai.booking_buffer_mins} onChange={(e) => setA("booking_buffer_mins", parseInt(e.target.value) || 0)}
+                      className="w-full rounded-lg border border-[#1E1E1E] bg-[#0A0A0A] px-3 py-2 text-xs outline-none focus:border-primary" />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-[10px] text-muted-foreground">Max/day (0=unlimited)</label>
+                    <input type="number" min={0} value={ai.booking_max_per_day} onChange={(e) => setA("booking_max_per_day", parseInt(e.target.value) || 0)}
+                      className="w-full rounded-lg border border-[#1E1E1E] bg-[#0A0A0A] px-3 py-2 text-xs outline-none focus:border-primary" />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-[10px] text-muted-foreground">Min notice (hrs)</label>
+                    <input type="number" min={0} value={ai.booking_min_notice_hours} onChange={(e) => setA("booking_min_notice_hours", parseInt(e.target.value) || 0)}
+                      className="w-full rounded-lg border border-[#1E1E1E] bg-[#0A0A0A] px-3 py-2 text-xs outline-none focus:border-primary" />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-[10px] text-muted-foreground">Max advance (days)</label>
+                    <input type="number" min={1} value={ai.booking_max_advance_days} onChange={(e) => setA("booking_max_advance_days", parseInt(e.target.value) || 30)}
+                      className="w-full rounded-lg border border-[#1E1E1E] bg-[#0A0A0A] px-3 py-2 text-xs outline-none focus:border-primary" />
+                  </div>
+                </div>
+              </div>
+
+              {/* Approval + location */}
+              <div>
+                <SettingRow label="Auto-confirm bookings" hint="Off = bookings arrive as 'pending' for you to approve">
+                  <Toggle value={ai.booking_auto_confirm} onChange={(v) => setA("booking_auto_confirm", v)} />
+                </SettingRow>
+                <div className="grid grid-cols-2 gap-3 mt-2">
+                  <div>
+                    <label className="mb-1 block text-[10px] text-muted-foreground">Default location</label>
+                    <input type="text" value={ai.booking_default_location} onChange={(e) => setA("booking_default_location", e.target.value)}
+                      placeholder="Google Meet / Zoom / In-person"
+                      className="w-full rounded-lg border border-[#1E1E1E] bg-[#0A0A0A] px-3 py-2 text-xs outline-none focus:border-primary" />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-[10px] text-muted-foreground">Location link</label>
+                    <input type="url" value={ai.booking_location_link} onChange={(e) => setA("booking_location_link", e.target.value)}
+                      placeholder="https://meet.google.com/xyz"
+                      className="w-full rounded-lg border border-[#1E1E1E] bg-[#0A0A0A] px-3 py-2 font-mono text-[11px] outline-none focus:border-primary" />
+                  </div>
+                </div>
+              </div>
+
+              {/* Templates */}
+              <div>
+                <h4 className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Message templates</h4>
+                <p className="mb-2 text-[10px] text-muted-foreground/60">Placeholders: <code>{'{meeting_type}'}</code> <code>{'{datetime}'}</code> <code>{'{duration}'}</code> <code>{'{location}'}</code> <code>{'{location_link}'}</code> <code>{'{hours_before}'}</code> <code>{'{contact_name}'}</code></p>
+                <div className="space-y-2">
+                  <div>
+                    <label className="mb-1 block text-[10px] text-muted-foreground">Confirmation (sent when booked)</label>
+                    <textarea value={ai.booking_confirmation_template} onChange={(e) => setA("booking_confirmation_template", e.target.value)} rows={2}
+                      className="w-full rounded-lg border border-[#1E1E1E] bg-[#0A0A0A] px-3 py-2 text-xs outline-none focus:border-primary resize-none" />
+                  </div>
+                  <div className="grid grid-cols-4 gap-3">
+                    <div className="col-span-3">
+                      <label className="mb-1 block text-[10px] text-muted-foreground">Reminder template</label>
+                      <textarea value={ai.booking_reminder_template} onChange={(e) => setA("booking_reminder_template", e.target.value)} rows={2}
+                        className="w-full rounded-lg border border-[#1E1E1E] bg-[#0A0A0A] px-3 py-2 text-xs outline-none focus:border-primary resize-none" />
+                    </div>
+                    <div>
+                      <label className="mb-1 block text-[10px] text-muted-foreground">Hours before (0=off)</label>
+                      <input type="number" min={0} value={ai.booking_reminder_hours_before} onChange={(e) => setA("booking_reminder_hours_before", parseInt(e.target.value) || 0)}
+                        className="w-full rounded-lg border border-[#1E1E1E] bg-[#0A0A0A] px-3 py-2 text-xs outline-none focus:border-primary" />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-[10px] text-muted-foreground">Cancellation template</label>
+                    <textarea value={ai.booking_cancelled_template} onChange={(e) => setA("booking_cancelled_template", e.target.value)} rows={2}
+                      className="w-full rounded-lg border border-[#1E1E1E] bg-[#0A0A0A] px-3 py-2 text-xs outline-none focus:border-primary resize-none" />
+                  </div>
+                </div>
+              </div>
+
+              {/* Trigger keywords + collection */}
+              <div>
+                <h4 className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Intent & collection</h4>
+                <div>
+                  <label className="mb-1 block text-[10px] text-muted-foreground">Trigger keywords (JSON array, any match triggers slot suggestion)</label>
+                  <textarea value={ai.booking_trigger_keywords} onChange={(e) => setA("booking_trigger_keywords", e.target.value)}
+                    placeholder='["book","schedule","appointment","meeting","consult"]'
+                    rows={2}
+                    className="w-full rounded-lg border border-[#1E1E1E] bg-[#0A0A0A] px-3 py-2 font-mono text-[11px] outline-none focus:border-primary resize-none" />
+                </div>
+                <div className="mt-2">
+                  <SettingRow label="Ask for email" hint="Bot will request an email address before confirming">
+                    <Toggle value={ai.booking_collect_email} onChange={(v) => setA("booking_collect_email", v)} />
+                  </SettingRow>
+                </div>
+                <div className="mt-2">
+                  <label className="mb-1 block text-[10px] text-muted-foreground">Custom questions (JSON array of {`{question, required}`})</label>
+                  <textarea value={ai.booking_custom_questions} onChange={(e) => setA("booking_custom_questions", e.target.value)}
+                    placeholder='[{"question":"What industry are you in?","required":false}]'
+                    rows={2}
+                    className="w-full rounded-lg border border-[#1E1E1E] bg-[#0A0A0A] px-3 py-2 font-mono text-[11px] outline-none focus:border-primary resize-none" />
+                </div>
+              </div>
+            </div>
           )}
         </SectionCard>
 

@@ -16,6 +16,8 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { useCensor } from "@/hooks/use-censor";
+import { getWaBackendUrl, fetchActiveSessionId, type Booking } from "@/lib/wa-backend";
+import { Bell, CheckCircle2, XCircle } from "lucide-react";
 
 // --------------- Types ---------------
 
@@ -463,6 +465,56 @@ export default function CalendarPage() {
   const [calendarUrl, setCalendarUrl] = useState("https://app.clickup.com");
   const [loading, setLoading] = useState(true);
   const [lastFetched, setLastFetched] = useState<string | null>(null);
+  const [bookings, setBookings] = useState<Booking[]>([]);
+  const [waSessionId, setWaSessionId] = useState<string | null>(null);
+
+  const fetchBookings = useCallback(async () => {
+    const base = getWaBackendUrl();
+    if (!base) return;
+    let sid = waSessionId;
+    if (!sid) {
+      sid = await fetchActiveSessionId();
+      if (sid) setWaSessionId(sid);
+    }
+    if (!sid) return;
+    try {
+      const res = await fetch(`${base}/api/sessions/${sid}/bookings`, { signal: AbortSignal.timeout(5000) });
+      if (!res.ok) return;
+      const data = (await res.json()) as { bookings?: Booking[] };
+      setBookings(data.bookings || []);
+    } catch { /* silent */ }
+  }, [waSessionId]);
+
+  useEffect(() => { fetchBookings(); }, [fetchBookings]);
+
+  const unreadBookings = bookings.filter(b => !b.read_by_owner);
+
+  async function markBookingRead(id: string) {
+    const base = getWaBackendUrl();
+    if (!base || !waSessionId) return;
+    await fetch(`${base}/api/sessions/${waSessionId}/bookings/${id}/read`, { method: "POST" });
+    setBookings(prev => prev.map(b => b.id === id ? { ...b, read_by_owner: 1 } : b));
+  }
+
+  async function markAllBookingsRead() {
+    const base = getWaBackendUrl();
+    if (!base || !waSessionId) return;
+    await fetch(`${base}/api/sessions/${waSessionId}/bookings/read-all`, { method: "POST" });
+    setBookings(prev => prev.map(b => ({ ...b, read_by_owner: 1 })));
+    toast.success("All booking notifications cleared");
+  }
+
+  async function updateBookingStatus(id: string, status: "confirmed" | "cancelled") {
+    const base = getWaBackendUrl();
+    if (!base || !waSessionId) return;
+    await fetch(`${base}/api/sessions/${waSessionId}/bookings/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status }),
+    });
+    setBookings(prev => prev.map(b => b.id === id ? { ...b, status, read_by_owner: 1 } : b));
+    toast.success(status === "confirmed" ? "Booking confirmed" : "Booking cancelled");
+  }
 
   // Modal state
   const [modal, setModal] = useState<{
@@ -540,6 +592,79 @@ export default function CalendarPage() {
   return (
     <PageWrapper title="Calendar" lastSynced={lastFetched}>
       <div className="space-y-6">
+        {/* Bookings panel — shown only when bookings exist or unread */}
+        {(bookings.length > 0 || unreadBookings.length > 0) && (
+          <div className="rounded-xl border border-[#1E1E1E] bg-[#111111] overflow-hidden">
+            <div className="flex items-center justify-between border-b border-[#1E1E1E] px-5 py-3">
+              <div className="flex items-center gap-2">
+                <Bell className={`h-4 w-4 ${unreadBookings.length > 0 ? "text-amber-400 animate-pulse" : "text-muted-foreground"}`} />
+                <h2 className="text-sm font-semibold">Bookings</h2>
+                {unreadBookings.length > 0 && (
+                  <span className="rounded-full bg-amber-500/20 text-amber-300 px-2 py-0.5 text-[10px] font-bold">
+                    {unreadBookings.length} NEW
+                  </span>
+                )}
+              </div>
+              {unreadBookings.length > 0 && (
+                <button onClick={markAllBookingsRead}
+                  className="text-[11px] text-muted-foreground hover:text-foreground">
+                  Mark all read
+                </button>
+              )}
+            </div>
+            <div className="divide-y divide-[#1E1E1E]/60">
+              {bookings.slice(0, 10).map(b => {
+                const when = new Date(b.start_at);
+                const whenStr = when.toLocaleString("en-GB", {
+                  weekday: "short", day: "numeric", month: "short",
+                  hour: "2-digit", minute: "2-digit", hour12: false,
+                });
+                const statusColor = b.status === "confirmed" ? "text-emerald-400 bg-emerald-500/10"
+                  : b.status === "cancelled" ? "text-red-400 bg-red-500/10"
+                  : "text-amber-400 bg-amber-500/10";
+                return (
+                  <div key={b.id} className={`flex items-center gap-3 px-5 py-3 ${!b.read_by_owner ? "bg-amber-500/5" : ""}`}>
+                    {!b.read_by_owner && <span className="h-2 w-2 rounded-full bg-amber-400 flex-shrink-0 animate-pulse" />}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <p className="text-sm font-medium">{censor.short(b.contact_name, 10)}</p>
+                        <span className="text-xs text-muted-foreground">·</span>
+                        <span className="text-xs text-muted-foreground">{censor.short(b.meeting_type, 10)}</span>
+                        <span className={`rounded px-1.5 py-0.5 text-[9px] font-bold uppercase ${statusColor}`}>{b.status}</span>
+                      </div>
+                      <p className="text-[11px] text-muted-foreground mt-0.5">
+                        {whenStr} · {b.duration_mins}min · {b.location || "Location TBC"}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-1 shrink-0">
+                      {b.status === "pending" && (
+                        <>
+                          <button onClick={() => updateBookingStatus(b.id, "confirmed")}
+                            title="Confirm"
+                            className="flex h-7 w-7 items-center justify-center rounded-md text-emerald-400 hover:bg-emerald-500/10 transition-colors">
+                            <CheckCircle2 className="h-4 w-4" />
+                          </button>
+                          <button onClick={() => updateBookingStatus(b.id, "cancelled")}
+                            title="Cancel"
+                            className="flex h-7 w-7 items-center justify-center rounded-md text-red-400 hover:bg-red-500/10 transition-colors">
+                            <XCircle className="h-4 w-4" />
+                          </button>
+                        </>
+                      )}
+                      {!b.read_by_owner && (
+                        <button onClick={() => markBookingRead(b.id)}
+                          className="text-[10px] text-muted-foreground hover:text-foreground px-2">
+                          Mark read
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
         {/* Toolbar */}
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">

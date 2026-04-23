@@ -1,8 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { getWaBackendUrl, fetchActiveSessionId } from "@/lib/wa-backend";
 import {
   LayoutDashboard,
   CheckSquare,
@@ -67,6 +68,42 @@ export function Sidebar() {
   const pathname = usePathname();
   const { isCollapsed, toggle, isMobileOpen, closeMobile } = useSidebarStore();
   const { isDemoMode } = useDemoModeStore();
+  const [unreadBookings, setUnreadBookings] = useState(0);
+  const [popupSeen, setPopupSeen] = useState(false);
+  const sessionIdRef = useRef<string | null>(null);
+
+  // Poll booking unread count every 30s for the Calendar badge + popup
+  useEffect(() => {
+    if (isDemoMode) return;
+    let cancelled = false;
+
+    async function poll() {
+      const base = getWaBackendUrl();
+      if (!base) return;
+      if (!sessionIdRef.current) {
+        sessionIdRef.current = await fetchActiveSessionId();
+      }
+      if (!sessionIdRef.current) return;
+      try {
+        const res = await fetch(`${base}/api/sessions/${sessionIdRef.current}/bookings/unread-count`, {
+          signal: AbortSignal.timeout(4000),
+        });
+        if (!res.ok) return;
+        const data = (await res.json()) as { count?: number };
+        if (!cancelled) setUnreadBookings(data.count ?? 0);
+      } catch { /* silent — backend may be offline */ }
+    }
+
+    poll();
+    const id = setInterval(poll, 30_000);
+    return () => { cancelled = true; clearInterval(id); };
+  }, [isDemoMode]);
+
+  // Reset popup when user navigates to /calendar OR when unread drops to 0
+  useEffect(() => {
+    if (pathname === "/calendar" || unreadBookings === 0) setPopupSeen(true);
+    else setPopupSeen(false);
+  }, [pathname, unreadBookings]);
 
   const navItems = isDemoMode ? demoNavItems : regularNavItems;
 
@@ -243,21 +280,53 @@ export function Sidebar() {
               <MessageSquare className="h-5 w-5 shrink-0" />
               {(!isCollapsed || isMobileOpen) && <span>Team Chat</span>}
             </Link>
-            <Link
-              href="/calendar"
-              onClick={closeMobile}
-              className={cn(
-                "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors",
-                pathname === "/calendar"
-                  ? "bg-primary/10 text-primary"
-                  : "text-muted-foreground hover:bg-muted hover:text-foreground",
-                isCollapsed && !isMobileOpen && "justify-center px-2"
+            <div className="relative">
+              <Link
+                href="/calendar"
+                onClick={closeMobile}
+                className={cn(
+                  "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors",
+                  pathname === "/calendar"
+                    ? "bg-primary/10 text-primary"
+                    : "text-muted-foreground hover:bg-muted hover:text-foreground",
+                  isCollapsed && !isMobileOpen && "justify-center px-2"
+                )}
+                title={isCollapsed && !isMobileOpen ? `Calendar${unreadBookings > 0 ? ` — ${unreadBookings} new booking${unreadBookings > 1 ? "s" : ""}` : ""}` : undefined}
+              >
+                <div className="relative shrink-0">
+                  <Calendar className="h-5 w-5" />
+                  {unreadBookings > 0 && (
+                    <span className="absolute -top-1 -right-1 flex h-2 w-2">
+                      <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-amber-400 opacity-75" />
+                      <span className="relative inline-flex h-2 w-2 rounded-full bg-amber-400" />
+                    </span>
+                  )}
+                </div>
+                {(!isCollapsed || isMobileOpen) && (
+                  <span className="flex-1 flex items-center justify-between">
+                    <span>Calendar</span>
+                    {unreadBookings > 0 && (
+                      <span className="ml-2 rounded-full bg-amber-500/20 text-amber-300 px-1.5 py-0.5 text-[10px] font-bold">
+                        {unreadBookings}
+                      </span>
+                    )}
+                  </span>
+                )}
+              </Link>
+              {/* Mini popup — shows when new bookings arrive */}
+              {unreadBookings > 0 && !popupSeen && (!isCollapsed || isMobileOpen) && pathname !== "/calendar" && (
+                <div className="absolute left-full top-1/2 -translate-y-1/2 ml-3 z-50 whitespace-nowrap rounded-lg border border-amber-500/40 bg-[#1A1209] px-3 py-1.5 text-[11px] text-amber-300 shadow-xl animate-[fade-in_0.25s_ease-out]">
+                  <span className="font-semibold">📩 {unreadBookings} new booking{unreadBookings > 1 ? "s" : ""}</span>
+                  <span className="ml-1.5 text-amber-300/70">— click to read</span>
+                  <span className="absolute right-full top-1/2 -translate-y-1/2 -mr-px border-y-[5px] border-y-transparent border-r-[6px] border-r-amber-500/40" />
+                </div>
               )}
-              title={isCollapsed && !isMobileOpen ? "Calendar" : undefined}
-            >
-              <Calendar className="h-5 w-5 shrink-0" />
-              {(!isCollapsed || isMobileOpen) && <span>Calendar</span>}
-            </Link>
+              {unreadBookings > 0 && !popupSeen && isCollapsed && !isMobileOpen && (
+                <div className="absolute left-full top-1/2 -translate-y-1/2 ml-2 z-50 whitespace-nowrap rounded-lg border border-amber-500/40 bg-[#1A1209] px-2 py-1 text-[10px] text-amber-300 shadow-xl">
+                  📩 {unreadBookings} new
+                </div>
+              )}
+            </div>
           </>
         )}
         <Link
