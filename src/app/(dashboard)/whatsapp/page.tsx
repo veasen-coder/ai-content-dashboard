@@ -609,6 +609,12 @@ interface AiConfig {
   ai_handoff_enabled: boolean;
   ai_handoff_webhook: string;
   ai_handoff_trigger_count: number;
+  // CTA — appended booking/consult prompt after N incoming messages
+  cta_enabled: boolean;
+  cta_threshold: number;
+  cta_message: string;
+  cta_booking_link: string;
+  cta_cooldown_hours: number;
 }
 
 const AI_DEFAULTS: AiConfig = {
@@ -627,6 +633,9 @@ const AI_DEFAULTS: AiConfig = {
   ai_contact_filter_mode: "all", ai_contact_filter_list: "[]",
   ai_trigger_keywords: "[]", ai_stop_keywords: "[]", ai_handoff_enabled: false,
   ai_handoff_webhook: "", ai_handoff_trigger_count: 3,
+  cta_enabled: false, cta_threshold: 3,
+  cta_message: "Want to see what the bot experience looks like from your customers' side? Try it live: {link} 🤖",
+  cta_booking_link: "https://demo.flogenai.com", cta_cooldown_hours: 48,
 };
 
 function Toggle({ value, onChange }: { value: boolean; onChange: (v: boolean) => void }) {
@@ -1334,6 +1343,50 @@ function SettingsPanel({
                 <p className="mt-0.5 text-[10px] text-muted-foreground/50">unanswered msgs</p>
               </div>
             </div>
+          )}
+        </SectionCard>
+
+        {/* ── CTA (Call-To-Action) ──────────────────────────────────────── */}
+        <SectionCard title="CTA — Book a Consult" icon="🎯" defaultOpen={false}>
+          <p className="mb-3 text-[11px] text-muted-foreground">After a prospect sends N messages, the bot appends a custom CTA to its next reply — e.g. invite them to book a consult. Cooldown prevents nagging the same person.</p>
+
+          <SettingRow label="Enable CTA" hint="Append a booking/offer line after a few enquiries">
+            <Toggle value={ai.cta_enabled} onChange={(v) => setA("cta_enabled", v)} />
+          </SettingRow>
+
+          {ai.cta_enabled && (
+            <>
+              <div className="mt-2">
+                <label className="mb-1 block text-[11px] font-medium uppercase tracking-wider text-muted-foreground">CTA message</label>
+                <textarea value={ai.cta_message} onChange={(e) => setA("cta_message", e.target.value)}
+                  placeholder="Want to see what the bot experience looks like from your customers' side? Try it live: {link}"
+                  rows={3}
+                  className="w-full rounded-lg border border-[#1E1E1E] bg-[#0A0A0A] px-3 py-2 text-xs outline-none focus:border-primary resize-none" />
+                <p className="mt-0.5 text-[10px] text-muted-foreground/50">Tip: use <code className="rounded bg-[#1E1E1E] px-1">{'{link}'}</code> to inject your booking link below.</p>
+              </div>
+
+              <div className="mt-2">
+                <label className="mb-1 block text-[11px] font-medium uppercase tracking-wider text-muted-foreground">Link (fills {'{link}'})</label>
+                <input type="url" value={ai.cta_booking_link} onChange={(e) => setA("cta_booking_link", e.target.value)}
+                  placeholder="https://demo.flogenai.com"
+                  className="w-full rounded-lg border border-[#1E1E1E] bg-[#0A0A0A] px-3 py-2 font-mono text-xs outline-none focus:border-primary" />
+              </div>
+
+              <div className="mt-2 grid grid-cols-2 gap-3">
+                <div>
+                  <label className="mb-1 block text-[11px] font-medium uppercase tracking-wider text-muted-foreground">Trigger after</label>
+                  <input type="number" min={1} value={ai.cta_threshold} onChange={(e) => setA("cta_threshold", parseInt(e.target.value) || 3)}
+                    className="w-full rounded-lg border border-[#1E1E1E] bg-[#0A0A0A] px-3 py-2 text-sm outline-none focus:border-primary" />
+                  <p className="mt-0.5 text-[10px] text-muted-foreground/50">incoming msgs from the same person</p>
+                </div>
+                <div>
+                  <label className="mb-1 block text-[11px] font-medium uppercase tracking-wider text-muted-foreground">Cooldown</label>
+                  <input type="number" min={0} value={ai.cta_cooldown_hours} onChange={(e) => setA("cta_cooldown_hours", parseInt(e.target.value) || 0)}
+                    className="w-full rounded-lg border border-[#1E1E1E] bg-[#0A0A0A] px-3 py-2 text-sm outline-none focus:border-primary" />
+                  <p className="mt-0.5 text-[10px] text-muted-foreground/50">hours before it can trigger again for same chat</p>
+                </div>
+              </div>
+            </>
           )}
         </SectionCard>
 
