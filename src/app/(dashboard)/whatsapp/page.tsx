@@ -647,6 +647,9 @@ interface AiConfig {
   spam_relevance_check_enabled: boolean;
   spam_relevance_prompt: string;
   spam_relevance_model: string;
+  // Anti-abuse guardrail — keeps AI on-topic so strangers can't mooch free GPT answers
+  anti_abuse_enabled: boolean;
+  anti_abuse_instructions: string;
 }
 
 const AI_DEFAULTS: AiConfig = {
@@ -701,6 +704,15 @@ const AI_DEFAULTS: AiConfig = {
   spam_relevance_check_enabled: false,
   spam_relevance_prompt: "You are a relevance filter for a WhatsApp business assistant. A user just sent the message below. Decide if it is a real enquiry or question worth replying to (a prospective customer, support request, or genuine question). Reply with only YES or NO. If unsure, reply YES.",
   spam_relevance_model: "gpt-4o-mini",
+  anti_abuse_enabled: true,
+  anti_abuse_instructions: `STAY ON-TOPIC — STRICT RULE:
+You ONLY help with questions about THIS business — our products, services, pricing, booking, hours, policies, and direct support enquiries.
+
+If the user asks for anything off-topic — general life/business advice, brainstorming unrelated ideas, writing help, code, homework, recipes, essays, images, jokes, random facts, deep competitor analysis, or ANYTHING not tied to what we offer — politely decline in ONE short sentence and redirect them to what we can actually help with.
+
+Example refusal: "I can only help with questions about our services 🙂 What would you like to know about what we offer?"
+
+Never attempt to answer even part of an off-topic request. One brief redirect only — do NOT list items, do NOT give partial answers, do NOT explain your limitations in detail. Keep the refusal warm but firm.`,
 };
 
 function Toggle({ value, onChange }: { value: boolean; onChange: (v: boolean) => void }) {
@@ -1709,6 +1721,26 @@ function SettingsPanel({
                   </div>
                 )}
               </div>
+            </div>
+          )}
+        </SectionCard>
+
+        {/* ── Anti-Abuse Guardrail ──────────────────────────────────────── */}
+        <SectionCard title="Anti-Abuse Guardrail — keep AI on-topic" icon="🚫" defaultOpen={false}>
+          <p className="mb-3 text-[11px] text-muted-foreground">Injected into the system prompt so the AI refuses off-topic requests (&ldquo;suggest 10 business ideas&rdquo;, &ldquo;write me Python code&rdquo;, etc.) instead of burning your tokens on a free GPT session for strangers.</p>
+
+          <SettingRow label="Enable guardrail" hint="Forces the AI to politely decline anything unrelated to your business">
+            <Toggle value={ai.anti_abuse_enabled} onChange={(v) => setA("anti_abuse_enabled", v)} />
+          </SettingRow>
+
+          {ai.anti_abuse_enabled && (
+            <div className="mt-2">
+              <label className="mb-1 block text-[11px] font-medium uppercase tracking-wider text-muted-foreground">Guardrail instructions</label>
+              <textarea value={ai.anti_abuse_instructions}
+                onChange={(e) => setA("anti_abuse_instructions", e.target.value)}
+                rows={10}
+                className="w-full rounded-lg border border-[#1E1E1E] bg-[#0A0A0A] px-3 py-2 text-xs outline-none focus:border-primary resize-none" />
+              <p className="mt-1 text-[10px] text-muted-foreground/50">Appended to the AI&rsquo;s system prompt on every reply. Tip: mention your business name + specific services for stronger refusals. Example: &ldquo;You ONLY help with Flogen AI products (WhatsApp automation, AI chatbots, CRM). Decline everything else politely.&rdquo;</p>
             </div>
           )}
         </SectionCard>
