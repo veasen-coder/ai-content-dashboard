@@ -650,6 +650,7 @@ interface AiConfig {
   // Anti-abuse guardrail — keeps AI on-topic so strangers can't mooch free GPT answers
   anti_abuse_enabled: boolean;
   anti_abuse_instructions: string;
+  anti_abuse_modules: string;
 }
 
 const AI_DEFAULTS: AiConfig = {
@@ -705,6 +706,7 @@ const AI_DEFAULTS: AiConfig = {
   spam_relevance_prompt: "You are a relevance filter for a WhatsApp business assistant. A user just sent the message below. Decide if it is a real enquiry or question worth replying to (a prospective customer, support request, or genuine question). Reply with only YES or NO. If unsure, reply YES.",
   spam_relevance_model: "gpt-4o-mini",
   anti_abuse_enabled: true,
+  anti_abuse_modules: JSON.stringify(["block_jailbreak","block_ai_questions","no_hallucinate","no_sensitive_data"]),
   anti_abuse_instructions: `STAY ON-TOPIC — STRICT RULE:
 You ONLY help with questions about THIS business — our products, services, pricing, booking, hours, policies, and direct support enquiries.
 
@@ -714,6 +716,142 @@ Example refusal: "I can only help with questions about our services 🙂 What wo
 
 Never attempt to answer even part of an off-topic request. One brief redirect only — do NOT list items, do NOT give partial answers, do NOT explain your limitations in detail. Keep the refusal warm but firm.`,
 };
+
+// ── Guardrail modules — mirror of GUARDRAIL_MODULE_RULES on the backend ──────
+interface GuardrailModule { id: string; label: string; desc: string }
+const GUARDRAIL_MODULES: { category: string; accent: string; modules: GuardrailModule[] }[] = [
+  {
+    category: "Off-topic content",
+    accent: "red",
+    modules: [
+      { id: "no_homework", label: "Homework & exams", desc: "Essays, test answers, assignments" },
+      { id: "no_code", label: "Code generation", desc: "Python, JS, SQL, scripts" },
+      { id: "no_creative", label: "Creative writing", desc: "Stories, poems, jokes, songs" },
+      { id: "no_recipes", label: "Recipes & cooking", desc: "Food prep, meal plans" },
+      { id: "no_life_advice", label: "Life / business advice", desc: `"Give me 10 ideas for X"` },
+      { id: "no_translation", label: "Translation", desc: `"Translate this to Spanish"` },
+      { id: "no_image_gen", label: "Image / media gen", desc: `"Create an image of..."` },
+      { id: "no_math", label: "Math & science", desc: "Calculations, physics, chem" },
+    ],
+  },
+  {
+    category: "Safety & liability",
+    accent: "amber",
+    modules: [
+      { id: "no_medical", label: "Medical advice", desc: "Redirect to a doctor" },
+      { id: "no_legal", label: "Legal advice", desc: "Redirect to a lawyer" },
+      { id: "no_financial", label: "Financial / investment", desc: "Redirect to an advisor" },
+      { id: "no_therapy", label: "Therapy / mental health", desc: "Redirect to professionals" },
+      { id: "no_politics", label: "Politics / religion", desc: "Stay neutral" },
+    ],
+  },
+  {
+    category: "AI security",
+    accent: "violet",
+    modules: [
+      { id: "block_jailbreak", label: "Jailbreak resistance", desc: `"Ignore previous instructions"` },
+      { id: "block_ai_questions", label: "Hide AI identity", desc: `"Are you human?" / "What model?"` },
+      { id: "block_roleplay", label: "Block role-play", desc: `"Pretend to be X"` },
+    ],
+  },
+  {
+    category: "Reply behavior",
+    accent: "emerald",
+    modules: [
+      { id: "short_replies", label: "Keep replies short", desc: "Max 3 sentences" },
+      { id: "no_hallucinate", label: "No made-up info", desc: "Only verified facts" },
+      { id: "no_apologies", label: "No groveling", desc: "Firm refusals, not apologetic" },
+      { id: "no_sensitive_data", label: "Never ask for sensitive data", desc: "No passwords, IDs, cards" },
+    ],
+  },
+];
+
+const ACCENT_CLASSES: Record<string, { on: string; off: string; dot: string }> = {
+  red: { on: "bg-red-500/15 border-red-500/50 text-red-200", off: "bg-[#0A0A0A] border-[#1E1E1E] text-muted-foreground hover:border-red-500/30", dot: "bg-red-400" },
+  amber: { on: "bg-amber-500/15 border-amber-500/50 text-amber-200", off: "bg-[#0A0A0A] border-[#1E1E1E] text-muted-foreground hover:border-amber-500/30", dot: "bg-amber-400" },
+  violet: { on: "bg-violet-500/15 border-violet-500/50 text-violet-200", off: "bg-[#0A0A0A] border-[#1E1E1E] text-muted-foreground hover:border-violet-500/30", dot: "bg-violet-400" },
+  emerald: { on: "bg-emerald-500/15 border-emerald-500/50 text-emerald-200", off: "bg-[#0A0A0A] border-[#1E1E1E] text-muted-foreground hover:border-emerald-500/30", dot: "bg-emerald-400" },
+};
+
+function GuardrailModules({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const enabled = (() => {
+    try { const arr = JSON.parse(value || "[]"); return Array.isArray(arr) ? arr.filter((x: unknown): x is string => typeof x === "string") : []; }
+    catch { return []; }
+  })();
+  const set = new Set(enabled);
+
+  function toggle(id: string) {
+    const next = new Set(set);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    onChange(JSON.stringify(Array.from(next)));
+  }
+  function enableAll(category: typeof GUARDRAIL_MODULES[number]) {
+    const next = new Set(set);
+    for (const m of category.modules) next.add(m.id);
+    onChange(JSON.stringify(Array.from(next)));
+  }
+  function disableAll(category: typeof GUARDRAIL_MODULES[number]) {
+    const next = new Set(set);
+    for (const m of category.modules) next.delete(m.id);
+    onChange(JSON.stringify(Array.from(next)));
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <label className="block text-[11px] font-medium uppercase tracking-wider text-muted-foreground">Guardrail modules</label>
+        <span className="text-[10px] text-muted-foreground/60">{enabled.length} of {GUARDRAIL_MODULES.reduce((n, c) => n + c.modules.length, 0)} active</span>
+      </div>
+      {GUARDRAIL_MODULES.map((cat) => {
+        const accent = ACCENT_CLASSES[cat.accent];
+        const onCount = cat.modules.filter(m => set.has(m.id)).length;
+        return (
+          <div key={cat.category}>
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center gap-2">
+                <span className={cn("h-1.5 w-1.5 rounded-full", accent.dot)} />
+                <h4 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">{cat.category}</h4>
+                <span className="text-[10px] text-muted-foreground/50">{onCount}/{cat.modules.length}</span>
+              </div>
+              <div className="flex gap-1">
+                <button type="button" onClick={() => enableAll(cat)} className="text-[10px] text-muted-foreground/70 hover:text-foreground transition-colors px-1.5">Enable all</button>
+                <span className="text-muted-foreground/30">·</span>
+                <button type="button" onClick={() => disableAll(cat)} className="text-[10px] text-muted-foreground/70 hover:text-foreground transition-colors px-1.5">Disable all</button>
+              </div>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              {cat.modules.map(m => {
+                const on = set.has(m.id);
+                return (
+                  <button
+                    key={m.id}
+                    type="button"
+                    onClick={() => toggle(m.id)}
+                    className={cn(
+                      "group relative flex items-start gap-2.5 rounded-lg border px-3 py-2.5 text-left transition-all",
+                      on ? accent.on : accent.off,
+                    )}
+                  >
+                    <span className={cn(
+                      "mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded border transition-colors",
+                      on ? `${accent.dot} border-transparent` : "border-[#2A2A2A]",
+                    )}>
+                      {on && <svg viewBox="0 0 16 16" className="h-3 w-3 text-[#0A0A0A]" fill="none" stroke="currentColor" strokeWidth="3"><path d="M3 8l3.5 3.5L13 5" strokeLinecap="round" strokeLinejoin="round" /></svg>}
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block text-xs font-semibold leading-tight">{m.label}</span>
+                      <span className="mt-0.5 block text-[10px] text-muted-foreground/70 leading-snug">{m.desc}</span>
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
 
 function Toggle({ value, onChange }: { value: boolean; onChange: (v: boolean) => void }) {
   return (
@@ -1734,13 +1872,20 @@ function SettingsPanel({
           </SettingRow>
 
           {ai.anti_abuse_enabled && (
-            <div className="mt-2">
-              <label className="mb-1 block text-[11px] font-medium uppercase tracking-wider text-muted-foreground">Guardrail instructions</label>
-              <textarea value={ai.anti_abuse_instructions}
-                onChange={(e) => setA("anti_abuse_instructions", e.target.value)}
-                rows={10}
-                className="w-full rounded-lg border border-[#1E1E1E] bg-[#0A0A0A] px-3 py-2 text-xs outline-none focus:border-primary resize-none" />
-              <p className="mt-1 text-[10px] text-muted-foreground/50">Appended to the AI&rsquo;s system prompt on every reply. Tip: mention your business name + specific services for stronger refusals. Example: &ldquo;You ONLY help with Flogen AI products (WhatsApp automation, AI chatbots, CRM). Decline everything else politely.&rdquo;</p>
+            <div className="mt-2 space-y-5">
+              <GuardrailModules
+                value={ai.anti_abuse_modules}
+                onChange={(v) => setA("anti_abuse_modules", v)}
+              />
+
+              <div>
+                <label className="mb-1 block text-[11px] font-medium uppercase tracking-wider text-muted-foreground">Custom guardrail instructions</label>
+                <textarea value={ai.anti_abuse_instructions}
+                  onChange={(e) => setA("anti_abuse_instructions", e.target.value)}
+                  rows={10}
+                  className="w-full rounded-lg border border-[#1E1E1E] bg-[#0A0A0A] px-3 py-2 text-xs outline-none focus:border-primary resize-none" />
+                <p className="mt-1 text-[10px] text-muted-foreground/50">Appended to the AI&rsquo;s system prompt on every reply, before the module rules above. Tip: mention your business name + specific services for stronger refusals.</p>
+              </div>
             </div>
           )}
         </SectionCard>
