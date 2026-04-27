@@ -4,6 +4,17 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { PageWrapper } from "@/components/layout/page-wrapper";
 import { useCensor } from "@/hooks/use-censor";
 import {
+  DndContext,
+  DragEndEvent,
+  DragOverlay,
+  DragStartEvent,
+  PointerSensor,
+  useDraggable,
+  useDroppable,
+  useSensor,
+  useSensors,
+} from "@dnd-kit/core";
+import {
   ChevronDown,
   ChevronRight,
   Search,
@@ -471,15 +482,31 @@ function KanbanCard({
   onClick,
   onSubtaskClick,
   taskIdShort,
+  isOverlay,
 }: {
   task: Task;
   subtasks: Task[];
   onClick: () => void;
   onSubtaskClick: (task: Task) => void;
   taskIdShort: string;
+  isOverlay?: boolean;
 }) {
   const censor = useCensor();
   const [showSubtasks, setShowSubtasks] = useState(false);
+  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
+    id: task.id,
+    data: { task },
+    disabled: isOverlay,
+  });
+  const dragStyle = isOverlay
+    ? { cursor: "grabbing" as const }
+    : transform
+    ? {
+        transform: `translate3d(${transform.x}px, ${transform.y}px, 0)`,
+        opacity: isDragging ? 0 : 1,
+        cursor: isDragging ? "grabbing" as const : "grab" as const,
+      }
+    : { cursor: "grab" as const };
   const due = formatDueDate(task.due_date);
   const priorityColor = task.priority
     ? PRIORITY_COLORS[task.priority.priority] || "#6B7280"
@@ -493,7 +520,13 @@ function KanbanCard({
 
   return (
     <div
-      className="group w-full overflow-hidden rounded-md border border-[#1E1E1E] bg-[#161616] text-left shadow-sm transition-all hover:border-[#2A2A2A] hover:bg-[#1A1A1A]"
+      ref={setNodeRef}
+      style={dragStyle}
+      {...attributes}
+      {...listeners}
+      className={`group w-full overflow-hidden rounded-md border border-[#1E1E1E] bg-[#161616] text-left shadow-sm transition-colors hover:border-[#2A2A2A] hover:bg-[#1A1A1A] ${
+        isOverlay ? "rotate-2 shadow-2xl ring-2 ring-primary/40" : ""
+      }`}
     >
       <button onClick={onClick} className="block w-full px-3 pt-3 text-left">
         {/* Title */}
@@ -633,6 +666,11 @@ function KanbanColumn({
 }) {
   const isDone =
     group.type === "closed" || group.status.toLowerCase() === "complete";
+  const statusKey = group.status.toLowerCase();
+  const { setNodeRef, isOver } = useDroppable({
+    id: statusKey,
+    data: { status: statusKey },
+  });
 
   return (
     <div className="flex w-[300px] shrink-0 flex-col rounded-lg bg-[#0E0E0E]">
@@ -658,12 +696,15 @@ function KanbanColumn({
 
       {/* Cards */}
       <div
-        className="flex flex-1 flex-col gap-2 overflow-y-auto px-2 pb-2"
+        ref={setNodeRef}
+        className={`flex flex-1 flex-col gap-2 overflow-y-auto rounded-md px-2 pb-2 transition-colors ${
+          isOver ? "bg-primary/10 ring-2 ring-primary/40" : ""
+        }`}
         style={{ minHeight: "200px" }}
       >
         {group.tasks.length === 0 ? (
           <div className="flex h-24 items-center justify-center rounded-lg border border-dashed border-[#1E1E1E] text-xs text-muted-foreground">
-            No cards
+            {isOver ? "Drop here" : "No cards"}
           </div>
         ) : (
           group.tasks.map((task) => (
@@ -963,7 +1004,54 @@ export default function TasksPage() {
   const [showAddModal, setShowAddModal] = useState(false);
   const [addModalStatus, setAddModalStatus] = useState<string | undefined>();
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
+  const [activeDragTask, setActiveDragTask] = useState<Task | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } })
+  );
+
+  function handleDragStart(event: DragStartEvent) {
+    const task = tasks.find((t) => t.id === String(event.active.id));
+    if (task) setActiveDragTask(task);
+  }
+
+  async function handleDragEnd(event: DragEndEvent) {
+    setActiveDragTask(null);
+    const { active, over } = event;
+    if (!over) return;
+    const taskId = String(active.id);
+    const newStatus = String(over.id);
+    const task = tasks.find((t) => t.id === taskId);
+    if (!task) return;
+    if (task.status.status.toLowerCase() === newStatus) return;
+
+    const statusOption = STATUS_OPTIONS.find((s) => s.value === newStatus);
+    const newColor = statusOption?.color || task.status.color;
+    const newType =
+      newStatus === "complete" ? "closed" : task.status.type === "closed" ? "open" : task.status.type;
+
+    // Optimistic update
+    const prev = tasks;
+    setTasks((curr) =>
+      curr.map((t) =>
+        t.id === taskId
+          ? {
+              ...t,
+              status: { status: newStatus, color: newColor, type: newType },
+            }
+          : t
+      )
+    );
+
+    try {
+      await updateTask(taskId, { status: newStatus });
+      toast.success(`Moved to ${statusOption?.label || newStatus}`);
+    } catch {
+      toast.error("Failed to move task");
+      setTasks(prev); // revert
+    }
+  }
 
   const fetchTasks = useCallback(async () => {
     try {
@@ -1229,21 +1317,40 @@ export default function TasksPage() {
 
         {/* Kanban Board */}
         {!loading && !error && (
-          <div
-            ref={scrollRef}
-            className="flex gap-3 overflow-x-auto pb-4"
-            style={{ minHeight: "calc(100vh - 220px)" }}
+          <DndContext
+            sensors={sensors}
+            onDragStart={handleDragStart}
+            onDragEnd={handleDragEnd}
+            onDragCancel={() => setActiveDragTask(null)}
           >
-            {sorted.map((group) => (
-              <KanbanColumn
-                key={group.status}
-                group={group}
-                childrenMap={childrenMap}
-                onTaskClick={setSelectedTask}
-                onAddTask={openAddModal}
-              />
-            ))}
-          </div>
+            <div
+              ref={scrollRef}
+              className="flex gap-3 overflow-x-auto pb-4"
+              style={{ minHeight: "calc(100vh - 220px)" }}
+            >
+              {sorted.map((group) => (
+                <KanbanColumn
+                  key={group.status}
+                  group={group}
+                  childrenMap={childrenMap}
+                  onTaskClick={setSelectedTask}
+                  onAddTask={openAddModal}
+                />
+              ))}
+            </div>
+            <DragOverlay>
+              {activeDragTask ? (
+                <KanbanCard
+                  task={activeDragTask}
+                  subtasks={childrenMap.get(activeDragTask.id) || []}
+                  onClick={() => {}}
+                  onSubtaskClick={() => {}}
+                  taskIdShort={`TSK-${activeDragTask.id.slice(-4).toUpperCase()}`}
+                  isOverlay
+                />
+              ) : null}
+            </DragOverlay>
+          </DndContext>
         )}
       </div>
 
