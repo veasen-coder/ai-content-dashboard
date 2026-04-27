@@ -3,19 +3,20 @@ import { createServerSupabaseClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
 
+const SELECT = "id, title, category, url, description, icon, created_at, updated_at";
+
 export async function GET() {
   try {
     const supabase = createServerSupabaseClient();
     const { data, error } = await supabase
       .from("resources")
-      .select("*")
-      .order("is_pinned", { ascending: false })
+      .select(SELECT)
+      .order("category", { ascending: true })
       .order("created_at", { ascending: false });
 
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
-
     return NextResponse.json(data);
   } catch {
     return NextResponse.json(
@@ -30,27 +31,30 @@ export async function POST(request: NextRequest) {
     const supabase = createServerSupabaseClient();
     const body = await request.json();
 
-    const { title, category, type, url, description, html_content, image_url } = body;
+    const { title, category, url, description, icon } = body;
+
+    if (!title?.trim() || !url?.trim()) {
+      return NextResponse.json(
+        { error: "Title and URL are required" },
+        { status: 400 }
+      );
+    }
 
     const { data, error } = await supabase
       .from("resources")
       .insert({
-        title,
-        category,
-        type,
-        url: url || null,
-        description: description || null,
-        html_content: html_content || null,
-        image_url: image_url || null,
-        is_pinned: false,
+        title: title.trim(),
+        category: category || "general",
+        url: url.trim(),
+        description: description?.trim() || null,
+        icon: icon || null,
       })
-      .select()
+      .select(SELECT)
       .single();
 
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
-
     return NextResponse.json(data);
   } catch {
     return NextResponse.json(
@@ -64,23 +68,35 @@ export async function PATCH(request: NextRequest) {
   try {
     const supabase = createServerSupabaseClient();
     const body = await request.json();
-    const { id, ...updates } = body;
+    const { id, ...rest } = body;
 
     if (!id) {
       return NextResponse.json({ error: "Missing resource id" }, { status: 400 });
     }
 
+    const updates: Record<string, unknown> = {};
+    if ("title" in rest) updates.title = String(rest.title || "").trim();
+    if ("category" in rest) updates.category = rest.category || "general";
+    if ("url" in rest) updates.url = String(rest.url || "").trim();
+    if ("description" in rest)
+      updates.description = rest.description?.trim?.() || rest.description || null;
+    if ("icon" in rest) updates.icon = rest.icon || null;
+
+    if (Object.keys(updates).length === 0) {
+      return NextResponse.json({ error: "Nothing to update" }, { status: 400 });
+    }
+    updates.updated_at = new Date().toISOString();
+
     const { data, error } = await supabase
       .from("resources")
       .update(updates)
       .eq("id", id)
-      .select()
+      .select(SELECT)
       .single();
 
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
-
     return NextResponse.json(data);
   } catch {
     return NextResponse.json(
@@ -99,15 +115,11 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: "Missing resource id" }, { status: 400 });
     }
 
-    const { error } = await supabase
-      .from("resources")
-      .delete()
-      .eq("id", id);
+    const { error } = await supabase.from("resources").delete().eq("id", id);
 
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
-
     return NextResponse.json({ success: true });
   } catch {
     return NextResponse.json(
