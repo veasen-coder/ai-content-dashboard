@@ -19,6 +19,14 @@ import {
   Star,
   MoreVertical,
   Upload,
+  ChevronDown,
+  ChevronRight,
+  Folder,
+  Receipt,
+  LayoutTemplate,
+  Bookmark,
+  GraduationCap,
+  MessageSquare,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useCensor } from "@/hooks/use-censor";
@@ -40,30 +48,62 @@ interface Resource {
 
 // --------------- Constants ---------------
 
-const CATEGORIES = [
-  { id: "all", label: "All" },
-  { id: "scripts", label: "Scripts" },
-  { id: "meeting_minutes", label: "Meeting Minutes" },
-  { id: "demos", label: "Demos" },
-  { id: "templates", label: "Templates" },
-  { id: "other", label: "Other" },
-] as const;
+interface CategoryMeta {
+  id: string;
+  label: string;
+  description: string;
+  Icon: React.ComponentType<{ className?: string; style?: React.CSSProperties }>;
+  color: string; // hex
+}
 
-const CATEGORY_COLORS: Record<string, string> = {
-  scripts: "#8B5CF6",
-  meeting_minutes: "#3B82F6",
-  demos: "#10B981",
-  templates: "#F59E0B",
-  other: "#6B7280",
-};
+const CATEGORIES: CategoryMeta[] = [
+  {
+    id: "scripts",
+    label: "Scripts",
+    description: "Sales scripts, call frameworks, and pitch decks",
+    Icon: GraduationCap,
+    color: "#7C3AED",
+  },
+  {
+    id: "meeting_minutes",
+    label: "Meeting Minutes",
+    description: "Internal and client meeting notes",
+    Icon: Folder,
+    color: "#3B82F6",
+  },
+  {
+    id: "demos",
+    label: "Demos",
+    description: "Product demos and walkthrough recordings",
+    Icon: Receipt,
+    color: "#10B981",
+  },
+  {
+    id: "templates",
+    label: "Templates",
+    description: "Reusable document templates and forms",
+    Icon: LayoutTemplate,
+    color: "#F59E0B",
+  },
+  {
+    id: "chat",
+    label: "Chat Resources",
+    description: "Saved chats, prompts, and AI conversations",
+    Icon: MessageSquare,
+    color: "#EC4899",
+  },
+  {
+    id: "other",
+    label: "General",
+    description: "Other shared resources and links",
+    Icon: Bookmark,
+    color: "#6B7280",
+  },
+];
 
-const CATEGORY_LABELS: Record<string, string> = {
-  scripts: "Scripts",
-  meeting_minutes: "Meeting Minutes",
-  demos: "Demos",
-  templates: "Templates",
-  other: "Other",
-};
+const CATEGORY_BY_ID = Object.fromEntries(
+  CATEGORIES.map((c) => [c.id, c])
+) as Record<string, CategoryMeta>;
 
 const TYPE_OPTIONS = [
   { value: "google_doc", label: "Google Doc" },
@@ -75,29 +115,23 @@ const TYPE_OPTIONS = [
 
 // --------------- Helpers ---------------
 
-function getTypeIcon(type: string) {
+function getTypeIcon(type: string, color: string) {
+  const cls = "h-4 w-4";
+  const style = { color };
   switch (type) {
     case "google_doc":
-      return <FileText className="h-4 w-4 text-blue-400" />;
+      return <FileText className={cls} style={style} />;
     case "google_sheet":
-      return <Table2 className="h-4 w-4 text-green-400" />;
+      return <Table2 className={cls} style={style} />;
     case "google_drive":
-      return <HardDrive className="h-4 w-4 text-yellow-400" />;
+      return <HardDrive className={cls} style={style} />;
     case "link":
-      return <Link2 className="h-4 w-4 text-violet-400" />;
+      return <Link2 className={cls} style={style} />;
     case "html":
-      return <Code2 className="h-4 w-4 text-orange-400" />;
+      return <Code2 className={cls} style={style} />;
     default:
-      return <FileText className="h-4 w-4 text-muted-foreground" />;
+      return <FileText className={cls} style={style} />;
   }
-}
-
-function formatDate(dateString: string) {
-  return new Date(dateString).toLocaleDateString("en-GB", {
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-  });
 }
 
 // --------------- Component ---------------
@@ -106,9 +140,9 @@ export default function ResourcesPage() {
   const censor = useCensor();
   const [resources, setResources] = useState<Resource[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeCategory, setActiveCategory] = useState("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [lastSynced, setLastSynced] = useState<string | null>(null);
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
 
   // Add modal state
   const [showAddModal, setShowAddModal] = useState(false);
@@ -156,7 +190,6 @@ export default function ResourcesPage() {
     try {
       setSaving(true);
 
-      // Upload image first if one is selected
       let imageUrl: string | null = null;
       if (formImageFile) {
         setUploadingImage(true);
@@ -190,6 +223,7 @@ export default function ResourcesPage() {
       if (!res.ok) throw new Error("Failed to create");
       const newResource = await res.json();
       setResources((prev) => [newResource, ...prev]);
+      setExpanded((prev) => new Set(prev).add(newResource.category));
       setShowAddModal(false);
       resetForm();
       toast.success("Resource added");
@@ -239,10 +273,19 @@ export default function ResourcesPage() {
     }
   };
 
-  const handleCardClick = (resource: Resource) => {
+  const openResource = (resource: Resource) => {
     if (resource.url) {
       window.open(resource.url, "_blank", "noopener,noreferrer");
     }
+  };
+
+  const toggleSection = (id: string) => {
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
   };
 
   const resetForm = () => {
@@ -272,48 +315,58 @@ export default function ResourcesPage() {
     reader.readAsDataURL(file);
   };
 
-  // --------------- Filtered Data ---------------
+  // --------------- Grouped + Filtered Data ---------------
 
-  const filteredResources = useMemo(() => {
-    let result = resources;
-    if (activeCategory !== "all") {
-      result = result.filter((r) => r.category === activeCategory);
+  const grouped = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    const filter = (r: Resource) =>
+      !q ||
+      r.title.toLowerCase().includes(q) ||
+      r.description?.toLowerCase().includes(q);
+
+    const map: Record<string, Resource[]> = {};
+    for (const cat of CATEGORIES) map[cat.id] = [];
+    for (const r of resources) {
+      const key = CATEGORY_BY_ID[r.category] ? r.category : "other";
+      if (filter(r)) map[key].push(r);
     }
+    // pinned first, then newest first
+    for (const k of Object.keys(map)) {
+      map[k].sort((a, b) => {
+        if (a.is_pinned !== b.is_pinned) return b.is_pinned ? 1 : -1;
+        return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+      });
+    }
+    return map;
+  }, [resources, searchQuery]);
+
+  // Auto-expand first category that has items, or expand all when searching
+  useEffect(() => {
+    if (resources.length === 0) return;
     if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase();
-      result = result.filter(
-        (r) =>
-          r.title.toLowerCase().includes(q) ||
-          r.description?.toLowerCase().includes(q)
-      );
+      setExpanded(new Set(CATEGORIES.map((c) => c.id)));
+      return;
     }
-    return result;
-  }, [resources, activeCategory, searchQuery]);
+    setExpanded((prev) => {
+      if (prev.size > 0) return prev;
+      const first = CATEGORIES.find((c) => grouped[c.id]?.length > 0);
+      return first ? new Set([first.id]) : prev;
+    });
+  }, [resources.length, searchQuery, grouped]);
+
+  const totalFiltered = Object.values(grouped).reduce((sum, arr) => sum + arr.length, 0);
 
   // --------------- Render ---------------
 
   return (
     <PageWrapper title="Resources" lastSynced={lastSynced}>
       {/* Toolbar */}
-      <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        {/* Category Tabs */}
-        <div className="flex flex-wrap gap-1">
-          {CATEGORIES.map((cat) => (
-            <button
-              key={cat.id}
-              onClick={() => setActiveCategory(cat.id)}
-              className={`rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
-                activeCategory === cat.id
-                  ? "bg-[#7C3AED]/20 text-[#7C3AED]"
-                  : "text-muted-foreground hover:bg-[#1E1E1E] hover:text-foreground"
-              }`}
-            >
-              {cat.label}
-            </button>
-          ))}
+      <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="text-sm text-muted-foreground">
+          {resources.length} {resources.length === 1 ? "resource" : "resources"}
+          {searchQuery && ` · ${totalFiltered} matching`}
         </div>
 
-        {/* Search + Actions */}
         <div className="flex items-center gap-2">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -342,133 +395,179 @@ export default function ResourcesPage() {
         </div>
       </div>
 
-      {/* Grid */}
+      {/* Accordion Sections */}
       {loading && resources.length === 0 ? (
         <div className="flex items-center justify-center py-20">
           <RefreshCw className="h-6 w-6 animate-spin text-muted-foreground" />
         </div>
-      ) : filteredResources.length === 0 ? (
+      ) : resources.length === 0 ? (
         <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-[#1E1E1E] py-16">
           <FolderOpen className="mb-3 h-8 w-8 text-muted-foreground" />
-          <p className="text-sm text-muted-foreground">
-            {searchQuery || activeCategory !== "all"
-              ? "No resources match your filters"
-              : "No resources yet"}
-          </p>
+          <p className="text-sm text-muted-foreground">No resources yet</p>
           <p className="mt-1 text-xs text-muted-foreground">
             Add resources to organize your scripts, demos, and templates
           </p>
         </div>
+      ) : searchQuery && totalFiltered === 0 ? (
+        <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-[#1E1E1E] py-16">
+          <Search className="mb-3 h-8 w-8 text-muted-foreground" />
+          <p className="text-sm text-muted-foreground">No resources match &ldquo;{searchQuery}&rdquo;</p>
+        </div>
       ) : (
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {filteredResources.map((resource) => (
-            <div
-              key={resource.id}
-              onClick={() => handleCardClick(resource)}
-              className={`group relative flex flex-col rounded-xl border border-[#1E1E1E] bg-[#111111] p-4 transition-colors ${
-                resource.url ? "cursor-pointer hover:border-[#7C3AED]/40" : ""
-              }`}
-            >
-              {/* Image thumbnail */}
-              {resource.image_url && (
-                <div className="mb-3 -mx-4 -mt-4 overflow-hidden rounded-t-xl">
-                  <img
-                    src={resource.image_url}
-                    alt={resource.title}
-                    className={`h-36 w-full object-cover ${censor.imageBlurClass}`}
-                  />
-                </div>
-              )}
+        <div className="space-y-3">
+          {CATEGORIES.map((cat) => {
+            const items = grouped[cat.id] || [];
+            const isOpen = expanded.has(cat.id);
+            const Icon = cat.Icon;
+            const tintBg = `${cat.color}14`; // ~8% alpha
+            const tintBorder = `${cat.color}33`; // ~20% alpha
 
-              {/* Pin indicator */}
-              {resource.is_pinned && (
-                <div className={`absolute right-3 ${resource.image_url ? "top-[156px]" : "top-3"}`}>
-                  <Star className="h-4 w-4 fill-[#F59E0B] text-[#F59E0B]" />
-                </div>
-              )}
-
-              {/* Header */}
-              <div className="mb-2 flex items-start gap-3 pr-6">
-                <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[#1E1E1E]">
-                  {getTypeIcon(resource.type)}
-                </div>
-                <div className="min-w-0 flex-1">
-                  <h3 className="truncate text-sm font-medium text-foreground">
-                    {censor.short(resource.title, 10)}
-                  </h3>
-                  <div className="mt-1 flex items-center gap-2">
-                    <span
-                      className="inline-flex rounded-full px-2 py-0.5 text-xs font-medium"
-                      style={{
-                        backgroundColor: `${CATEGORY_COLORS[resource.category] || "#6B7280"}20`,
-                        color: CATEGORY_COLORS[resource.category] || "#6B7280",
-                      }}
-                    >
-                      {CATEGORY_LABELS[resource.category] || resource.category}
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Description */}
-              {resource.description && (
-                <p className={`mb-3 line-clamp-2 text-xs leading-relaxed text-muted-foreground ${censor.blurClass}`}>
-                  {resource.description}
-                </p>
-              )}
-
-              {/* Footer */}
-              <div className="mt-auto flex items-center justify-between pt-2">
-                <span className="text-xs text-muted-foreground">
-                  {formatDate(resource.created_at)}
-                </span>
-                <div className="flex items-center gap-1">
-                  {resource.url && (
-                    <ExternalLink className="h-3.5 w-3.5 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" />
+            return (
+              <div key={cat.id} className="overflow-hidden rounded-xl">
+                {/* Header */}
+                <button
+                  onClick={() => toggleSection(cat.id)}
+                  className="flex w-full items-center gap-3 border px-4 py-3.5 text-left transition-colors hover:brightness-110"
+                  style={{
+                    backgroundColor: tintBg,
+                    borderColor: tintBorder,
+                    borderRadius: isOpen ? "0.75rem 0.75rem 0 0" : "0.75rem",
+                  }}
+                >
+                  {isOpen ? (
+                    <ChevronDown className="h-4 w-4 shrink-0" style={{ color: cat.color }} />
+                  ) : (
+                    <ChevronRight className="h-4 w-4 shrink-0" style={{ color: cat.color }} />
                   )}
-                  {/* Actions menu */}
-                  <div className="relative">
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setContextMenuId(
-                          contextMenuId === resource.id ? null : resource.id
-                        );
-                      }}
-                      className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground opacity-0 transition-all hover:bg-[#1E1E1E] hover:text-foreground group-hover:opacity-100"
-                    >
-                      <MoreVertical className="h-3.5 w-3.5" />
-                    </button>
-                    {contextMenuId === resource.id && (
-                      <div className="absolute bottom-full right-0 z-10 mb-1 w-36 rounded-lg border border-[#1E1E1E] bg-[#111111] py-1 shadow-lg">
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleTogglePin(resource);
-                            setContextMenuId(null);
-                          }}
-                          className="flex w-full items-center gap-2 px-3 py-1.5 text-xs text-muted-foreground hover:bg-[#1E1E1E] hover:text-foreground"
-                        >
-                          <Pin className="h-3.5 w-3.5" />
-                          {resource.is_pinned ? "Unpin" : "Pin to top"}
-                        </button>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleDelete(resource.id);
-                          }}
-                          className="flex w-full items-center gap-2 px-3 py-1.5 text-xs text-red-400 hover:bg-[#1E1E1E]"
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                          Delete
-                        </button>
+                  <div
+                    className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg"
+                    style={{ backgroundColor: `${cat.color}26` }}
+                  >
+                    <Icon className="h-5 w-5" style={{ color: cat.color }} />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      <h3 className="text-sm font-semibold" style={{ color: cat.color }}>
+                        {cat.label}
+                      </h3>
+                    </div>
+                    <p className="mt-0.5 text-xs text-muted-foreground">{cat.description}</p>
+                  </div>
+                  <span
+                    className="flex h-6 min-w-[24px] items-center justify-center rounded-full px-2 text-xs font-medium"
+                    style={{
+                      backgroundColor: `${cat.color}26`,
+                      color: cat.color,
+                    }}
+                  >
+                    {items.length}
+                  </span>
+                </button>
+
+                {/* Items */}
+                {isOpen && (
+                  <div
+                    className="border-x border-b bg-[#111111]"
+                    style={{
+                      borderColor: tintBorder,
+                      borderBottomLeftRadius: "0.75rem",
+                      borderBottomRightRadius: "0.75rem",
+                    }}
+                  >
+                    {items.length === 0 ? (
+                      <div className="px-4 py-8 text-center text-xs text-muted-foreground">
+                        No items in this category yet
                       </div>
+                    ) : (
+                      items.map((resource, idx) => (
+                        <div
+                          key={resource.id}
+                          className={`group flex items-center gap-3 px-4 py-3 transition-colors hover:bg-[#1A1A1A] ${
+                            idx !== items.length - 1 ? "border-b border-[#1E1E1E]" : ""
+                          }`}
+                        >
+                          <div
+                            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg"
+                            style={{ backgroundColor: `${cat.color}1A` }}
+                          >
+                            {getTypeIcon(resource.type, cat.color)}
+                          </div>
+
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-2">
+                              <h4 className="truncate text-sm font-medium text-foreground">
+                                {censor.short(resource.title, 10)}
+                              </h4>
+                              {resource.is_pinned && (
+                                <Star className="h-3.5 w-3.5 shrink-0 fill-[#F59E0B] text-[#F59E0B]" />
+                              )}
+                            </div>
+                            {resource.description && (
+                              <p
+                                className={`mt-0.5 truncate text-xs text-muted-foreground ${censor.blurClass}`}
+                              >
+                                {resource.description}
+                              </p>
+                            )}
+                          </div>
+
+                          <div className="flex shrink-0 items-center gap-1.5">
+                            {resource.url && (
+                              <button
+                                onClick={() => openResource(resource)}
+                                className="flex h-8 items-center gap-1.5 rounded-lg border border-[#2A2A2A] bg-[#1A1A1A] px-3 text-xs font-medium text-foreground transition-colors hover:bg-[#252525]"
+                              >
+                                <ExternalLink className="h-3.5 w-3.5" />
+                                Open
+                              </button>
+                            )}
+                            <div className="relative">
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setContextMenuId(
+                                    contextMenuId === resource.id ? null : resource.id
+                                  );
+                                }}
+                                className="flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-[#1E1E1E] hover:text-foreground"
+                              >
+                                <MoreVertical className="h-4 w-4" />
+                              </button>
+                              {contextMenuId === resource.id && (
+                                <div className="absolute right-0 top-full z-10 mt-1 w-36 rounded-lg border border-[#1E1E1E] bg-[#111111] py-1 shadow-lg">
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleTogglePin(resource);
+                                      setContextMenuId(null);
+                                    }}
+                                    className="flex w-full items-center gap-2 px-3 py-1.5 text-xs text-muted-foreground hover:bg-[#1E1E1E] hover:text-foreground"
+                                  >
+                                    <Pin className="h-3.5 w-3.5" />
+                                    {resource.is_pinned ? "Unpin" : "Pin to top"}
+                                  </button>
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleDelete(resource.id);
+                                    }}
+                                    className="flex w-full items-center gap-2 px-3 py-1.5 text-xs text-red-400 hover:bg-[#1E1E1E]"
+                                  >
+                                    <Trash2 className="h-3.5 w-3.5" />
+                                    Delete
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      ))
                     )}
                   </div>
-                </div>
+                )}
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
 
@@ -501,7 +600,6 @@ export default function ResourcesPage() {
             </div>
 
             <div className="space-y-4">
-              {/* Title */}
               <div>
                 <label className="mb-1.5 block text-xs font-medium text-muted-foreground">
                   Title *
@@ -515,7 +613,6 @@ export default function ResourcesPage() {
                 />
               </div>
 
-              {/* Category + Type row */}
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="mb-1.5 block text-xs font-medium text-muted-foreground">
@@ -526,7 +623,7 @@ export default function ResourcesPage() {
                     onChange={(e) => setFormCategory(e.target.value)}
                     className="h-9 w-full rounded-lg border border-[#1E1E1E] bg-[#0A0A0A] px-3 text-sm text-foreground focus:border-[#7C3AED] focus:outline-none focus:ring-1 focus:ring-[#7C3AED]"
                   >
-                    {CATEGORIES.filter((c) => c.id !== "all").map((c) => (
+                    {CATEGORIES.map((c) => (
                       <option key={c.id} value={c.id}>
                         {c.label}
                       </option>
@@ -551,7 +648,6 @@ export default function ResourcesPage() {
                 </div>
               </div>
 
-              {/* URL */}
               <div>
                 <label className="mb-1.5 block text-xs font-medium text-muted-foreground">
                   URL
@@ -565,7 +661,6 @@ export default function ResourcesPage() {
                 />
               </div>
 
-              {/* Description */}
               <div>
                 <label className="mb-1.5 block text-xs font-medium text-muted-foreground">
                   Description
@@ -578,7 +673,7 @@ export default function ResourcesPage() {
                   className="w-full resize-none rounded-lg border border-[#1E1E1E] bg-[#0A0A0A] px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:border-[#7C3AED] focus:outline-none focus:ring-1 focus:ring-[#7C3AED]"
                 />
               </div>
-              {/* Image Upload */}
+
               <div>
                 <label className="mb-1.5 block text-xs font-medium text-muted-foreground">
                   Image (optional)
@@ -613,7 +708,6 @@ export default function ResourcesPage() {
               </div>
             </div>
 
-            {/* Modal Actions */}
             <div className="mt-5 flex justify-end gap-2">
               <button
                 onClick={() => {
@@ -636,7 +730,6 @@ export default function ResourcesPage() {
         </div>
       )}
 
-      {/* Click-away listener for context menu */}
       {contextMenuId && (
         <div
           className="fixed inset-0 z-0"
